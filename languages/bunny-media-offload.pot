@@ -1,0 +1,317 @@
+# Copyright (C) 2024 Bunny Media Offload
+# This file is distributed under the same license as the Bunny Media Offload package.
+msgid ""
+msgstr ""
+"Project-Id-Version: Bunny Media Offload\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"POT-Creation-Date: 2024-01-01 00:00+0000\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"X-Generator: Poedit 3.0\n"
+"X-Poedit-Basepath: ..\n"
+"X-Poedit-SourceCharset: UTF-8\n"
+"X-Poedit-KeywordsList: __;_e;_n:1,2;_x:1,2c;_ex:1,2c;_nx:4c,1,2;esc_attr__;esc_attr_e;esc_attr_x:1,2c;esc_html__;esc_html_e;esc_html_x:1,2c;_n_noop:1,2;_nx_noop:3c,1,2;__ngettext_noop:1,2\n"
+"X-Poedit-SearchPath-0: .\n"
+
+#: bunny-media-offload.php:35
+msgid "Bunny Media Offload"
+msgstr ""
+
+#: includes/class-bunny-admin.php:55
+msgid "Bunny CDN"
+msgstr ""
+
+#: includes/class-bunny-admin.php:60
+#: includes/class-bunny-admin.php:65
+msgid "Dashboard"
+msgstr ""
+
+#: includes/class-bunny-admin.php:73
+#: includes/class-bunny-admin.php:78
+msgid "Settings"
+msgstr ""
+
+#: includes/class-bunny-admin.php:86
+#: includes/class-bunny-admin.php:91
+msgid "Migration"
+msgstr ""
+
+#: includes/class-bunny-admin.php:99
+#: includes/class-bunny-admin.php:104
+msgid "Optimization"
+msgstr ""
+
+#: includes/class-bunny-admin.php:112
+#: includes/class-bunny-admin.php:117
+msgid "Sync & Recovery"
+msgstr ""
+
+#: includes/class-bunny-admin.php:125
+#: includes/class-bunny-admin.php:130
+msgid "Logs"
+msgstr ""
+
+#: includes/class-bunny-admin.php:143
+msgid "Files Offloaded"
+msgstr ""
+
+#: includes/class-bunny-admin.php:148
+msgid "Space Saved"
+msgstr ""
+
+#: includes/class-bunny-admin.php:153
+msgid "Migration Progress"
+msgstr ""
+
+#: includes/class-bunny-admin.php:161
+msgid "Monthly Savings"
+msgstr ""
+
+#: includes/class-bunny-admin.php:167
+msgid "Images Optimized"
+msgstr ""
+
+#: includes/class-bunny-admin.php:172
+msgid "Optimization Savings"
+msgstr ""
+
+#: includes/class-bunny-admin.php:182
+msgid "Quick Actions"
+msgstr ""
+
+#: includes/class-bunny-admin.php:184
+msgid "Test Connection"
+msgstr ""
+
+#: includes/class-bunny-admin.php:187
+msgid "Start Migration"
+msgstr ""
+
+#: includes/class-bunny-admin.php:191
+msgid "Optimize Images"
+msgstr ""
+
+#: includes/class-bunny-admin.php:195
+msgid "Settings"
+msgstr ""
+
+#: includes/class-bunny-admin.php:203
+msgid "Recent Activity"
+msgstr ""
+
+#: includes/class-bunny-admin.php:215
+msgid "No recent activity."
+msgstr ""
+
+#: includes/class-bunny-admin.php:230
+msgid "API Key"
+msgstr ""
+
+#: includes/class-bunny-admin.php:233
+msgid "Your Bunny.net Storage API key."
+msgstr ""
+
+#: includes/class-bunny-admin.php:238
+msgid "Storage Zone"
+msgstr ""
+
+#: includes/class-bunny-admin.php:241
+msgid "Your Bunny.net Storage Zone name."
+msgstr ""
+
+#: includes/class-bunny-admin.php:246
+msgid "Custom Hostname"
+msgstr ""
+
+#: includes/class-bunny-admin.php:249
+msgid "Optional: Custom CDN hostname (e.g., cdn.example.com)."
+msgstr ""
+
+#: includes/class-bunny-admin.php:254
+msgid "Auto Offload"
+msgstr ""
+
+#: includes/class-bunny-admin.php:257
+msgid "Automatically offload new uploads to Bunny.net"
+msgstr ""
+
+#: includes/class-bunny-admin.php:262
+msgid "Delete Local Files"
+msgstr ""
+
+#: includes/class-bunny-admin.php:265
+msgid "Delete local files after successful upload"
+msgstr ""
+
+#: includes/class-bunny-admin.php:270
+msgid "File Versioning"
+msgstr ""
+
+#: includes/class-bunny-admin.php:273
+msgid "Add version parameter to URLs for cache busting"
+msgstr ""
+
+#: includes/class-bunny-admin.php:278
+msgid "Batch Size"
+msgstr ""
+
+#: includes/class-bunny-admin.php:281
+msgid "Number of files to process in each migration batch (1-500)."
+msgstr ""
+
+#: includes/class-bunny-admin.php:286
+msgid "Image Optimization"
+msgstr ""
+
+#: includes/class-bunny-admin.php:291
+msgid "Enable Optimization"
+msgstr ""
+
+#: includes/class-bunny-admin.php:294
+msgid "Enable automatic image optimization"
+msgstr ""
+
+#: includes/class-bunny-admin.php:296
+msgid "Convert images to modern formats (AVIF/WebP) and compress to reduce file sizes."
+msgstr ""
+
+#: includes/class-bunny-admin.php:301
+msgid "Optimize on Upload"
+msgstr ""
+
+#: includes/class-bunny-admin.php:304
+msgid "Optimize images automatically during upload"
+msgstr ""
+
+#: includes/class-bunny-admin.php:309
+msgid "Preferred Format"
+msgstr ""
+
+#: includes/class-bunny-admin.php:314
+msgid "AVIF offers better compression but WebP has wider browser support."
+msgstr ""
+
+#: includes/class-bunny-admin.php:319
+msgid "Maximum File Size"
+msgstr ""
+
+#: includes/class-bunny-admin.php:328
+msgid "Images larger than this will be compressed further."
+msgstr ""
+
+#: includes/class-bunny-admin.php:333
+msgid "Optimization Batch Size"
+msgstr ""
+
+#: includes/class-bunny-admin.php:336
+msgid "Number of images to optimize in each batch (1-50)."
+msgstr ""
+
+#: includes/class-bunny-admin.php:447
+msgid "WPML detected - multilingual support enabled"
+msgstr ""
+
+#: includes/class-bunny-admin.php:448
+msgid "Synchronizing across languages"
+msgstr ""
+
+#: includes/class-bunny-admin.php:449
+msgid "Translation created and synchronized"
+msgstr ""
+
+#: includes/class-bunny-admin.php:450
+msgid "All Languages"
+msgstr ""
+
+#: includes/class-bunny-admin.php:451
+msgid "Current Language Only"
+msgstr ""
+
+#: includes/class-bunny-admin.php:452
+msgid "Default Language"
+msgstr ""
+
+#: includes/class-bunny-admin.php:453
+msgid "Migrate files from all languages"
+msgstr ""
+
+#: includes/class-bunny-admin.php:454
+msgid "Optimize original files only (translations will share optimized versions)"
+msgstr ""
+
+#: includes/class-bunny-wpml.php:150
+msgid "Multilingual Settings (WPML)"
+msgstr ""
+
+#: includes/class-bunny-wpml.php:154
+msgid "WPML Status"
+msgstr ""
+
+#: includes/class-bunny-wpml.php:156
+msgid "WPML Active"
+msgstr ""
+
+#: includes/class-bunny-wpml.php:158
+#, php-format
+msgid "Detected %d active languages. Default language: %s"
+msgstr ""
+
+#: includes/class-bunny-wpml.php:166
+msgid "Active Languages"
+msgstr ""
+
+#: includes/class-bunny-wpml.php:174
+msgid "- Default"
+msgstr ""
+
+#: includes/class-bunny-wpml.php:181
+msgid "Media Synchronization"
+msgstr ""
+
+#: includes/class-bunny-wpml.php:184
+msgid "Media files are automatically synchronized across all language versions. When a file is offloaded or optimized, all translations will reference the same CDN URL."
+msgstr ""
+
+#: includes/class-bunny-settings.php:85
+msgid "API key is required."
+msgstr ""
+
+#: includes/class-bunny-settings.php:92
+msgid "Storage zone is required."
+msgstr ""
+
+#: includes/class-bunny-settings.php:99
+msgid "Invalid custom hostname format."
+msgstr ""
+
+#: includes/class-bunny-settings.php:126
+msgid "Batch size must be between 1 and 500."
+msgstr ""
+
+#: includes/class-bunny-settings.php:153
+msgid "Optimization batch size must be between 1 and 50."
+msgstr ""
+
+#: includes/class-bunny-optimizer.php:250
+msgid "No images found that need optimization."
+msgstr ""
+
+#: includes/class-bunny-optimizer.php:256
+#, php-format
+msgid "Added %d images to optimization queue."
+msgstr ""
+
+#: includes/class-bunny-cli.php:125
+msgid "All Languages"
+msgstr ""
+
+#: includes/class-bunny-cli.php:126
+msgid "Current Language Only"
+msgstr ""
+
+#: includes/class-bunny-cli.php:127
+msgid "Choose whether to migrate files from the current language only or from all languages."
+msgstr "" 
