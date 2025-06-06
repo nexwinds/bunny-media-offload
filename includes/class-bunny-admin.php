@@ -500,57 +500,7 @@ class Bunny_Admin {
             ?>
             <div class="notice notice-info">
                 <h3><?php esc_html_e('Configuration Status', 'bunny-media-offload'); ?></h3>
-                <p><?php esc_html_e('Some settings are configured in wp-config.php and cannot be changed here:', 'bunny-media-offload'); ?></p>
-                <ul style="margin-left: 20px;">
-                    <?php foreach ($constants_status as $key => $status): ?>
-                        <?php if ($status['defined']): ?>
-                            <li>
-                                <strong><?php echo esc_html($status['constant_name']); ?>:</strong> 
-                                <?php if ($key === 'api_key'): ?>
-                                    <?php 
-                                    $api_key = $status['value'];
-                                    $masked_key = strlen($api_key) > 6 ? substr($api_key, 0, 3) . str_repeat('*', max(10, strlen($api_key) - 6)) . substr($api_key, -3) : str_repeat('*', strlen($api_key));
-                                    echo esc_html($masked_key);
-                                    ?>
-                                <?php else: ?>
-                                    <?php echo esc_html(is_bool($status['value']) ? ($status['value'] ? 'true' : 'false') : $status['value']); ?>
-                                <?php endif; ?>
-                                <span class="bunny-config-source">(wp-config.php)</span>
-                            </li>
-                        <?php endif; ?>
-                    <?php endforeach; ?>
-                </ul>
-                <p>
-                    <a href="#" onclick="document.getElementById('bunny-config-guide').style.display = document.getElementById('bunny-config-guide').style.display === 'none' ? 'block' : 'none'; return false;">
-                        <?php esc_html_e('Show wp-config.php Configuration Guide', 'bunny-media-offload'); ?>
-                    </a>
-                </p>
-                <div id="bunny-config-guide" style="display: none; background: #f1f1f1; padding: 15px; margin: 10px 0; border-left: 4px solid #0073aa;">
-                    <h4><?php esc_html_e('wp-config.php Configuration Example', 'bunny-media-offload'); ?></h4>
-                    <p><?php esc_html_e('Add the following constants to your wp-config.php file (before the "/* That\'s all, stop editing! */" line):', 'bunny-media-offload'); ?></p>
-                    <pre style="background: #fff; padding: 10px; border: 1px solid #ddd; overflow-x: auto; font-size: 12px;">
-// Bunny.net Edge Storage Configuration
-// Only store API credentials in wp-config.php for security
-
-// Required: Your Bunny.net Storage API Key
-define('BUNNY_API_KEY', 'your-storage-api-key-here');
-
-// Required: Your Bunny.net Storage Zone Name
-define('BUNNY_STORAGE_ZONE', 'your-storage-zone-name');
-
-// Optional: Custom hostname for CDN URLs (without https://)
-define('BUNNY_CUSTOM_HOSTNAME', 'cdn.yoursite.com');
-
-// Note: Configure other settings via the WordPress admin interface
-// for better flexibility and management</pre>
-                    <p><strong><?php esc_html_e('Benefits:', 'bunny-media-offload'); ?></strong></p>
-                    <ul style="margin-left: 20px;">
-                        <li><?php esc_html_e('Enhanced security - credentials not stored in database', 'bunny-media-offload'); ?></li>
-                        <li><?php esc_html_e('Environment portability - easy staging/production deployment', 'bunny-media-offload'); ?></li>
-                        <li><?php esc_html_e('Version control safe - exclude wp-config.php from commits', 'bunny-media-offload'); ?></li>
-                        <li><?php esc_html_e('Backup safety - settings preserved during database restores', 'bunny-media-offload'); ?></li>
-                    </ul>
-                </div>
+                <p><?php esc_html_e('Some settings are configured in wp-config.php and are shown in read-only format below.', 'bunny-media-offload'); ?></p>
             </div>
             <?php
         } else {
@@ -573,24 +523,38 @@ define('BUNNY_CUSTOM_HOSTNAME', 'cdn.yoursite.com');
      */
     public function migration_page() {
         $migration_stats = $this->migration->get_migration_stats();
+        $max_file_size = $this->settings->get('optimization_max_size', '50kb');
         
         ?>
         <div class="wrap">
             <h1><?php esc_html_e('Bulk Migration', 'bunny-media-offload'); ?></h1>
             
+            <div class="bunny-migration-info">
+                <div class="notice notice-info">
+                    <h3><?php esc_html_e('Migration Requirements', 'bunny-media-offload'); ?></h3>
+                    <p><?php 
+                        // translators: %s is the maximum file size setting
+                        printf(
+                            esc_html__('Only images in AVIF or WebP format with a maximum file size lower than %s will be migrated. Images in other formats or exceeding this size limit will be skipped.', 'bunny-media-offload'), 
+                            esc_html($max_file_size)
+                        ); 
+                    ?></p>
+                </div>
+            </div>
+            
             <div class="bunny-migration-status">
                 <h3><?php esc_html_e('Migration Status', 'bunny-media-offload'); ?></h3>
-                                 <p><?php 
-                     // translators: %1$d is the number of migrated files, %2$d is the total number of files, %3$s is the migration percentage
-                     printf(esc_html__('%1$d of %2$d files migrated (%3$s%%)', 'bunny-media-offload'), 
-                         esc_html($migration_stats['migrated_files']), 
-                         esc_html($migration_stats['total_attachments']),
-                         esc_html($migration_stats['migration_percentage'])
-                     ); 
-                 ?></p>
-                 <div class="bunny-progress-bar">
-                     <div class="bunny-progress-fill" style="width: <?php echo esc_attr($migration_stats['migration_percentage']); ?>%"></div>
-                 </div>
+                <p><?php 
+                    // translators: %1$d is the number of migrated files, %2$d is the total number of files, %3$s is the migration percentage
+                    printf(esc_html__('%1$d of %2$d files migrated (%3$s%%)', 'bunny-media-offload'), 
+                        esc_html($migration_stats['migrated_files']), 
+                        esc_html($migration_stats['total_attachments']),
+                        esc_html($migration_stats['migration_percentage'])
+                    ); 
+                ?></p>
+                <div class="bunny-progress-bar">
+                    <div class="bunny-progress-fill" style="width: <?php echo esc_attr($migration_stats['migration_percentage']); ?>%"></div>
+                </div>
             </div>
             
             <div class="bunny-migration-form">

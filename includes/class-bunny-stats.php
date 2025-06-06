@@ -229,11 +229,13 @@ class Bunny_Stats {
         
         global $wpdb;
         
+        // Count only supported attachments (AVIF and WebP images) instead of all attachments
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Using WP core table with caching implemented
-        $total_attachments = $wpdb->get_var("
-            SELECT COUNT(*) 
-            FROM {$wpdb->posts} 
-            WHERE post_type = 'attachment'
+        $total_supported_attachments = $wpdb->get_var("
+            SELECT COUNT(DISTINCT posts.ID) 
+            FROM {$wpdb->posts} posts
+            WHERE posts.post_type = 'attachment' 
+            AND posts.post_mime_type IN ('image/avif', 'image/webp')
         ");
         
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Using custom table with caching implemented
@@ -243,12 +245,12 @@ class Bunny_Stats {
             WHERE is_synced = 1
         ");
         
-        $progress_percentage = $total_attachments > 0 ? ($migrated_files / $total_attachments) * 100 : 0;
+        $progress_percentage = $total_supported_attachments > 0 ? ($migrated_files / $total_supported_attachments) * 100 : 0;
         
         $stats = array(
-            'total_attachments' => (int) $total_attachments,
+            'total_attachments' => (int) $total_supported_attachments,
             'migrated_files' => (int) $migrated_files,
-            'pending_files' => max(0, $total_attachments - $migrated_files),
+            'pending_files' => max(0, $total_supported_attachments - $migrated_files),
             'progress_percentage' => round($progress_percentage, 2)
         );
         

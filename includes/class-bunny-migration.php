@@ -564,6 +564,35 @@ class Bunny_Migration {
     }
     
     /**
+     * Get count of supported attachments for migration
+     */
+    private function get_supported_attachments_count() {
+        global $wpdb;
+        
+        // Get max file size setting (convert to bytes)
+        $max_size_setting = $this->settings->get('optimization_max_size', '50kb');
+        $max_size_bytes = (int) filter_var($max_size_setting, FILTER_SANITIZE_NUMBER_INT) * 1024;
+        
+        // Count AVIF and WebP images that are below the size limit
+        $query = "
+            SELECT COUNT(DISTINCT posts.ID) 
+            FROM {$wpdb->posts} posts
+            LEFT JOIN {$wpdb->postmeta} meta ON posts.ID = meta.post_id AND meta.meta_key = '_wp_attached_file'
+            WHERE posts.post_type = 'attachment' 
+            AND posts.post_mime_type IN ('image/avif', 'image/webp')
+        ";
+        
+        // If we can check file sizes, add that condition
+        if (function_exists('filesize')) {
+            // We'll do a basic count without file size check for now, as checking actual file sizes would be too expensive
+            // The size check will be done during actual migration
+        }
+        
+        // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared,WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Query uses safe table names and conditions, custom migration query, caching not appropriate for real-time stats
+        return (int) $wpdb->get_var($query);
+    }
+    
+    /**
      * Get migration statistics
      */
     public function get_migration_stats() {
@@ -571,17 +600,18 @@ class Bunny_Migration {
         
         $bunny_table = $wpdb->prefix . 'bunny_offloaded_files';
         
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Counting attachments for migration stats, caching not needed for one-time calculation
-        $total_attachments = $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_type = 'attachment'");
+        // Count supported attachments (AVIF and WebP images) instead of all attachments
+        $total_supported_attachments = $this->get_supported_attachments_count();
+        
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Counting migrated files for migration stats, caching not needed for one-time calculation
         $migrated_files = $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM `{$wpdb->prefix}bunny_offloaded_files` WHERE is_synced = %d", 1));
-        $pending_files = $total_attachments - $migrated_files;
+        $pending_files = $total_supported_attachments - $migrated_files;
         
         return array(
-            'total_attachments' => (int) $total_attachments,
+            'total_attachments' => (int) $total_supported_attachments,
             'migrated_files' => (int) $migrated_files,
             'pending_files' => max(0, (int) $pending_files),
-            'migration_percentage' => $total_attachments > 0 ? round(($migrated_files / $total_attachments) * 100, 2) : 0
+            'migration_percentage' => $total_supported_attachments > 0 ? round(($migrated_files / $total_supported_attachments) * 100, 2) : 0
         );
     }
 } 
