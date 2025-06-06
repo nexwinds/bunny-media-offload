@@ -65,6 +65,7 @@ class Bunny_Logger {
         
         global $wpdb;
         
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery -- Direct insert needed for logging, no caching required for log writes
         $wpdb->insert($this->table_name, array(
             'log_level' => $level,
             'message' => $message,
@@ -103,6 +104,14 @@ class Bunny_Logger {
      * Get logs from database
      */
     public function get_logs($limit = 100, $offset = 0, $level = null) {
+        // Create cache key based on parameters
+        $cache_key = 'bunny_logs_' . md5($limit . '_' . $offset . '_' . ($level ?: 'all'));
+        $cached_logs = wp_cache_get($cache_key, 'bunny_media_offload');
+        
+        if ($cached_logs !== false) {
+            return $cached_logs;
+        }
+        
         global $wpdb;
         
         $where = '';
@@ -118,14 +127,27 @@ class Bunny_Logger {
         
         $query = "SELECT * FROM {$this->table_name} {$where} ORDER BY date_created DESC LIMIT %d OFFSET %d";
         
-        // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Query is safely constructed with placeholders
-        return $wpdb->get_results($wpdb->prepare($query, $params));
+        // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared,WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Query is safely constructed with placeholders, caching implemented above
+        $logs = $wpdb->get_results($wpdb->prepare($query, $params));
+        
+        // Cache for 2 minutes
+        wp_cache_set($cache_key, $logs, 'bunny_media_offload', 2 * MINUTE_IN_SECONDS);
+        
+        return $logs;
     }
     
     /**
      * Count logs
      */
     public function count_logs($level = null) {
+        // Create cache key based on level
+        $cache_key = 'bunny_logs_count_' . ($level ?: 'all');
+        $cached_count = wp_cache_get($cache_key, 'bunny_media_offload');
+        
+        if ($cached_count !== false) {
+            return $cached_count;
+        }
+        
         global $wpdb;
         
         $where = '';
@@ -139,12 +161,17 @@ class Bunny_Logger {
         $query = "SELECT COUNT(*) FROM {$this->table_name} {$where}";
         
         if (!empty($params)) {
-            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Query is safely constructed with placeholders
-            return $wpdb->get_var($wpdb->prepare($query, $params));
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared,WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Query is safely constructed with placeholders, caching implemented above
+            $count = $wpdb->get_var($wpdb->prepare($query, $params));
         } else {
-            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Query uses safe table name only
-            return $wpdb->get_var($query);
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared,WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Query uses safe table name only, caching implemented above
+            $count = $wpdb->get_var($query);
         }
+        
+        // Cache for 3 minutes
+        wp_cache_set($cache_key, $count, 'bunny_media_offload', 3 * MINUTE_IN_SECONDS);
+        
+        return $count;
     }
     
     /**
@@ -152,8 +179,8 @@ class Bunny_Logger {
      */
     public function clear_logs() {
         global $wpdb;
-        // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Using safe table name with wpdb prefix
-        return $wpdb->query("TRUNCATE TABLE {$this->table_name}");
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Direct operation needed for clearing logs
+        return $wpdb->query("TRUNCATE TABLE {$wpdb->prefix}bunny_logs");
     }
     
     /**
@@ -161,6 +188,7 @@ class Bunny_Logger {
      */
     public function clear_logs_by_level($level) {
         global $wpdb;
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Direct delete needed for clearing logs by level
         return $wpdb->delete($this->table_name, array('log_level' => $level));
     }
     
@@ -175,11 +203,11 @@ class Bunny_Logger {
         
         global $wpdb;
         
-        // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Using safe table name with wpdb prefix
-        $count = $wpdb->get_var("SELECT COUNT(*) FROM {$this->table_name}");
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- No caching needed for maintenance operations
+        $count = $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}bunny_logs");
         
         if ($count > 1000) {
-            // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Using safe table name with wpdb prefix
+            // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Using safe table name with wpdb prefix, no caching needed for maintenance operations
             $wpdb->query("
                 DELETE FROM {$this->table_name} 
                 WHERE id NOT IN (

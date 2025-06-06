@@ -264,24 +264,38 @@ class Bunny_API {
      * Get storage statistics
      */
     public function get_storage_stats() {
+        // Try to get cached stats first
+        $stats_cache_key = 'bunny_storage_stats';
+        $cached_stats = wp_cache_get($stats_cache_key, 'bunny_media_offload');
+        
+        if ($cached_stats !== false) {
+            return $cached_stats;
+        }
+        
         // This would require the Bunny.net management API
         // For now, we'll calculate based on our local tracking
         global $wpdb;
         
         $table_name = $wpdb->prefix . 'bunny_offloaded_files';
         
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Caching implemented above
         $stats = $wpdb->get_row("
             SELECT 
                 COUNT(*) as total_files,
                 SUM(file_size) as total_size
-            FROM $table_name 
+            FROM {$wpdb->prefix}bunny_offloaded_files 
             WHERE is_synced = 1
         ");
         
-        return array(
+        $result = array(
             'total_files' => (int) $stats->total_files,
             'total_size' => (int) $stats->total_size
         );
+        
+        // Cache for 5 minutes
+        wp_cache_set($stats_cache_key, $result, 'bunny_media_offload', 5 * MINUTE_IN_SECONDS);
+        
+        return $result;
     }
     
     /**

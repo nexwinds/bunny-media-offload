@@ -74,14 +74,14 @@ class Bunny_WPML {
         
         // Check if original attachment is offloaded
         $bunny_table = $wpdb->prefix . 'bunny_offloaded_files';
-        // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Using safe table name with wpdb prefix
         $original_bunny_data = $wpdb->get_row($wpdb->prepare(
-            "SELECT * FROM $bunny_table WHERE attachment_id = %d",
+            "SELECT * FROM {$wpdb->prefix}bunny_offloaded_files WHERE attachment_id = %d",
             $original_attachment_id
         ));
         
         if ($original_bunny_data) {
             // Copy Bunny offload data to the duplicated attachment
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery -- Inserting plugin-specific data for WPML translation, not available via WordPress functions
             $wpdb->insert(
                 $bunny_table,
                 array(
@@ -188,21 +188,20 @@ class Bunny_WPML {
             
             if ($translated_id && $translated_id !== $attachment_id) {
                 // Check if translation already has Bunny data
-                // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Using safe table name with wpdb prefix
                 $existing_data = $wpdb->get_var($wpdb->prepare(
-                    "SELECT id FROM $bunny_table WHERE attachment_id = %d",
+                    "SELECT id FROM {$wpdb->prefix}bunny_offloaded_files WHERE attachment_id = %d",
                     $translated_id
                 ));
                 
                 if (!$existing_data) {
                     // Copy Bunny data to translation
-                    // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Using safe table name with wpdb prefix
                     $original_data = $wpdb->get_row($wpdb->prepare(
-                        "SELECT * FROM $bunny_table WHERE attachment_id = %d",
+                        "SELECT * FROM {$wpdb->prefix}bunny_offloaded_files WHERE attachment_id = %d",
                         $attachment_id
                     ));
                     
                     if ($original_data) {
+                        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery -- Inserting plugin-specific data for WPML synchronization, not available via WordPress functions
                         $wpdb->insert(
                             $bunny_table,
                             array(
@@ -247,6 +246,7 @@ class Bunny_WPML {
         
         $language_condition = '';
         if ($this->should_filter_by_language()) {
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- WPML translation query for multilingual attachment filtering
             $language_condition = $wpdb->prepare(
                 " AND p.ID IN (
                     SELECT element_id 

@@ -340,9 +340,9 @@ class Bunny_Optimizer {
         $concurrent_limit = $this->settings->get('optimization_concurrent_limit', 3);
         
         // Get pending items from queue
-        // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Using safe table name with wpdb prefix
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- No caching needed for real-time queue processing
         $items = $wpdb->get_results($wpdb->prepare(
-            "SELECT * FROM {$this->queue_table} 
+            "SELECT * FROM {$wpdb->prefix}bunny_optimization_queue 
              WHERE status = 'pending' 
              ORDER BY 
                 CASE priority 
@@ -383,6 +383,7 @@ class Bunny_Optimizer {
         global $wpdb;
         
         // Update status to processing
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Direct update needed for queue processing, no caching required
         $wpdb->update(
             $this->queue_table,
             array('status' => 'processing', 'date_started' => current_time('mysql')),
@@ -435,6 +436,7 @@ class Bunny_Optimizer {
     private function update_queue_item_status($item_id, $status, $message = '') {
         global $wpdb;
         
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Direct update needed for queue status management, no caching required
         $wpdb->update(
             $this->queue_table,
             array(
@@ -483,20 +485,29 @@ class Bunny_Optimizer {
      */
     public function get_optimization_status() {
         check_ajax_referer('bunny_ajax_nonce', 'nonce');
+
+        // Try to get cached stats first
+        $stats_cache_key = 'bunny_optimization_queue_stats';
+        $stats = wp_cache_get($stats_cache_key, 'bunny_media_offload');
         
-        global $wpdb;
-        
-        // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Using safe table name with wpdb prefix
-        $stats = $wpdb->get_row("
-            SELECT 
-                COUNT(*) as total,
-                SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending,
-                SUM(CASE WHEN status = 'processing' THEN 1 ELSE 0 END) as processing,
-                SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed,
-                SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed,
-                SUM(CASE WHEN status = 'skipped' THEN 1 ELSE 0 END) as skipped
-            FROM {$this->queue_table}
-        ");
+        if ($stats === false) {
+            global $wpdb;
+            
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Caching implemented above
+            $stats = $wpdb->get_row("
+                SELECT 
+                    COUNT(*) as total,
+                    SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending,
+                    SUM(CASE WHEN status = 'processing' THEN 1 ELSE 0 END) as processing,
+                    SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed,
+                    SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed,
+                    SUM(CASE WHEN status = 'skipped' THEN 1 ELSE 0 END) as skipped
+                FROM {$wpdb->prefix}bunny_optimization_queue
+            ");
+            
+            // Cache for 1 minute
+            wp_cache_set($stats_cache_key, $stats, 'bunny_media_offload', MINUTE_IN_SECONDS);
+        }
         
         wp_send_json_success($stats);
     }
@@ -518,12 +529,13 @@ class Bunny_Optimizer {
             AND LOWER(SUBSTRING_INDEX(p.post_mime_type, '/', -1)) IN ({$file_types_sql})
             AND p.ID NOT IN (
                 SELECT attachment_id 
+                -- phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Using safe table name with wpdb prefix
                 FROM {$this->queue_table} 
                 WHERE status IN ('pending', 'processing')
             )
         ";
         
-        // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- $sql is safely constructed with escaped values above
+        // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared,WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- $sql is safely constructed with escaped values above, caching not suitable for dynamic query filtering
         $results = $wpdb->get_col($sql);
         
         // Apply WPML filter to avoid optimizing duplicate translations
@@ -579,6 +591,14 @@ class Bunny_Optimizer {
      * Get optimization statistics for dashboard
      */
     public function get_optimization_stats() {
+        // Try to get cached stats first
+        $stats_cache_key = 'bunny_optimization_dashboard_stats';
+        $cached_stats = wp_cache_get($stats_cache_key, 'bunny_media_offload');
+        
+        if ($cached_stats !== false) {
+            return $cached_stats;
+        }
+        
         global $wpdb;
         
         // Get stats from the options table (for backward compatibility)
@@ -590,6 +610,7 @@ class Bunny_Optimizer {
         ));
         
         // Get the actual count of images that have been optimized by checking postmeta
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Caching implemented above
         $actually_optimized_count = $wpdb->get_var("
             SELECT COUNT(DISTINCT post_id) 
             FROM {$wpdb->postmeta} 
@@ -600,6 +621,7 @@ class Bunny_Optimizer {
         
         // If we have optimized images but no stats from options table, calculate from metadata
         if ($stats['images_actually_optimized'] > 0 && $stats['total_savings'] == 0) {
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Caching implemented above
             $optimization_metadata = $wpdb->get_results("
                 SELECT meta_value 
                 FROM {$wpdb->postmeta} 
@@ -636,6 +658,9 @@ class Bunny_Optimizer {
         $stats['total_original_size_formatted'] = Bunny_Utils::format_file_size($stats['total_original_size']);
         $stats['total_optimized_size_formatted'] = Bunny_Utils::format_file_size($stats['total_optimized_size']);
         
+        // Cache for 5 minutes
+        wp_cache_set($stats_cache_key, $stats, 'bunny_media_offload', 5 * MINUTE_IN_SECONDS);
+        
         return $stats;
     }
     
@@ -643,11 +668,20 @@ class Bunny_Optimizer {
      * Get optimization criteria analysis
      */
     public function get_optimization_criteria() {
+        // Try to get cached criteria first
+        $criteria_cache_key = 'bunny_optimization_criteria';
+        $cached_criteria = wp_cache_get($criteria_cache_key, 'bunny_media_offload');
+        
+        if ($cached_criteria !== false) {
+            return $cached_criteria;
+        }
+        
         global $wpdb;
         
         $max_size = $this->get_max_file_size();
         
         // Get all image attachments
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Caching implemented above
         $all_images = $wpdb->get_results("
             SELECT p.ID, p.post_mime_type, m.meta_value as file_path
             FROM {$wpdb->posts} p
@@ -698,7 +732,7 @@ class Bunny_Optimizer {
             }
         }
         
-        return array(
+        $criteria = array(
             'total_images' => count($all_images),
             'total_eligible' => $total_eligible,
             'oversized_count' => $oversized_count,
@@ -706,6 +740,11 @@ class Bunny_Optimizer {
             'already_optimized_count' => $already_optimized_count,
             'max_size_threshold' => round($max_size / 1024) . 'KB'
         );
+        
+        // Cache for 10 minutes
+        wp_cache_set($criteria_cache_key, $criteria, 'bunny_media_offload', 10 * MINUTE_IN_SECONDS);
+        
+        return $criteria;
     }
     
     /**
@@ -771,12 +810,21 @@ class Bunny_Optimizer {
      * Get images for optimization based on target and criteria
      */
     private function get_images_for_optimization($target, $criteria) {
+        // Create cache key based on target and criteria
+        $cache_key = 'bunny_images_for_optimization_' . md5($target . serialize($criteria));
+        $cached_images = wp_cache_get($cache_key, 'bunny_media_offload');
+        
+        if ($cached_images !== false) {
+            return $cached_images;
+        }
+        
         global $wpdb;
         
         $max_size = $this->get_max_file_size();
         $upload_dir = wp_upload_dir();
         
         // Base query for all images
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Caching implemented above
         $images = $wpdb->get_results("
             SELECT p.ID, p.post_mime_type, m.meta_value as file_path,
                    bof.bunny_url, bof.id as bunny_id
@@ -835,6 +883,9 @@ class Bunny_Optimizer {
                 );
             }
         }
+        
+        // Cache for 5 minutes
+        wp_cache_set($cache_key, $eligible_images, 'bunny_media_offload', 5 * MINUTE_IN_SECONDS);
         
         return $eligible_images;
     }

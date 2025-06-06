@@ -30,20 +30,29 @@ class Bunny_Stats {
      * Get statistics from database
      */
     public function get_database_stats() {
+        $cache_key = 'bunny_database_stats';
+        $cached_stats = wp_cache_get($cache_key, 'bunny_media_offload');
+        
+        if ($cached_stats !== false) {
+            return $cached_stats;
+        }
+        
         global $wpdb;
         
         $table_name = $wpdb->prefix . 'bunny_offloaded_files';
         
         // Get total files and sizes
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Custom table query with caching implemented
         $totals = $wpdb->get_row("
             SELECT 
                 COUNT(*) as total_files,
                 SUM(file_size) as total_size
-            FROM $table_name 
+            FROM {$wpdb->prefix}bunny_offloaded_files 
             WHERE is_synced = 1
         ");
         
         // Get files by type
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Custom table query with caching implemented
         $file_types = $wpdb->get_results("
             SELECT 
                 CASE 
@@ -55,15 +64,16 @@ class Bunny_Stats {
                 END as type_category,
                 COUNT(*) as count,
                 SUM(file_size) as size
-            FROM $table_name 
+            FROM {$wpdb->prefix}bunny_offloaded_files 
             WHERE is_synced = 1
             GROUP BY type_category
         ");
         
         // Get recent uploads (last 30 days)
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Custom table query with caching implemented
         $recent_uploads = $wpdb->get_var($wpdb->prepare("
             SELECT COUNT(*) 
-            FROM $table_name 
+            FROM {$wpdb->prefix}bunny_offloaded_files 
             WHERE is_synced = 1 
             AND date_offloaded >= %s
         ", gmdate('Y-m-d H:i:s', strtotime('-30 days'))));
@@ -83,12 +93,17 @@ class Bunny_Stats {
             );
         }
         
-        return array(
+        $stats = array(
             'total_files_offloaded' => (int) $totals->total_files,
             'total_space_saved' => (int) $totals->total_size,
             'recent_uploads' => (int) $recent_uploads,
             'file_types' => $type_stats
         );
+        
+        // Cache for 5 minutes
+        wp_cache_set($cache_key, $stats, 'bunny_media_offload', 300);
+        
+        return $stats;
     }
     
     /**
@@ -142,21 +157,30 @@ class Bunny_Stats {
      * Get performance statistics
      */
     public function get_performance_stats() {
+        $cache_key = 'bunny_performance_stats';
+        $cached_stats = wp_cache_get($cache_key, 'bunny_media_offload');
+        
+        if ($cached_stats !== false) {
+            return $cached_stats;
+        }
+        
         global $wpdb;
         
         $table_name = $wpdb->prefix . 'bunny_offloaded_files';
         
         // Get average file size
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Custom table query with caching implemented
         $avg_file_size = $wpdb->get_var("
             SELECT AVG(file_size) 
-            FROM $table_name 
+            FROM {$wpdb->prefix}bunny_offloaded_files 
             WHERE is_synced = 1 AND file_size > 0
         ");
         
         // Get largest files
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Custom table query with caching implemented
         $largest_files = $wpdb->get_results("
             SELECT bf.attachment_id, bf.file_size, p.post_title
-            FROM $table_name bf
+            FROM {$wpdb->prefix}bunny_offloaded_files bf
             LEFT JOIN {$wpdb->posts} p ON bf.attachment_id = p.ID
             WHERE bf.is_synced = 1
             ORDER BY bf.file_size DESC
@@ -167,9 +191,10 @@ class Bunny_Stats {
         $upload_trend = array();
         for ($i = 6; $i >= 0; $i--) {
             $date = gmdate('Y-m-d', strtotime("-$i days"));
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Custom table query with caching implemented
             $count = $wpdb->get_var($wpdb->prepare("
                 SELECT COUNT(*) 
-                FROM $table_name 
+                FROM {$wpdb->prefix}bunny_offloaded_files 
                 WHERE DATE(date_offloaded) = %s
             ", $date));
             
@@ -179,25 +204,39 @@ class Bunny_Stats {
             );
         }
         
-        return array(
+        $stats = array(
             'average_file_size' => (int) $avg_file_size,
             'largest_files' => $largest_files,
             'upload_trend' => $upload_trend
         );
+        
+        // Cache for 10 minutes
+        wp_cache_set($cache_key, $stats, 'bunny_media_offload', 600);
+        
+        return $stats;
     }
     
     /**
      * Get migration progress
      */
     public function get_migration_progress() {
+        $cache_key = 'bunny_migration_progress';
+        $cached_stats = wp_cache_get($cache_key, 'bunny_media_offload');
+        
+        if ($cached_stats !== false) {
+            return $cached_stats;
+        }
+        
         global $wpdb;
         
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Using WP core table with caching implemented
         $total_attachments = $wpdb->get_var("
             SELECT COUNT(*) 
             FROM {$wpdb->posts} 
             WHERE post_type = 'attachment'
         ");
         
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Using custom table with caching implemented
         $migrated_files = $wpdb->get_var("
             SELECT COUNT(*) 
             FROM {$wpdb->prefix}bunny_offloaded_files 
@@ -206,34 +245,48 @@ class Bunny_Stats {
         
         $progress_percentage = $total_attachments > 0 ? ($migrated_files / $total_attachments) * 100 : 0;
         
-        return array(
+        $stats = array(
             'total_attachments' => (int) $total_attachments,
             'migrated_files' => (int) $migrated_files,
             'pending_files' => max(0, $total_attachments - $migrated_files),
             'progress_percentage' => round($progress_percentage, 2)
         );
+        
+        // Cache for 2 minutes (shorter since migration progress changes frequently)
+        wp_cache_set($cache_key, $stats, 'bunny_media_offload', 120);
+        
+        return $stats;
     }
     
     /**
      * Get error statistics
      */
     public function get_error_stats() {
+        $cache_key = 'bunny_error_stats';
+        $cached_stats = wp_cache_get($cache_key, 'bunny_media_offload');
+        
+        if ($cached_stats !== false) {
+            return $cached_stats;
+        }
+        
         global $wpdb;
         
         $log_table = $wpdb->prefix . 'bunny_logs';
         
         // Get error counts by level
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Custom table query with caching implemented
         $error_counts = $wpdb->get_results("
             SELECT log_level, COUNT(*) as count
-            FROM $log_table 
+            FROM {$wpdb->prefix}bunny_logs 
             WHERE date_created >= DATE_SUB(NOW(), INTERVAL 30 DAY)
             GROUP BY log_level
         ");
         
         // Get recent errors
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Custom table query with caching implemented
         $recent_errors = $wpdb->get_results("
             SELECT message, date_created
-            FROM $log_table 
+            FROM {$wpdb->prefix}bunny_logs 
             WHERE log_level = 'error'
             AND date_created >= DATE_SUB(NOW(), INTERVAL 7 DAY)
             ORDER BY date_created DESC
@@ -251,10 +304,15 @@ class Bunny_Stats {
             $error_stats[$count->log_level] = (int) $count->count;
         }
         
-        return array(
+        $stats = array(
             'error_counts' => $error_stats,
             'recent_errors' => $recent_errors
         );
+        
+        // Cache for 3 minutes
+        wp_cache_set($cache_key, $stats, 'bunny_media_offload', 180);
+        
+        return $stats;
     }
     
     /**

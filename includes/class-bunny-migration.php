@@ -237,10 +237,10 @@ class Bunny_Migration {
         ");
         
         if (!empty($params)) {
-            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Query is safely constructed above with placeholders
-            $results = $wpdb->get_results($wpdb->prepare($query, $params));
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared,WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Query is safely constructed above with placeholders, custom migration query, caching not appropriate for one-time migration
+            $results = $wpdb->get_results($wpdb->prepare($query, ...$params));
         } else {
-            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Query contains only safe table names and WHERE clauses
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared,WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Query contains only safe table names and WHERE clauses, custom migration query, caching not appropriate for one-time migration
             $results = $wpdb->get_results($query);
         }
         
@@ -512,6 +512,7 @@ class Bunny_Migration {
         
         $table_name = $wpdb->prefix . 'bunny_offloaded_files';
         
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery -- Inserting plugin-specific data not available via WordPress functions
         $wpdb->insert($table_name, array(
             'attachment_id' => $attachment_id,
             'bunny_url' => $bunny_url,
@@ -570,9 +571,10 @@ class Bunny_Migration {
         
         $bunny_table = $wpdb->prefix . 'bunny_offloaded_files';
         
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Counting attachments for migration stats, caching not needed for one-time calculation
         $total_attachments = $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_type = 'attachment'");
-        // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Using safe table name with wpdb prefix
-        $migrated_files = $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM `{$bunny_table}` WHERE is_synced = 1"));
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Counting migrated files for migration stats, caching not needed for one-time calculation
+        $migrated_files = $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM `{$wpdb->prefix}bunny_offloaded_files` WHERE is_synced = %d", 1));
         $pending_files = $total_attachments - $migrated_files;
         
         return array(

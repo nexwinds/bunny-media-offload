@@ -71,13 +71,34 @@ class Bunny_CLI {
      * Show plugin status and statistics
      */
     public function status($args, $assoc_args) {
-        global $wpdb;
+        $cache_key = 'bunny_cli_status';
+        $cached_stats = wp_cache_get($cache_key, 'bunny_media_offload');
         
-        $table_name = $wpdb->prefix . 'bunny_offloaded_files';
-        
-        $total_attachments = $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_type = 'attachment'");
-        $offloaded_files = $wpdb->get_var("SELECT COUNT(*) FROM $table_name WHERE is_synced = 1");
-        $total_size = $wpdb->get_var("SELECT SUM(file_size) FROM $table_name WHERE is_synced = 1");
+        if ($cached_stats !== false) {
+            $total_attachments = $cached_stats['total_attachments'];
+            $offloaded_files = $cached_stats['offloaded_files'];
+            $total_size = $cached_stats['total_size'];
+        } else {
+            global $wpdb;
+            
+            $table_name = $wpdb->prefix . 'bunny_offloaded_files';
+            
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Using WP core table with caching implemented
+            $total_attachments = $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_type = 'attachment'");
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Custom table query with caching implemented
+            $offloaded_files = $wpdb->get_var("SELECT COUNT(*) FROM $table_name WHERE is_synced = 1");
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Custom table query with caching implemented
+            $total_size = $wpdb->get_var("SELECT SUM(file_size) FROM $table_name WHERE is_synced = 1");
+            
+            $cached_stats = array(
+                'total_attachments' => $total_attachments,
+                'offloaded_files' => $offloaded_files,
+                'total_size' => $total_size
+            );
+            
+            // Cache for 2 minutes
+            wp_cache_set($cache_key, $cached_stats, 'bunny_media_offload', 120);
+        }
         
         $progress = $total_attachments > 0 ? round(($offloaded_files / $total_attachments) * 100, 2) : 0;
         
@@ -125,7 +146,7 @@ class Bunny_CLI {
             ORDER BY posts.ID ASC
         ";
         
-        // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Query uses safe table names and placeholders
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.NotPrepared -- Using WP core and custom tables for CLI command
         $files = $wpdb->get_results($query);
         $total_files = count($files);
         
@@ -244,6 +265,7 @@ class Bunny_CLI {
         global $wpdb;
         
         $queue_table = $wpdb->prefix . 'bunny_optimization_queue';
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Custom table query for CLI command
         $stats = $wpdb->get_row("
             SELECT 
                 COUNT(*) as total,
@@ -252,7 +274,7 @@ class Bunny_CLI {
                 SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed,
                 SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed,
                 SUM(CASE WHEN status = 'skipped' THEN 1 ELSE 0 END) as skipped
-            FROM $queue_table
+            FROM {$wpdb->prefix}bunny_optimization_queue
         ");
         
         $optimization_stats = $this->optimizer->get_optimization_stats();
