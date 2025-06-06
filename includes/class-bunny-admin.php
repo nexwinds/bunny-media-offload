@@ -40,9 +40,11 @@ class Bunny_Admin {
         add_action('wp_ajax_bunny_clear_logs', array($this, 'ajax_clear_logs'));
         add_action('wp_ajax_bunny_regenerate_thumbnails', array($this, 'ajax_regenerate_thumbnails'));
         
-        // Add media library column
+        // Add media library column and filters
         add_filter('manage_media_columns', array($this, 'add_media_column'));
         add_action('manage_media_custom_column', array($this, 'display_media_column'), 10, 2);
+        add_action('restrict_manage_posts', array($this, 'add_media_library_filter'));
+        add_filter('parse_query', array($this, 'filter_media_library_query'));
     }
     
     /**
@@ -287,6 +289,7 @@ class Bunny_Admin {
      */
     public function settings_page() {
         $settings = $this->settings->get_all();
+        $active_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'connection';
         
         ?>
         <div class="wrap">
@@ -294,12 +297,192 @@ class Bunny_Admin {
             
             <?php echo wp_kses_post($this->display_config_status()); ?>
             
+            <!-- Settings Navigation Tabs -->
+            <div class="bunny-settings-tabs">
+                <nav class="nav-tab-wrapper">
+                    <a href="?page=bunny-media-offload-settings&tab=connection" class="nav-tab <?php echo $active_tab === 'connection' ? 'nav-tab-active' : ''; ?>">
+                        <span class="dashicons dashicons-admin-links"></span>
+                        <?php esc_html_e('Connection & CDN', 'bunny-media-offload'); ?>
+                    </a>
+                    <a href="?page=bunny-media-offload-settings&tab=general" class="nav-tab <?php echo $active_tab === 'general' ? 'nav-tab-active' : ''; ?>">
+                        <span class="dashicons dashicons-admin-settings"></span>
+                        <?php esc_html_e('General Settings', 'bunny-media-offload'); ?>
+                    </a>
+                    <a href="?page=bunny-media-offload-settings&tab=optimization" class="nav-tab <?php echo $active_tab === 'optimization' ? 'nav-tab-active' : ''; ?>">
+                        <span class="dashicons dashicons-format-image"></span>
+                        <?php esc_html_e('Image Optimization', 'bunny-media-offload'); ?>
+                    </a>
+                    <a href="?page=bunny-media-offload-settings&tab=performance" class="nav-tab <?php echo $active_tab === 'performance' ? 'nav-tab-active' : ''; ?>">
+                        <span class="dashicons dashicons-performance"></span>
+                        <?php esc_html_e('Performance', 'bunny-media-offload'); ?>
+                    </a>
+                    <?php if ($this->wpml && $this->wpml->is_wpml_active()): ?>
+                    <a href="?page=bunny-media-offload-settings&tab=wpml" class="nav-tab <?php echo $active_tab === 'wpml' ? 'nav-tab-active' : ''; ?>">
+                        <span class="dashicons dashicons-translation"></span>
+                        <?php esc_html_e('WPML Integration', 'bunny-media-offload'); ?>
+                    </a>
+                    <?php endif; ?>
+                </nav>
+            </div>
+
+            <div class="bunny-settings-content">
             <form method="post" action="options.php">
                 <?php settings_fields('bunny_media_offload_settings'); ?>
+                    
+                    <?php
+                    switch ($active_tab) {
+                        case 'connection':
+                            $this->render_connection_settings($settings);
+                            break;
+                        case 'general':
+                            $this->render_general_settings($settings);
+                            break;
+                        case 'optimization':
+                            $this->render_optimization_settings($settings);
+                            break;
+                        case 'performance':
+                            $this->render_performance_settings($settings);
+                            break;
+                        case 'wpml':
+                            if ($this->wpml && $this->wpml->is_wpml_active()) {
+                                $this->render_wpml_settings($settings);
+                            }
+                            break;
+                        default:
+                            $this->render_connection_settings($settings);
+                    }
+                    ?>
+                    
+                    <div class="bunny-settings-actions">
+                        <?php submit_button(__('Save Settings', 'bunny-media-offload'), 'primary', 'submit', false); ?>
+                        <?php if ($active_tab === 'connection'): ?>
+                            <button type="button" class="button" id="test-connection"><?php esc_html_e('Test Connection', 'bunny-media-offload'); ?></button>
+                        <?php endif; ?>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <style>
+        .bunny-settings-tabs {
+            margin-bottom: 20px;
+        }
+        
+        .bunny-settings-tabs .nav-tab {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 12px 20px;
+            border-radius: 8px 8px 0 0;
+            transition: all 0.2s ease;
+        }
+        
+        .bunny-settings-tabs .nav-tab:hover {
+            background-color: #f0f0f1;
+        }
+        
+        .bunny-settings-tabs .nav-tab-active {
+            background-color: #0073aa;
+            color: white;
+            border-color: #0073aa;
+        }
+        
+        .bunny-settings-tabs .nav-tab-active:hover {
+            background-color: #005a87;
+        }
+        
+        .bunny-settings-tabs .dashicons {
+            font-size: 16px;
+            width: 16px;
+            height: 16px;
+        }
+        
+        .bunny-settings-content {
+            background: white;
+            border: 1px solid #c3c4c7;
+            border-radius: 0 8px 8px 8px;
+            padding: 30px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        
+        .bunny-settings-section {
+            margin-bottom: 40px;
+        }
+        
+        .bunny-settings-section:last-child {
+            margin-bottom: 0;
+        }
+        
+        .bunny-settings-section h3 {
+            margin: 0 0 20px 0;
+            padding: 0 0 10px 0;
+            border-bottom: 2px solid #0073aa;
+            color: #0073aa;
+            font-size: 18px;
+        }
+        
+        .bunny-settings-section .form-table {
+            margin-top: 0;
+        }
+        
+        .bunny-settings-actions {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #ddd;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        
+        .bunny-readonly-field {
+            background-color: #f9f9f9 !important;
+        }
+        
+        .bunny-config-source {
+            margin-left: 10px;
+            color: #666;
+            font-style: italic;
+            font-size: 13px;
+        }
+        
+        .bunny-info-box {
+            background: #e7f3ff;
+            border: 1px solid #b8daff;
+            border-radius: 6px;
+            padding: 15px;
+            margin: 15px 0;
+        }
+        
+        .bunny-info-box.warning {
+            background: #fff3cd;
+            border-color: #ffc107;
+            color: #856404;
+        }
+        
+        .bunny-info-box.success {
+            background: #d4edda;
+            border-color: #28a745;
+            color: #155724;
+        }
+        </style>
+        <?php
+    }
+    
+    /**
+     * Render Connection & CDN Settings
+     */
+    private function render_connection_settings($settings) {
+        ?>
+        <div class="bunny-settings-section">
+            <h3><?php esc_html_e('Bunny.net Connection', 'bunny-media-offload'); ?></h3>
+            
+            <div class="bunny-info-box">
+                <p><strong><?php esc_html_e('💡 Pro Tip:', 'bunny-media-offload'); ?></strong> <?php esc_html_e('For enhanced security, consider adding these settings to your wp-config.php file instead of storing them in the database.', 'bunny-media-offload'); ?></p>
+            </div>
                 
                 <table class="form-table">
                     <tr>
-                        <th scope="row"><?php esc_html_e('API Key', 'bunny-media-offload'); ?></th>
+                    <th scope="row"><?php esc_html_e('API Key', 'bunny-media-offload'); ?></th>
                         <td>
                             <?php if ($this->settings->is_constant_defined('api_key')): ?>
                                 <?php 
@@ -307,179 +490,246 @@ class Bunny_Admin {
                                 $masked_key = strlen($api_key) > 6 ? substr($api_key, 0, 3) . str_repeat('*', max(10, strlen($api_key) - 6)) . substr($api_key, -3) : str_repeat('*', strlen($api_key));
                                 ?>
                                 <input type="text" value="<?php echo esc_attr($masked_key); ?>" class="regular-text bunny-readonly-field" readonly />
-                                <span class="bunny-config-source"><?php esc_html_e('Configured in wp-config.php', 'bunny-media-offload'); ?></span>
+                            <span class="bunny-config-source"><?php esc_html_e('Configured in wp-config.php', 'bunny-media-offload'); ?></span>
                             <?php else: ?>
-                                <input type="password" name="bunny_media_offload_settings[api_key]" value="<?php echo esc_attr($settings['api_key'] ?? ''); ?>" class="regular-text" />
+                            <input type="password" name="bunny_media_offload_settings[api_key]" value="<?php echo esc_attr($settings['api_key'] ?? ''); ?>" class="regular-text" autocomplete="new-password" />
                             <?php endif; ?>
-                            <p class="description"><?php esc_html_e('Your Bunny.net Storage API key.', 'bunny-media-offload'); ?></p>
+                        <p class="description"><?php esc_html_e('Your Bunny.net Storage API key. Find this in your Bunny.net dashboard under Storage > FTP & API Access.', 'bunny-media-offload'); ?></p>
                         </td>
                     </tr>
                     <tr>
-                        <th scope="row"><?php esc_html_e('Storage Zone', 'bunny-media-offload'); ?></th>
+                    <th scope="row"><?php esc_html_e('Storage Zone', 'bunny-media-offload'); ?></th>
                         <td>
                             <?php if ($this->settings->is_constant_defined('storage_zone')): ?>
-                                <input type="text" value="<?php echo esc_attr($this->settings->get('storage_zone')); ?>" class="regular-text" readonly />
-                                <span class="bunny-config-source"><?php esc_html_e('Configured in wp-config.php', 'bunny-media-offload'); ?></span>
+                            <input type="text" value="<?php echo esc_attr($this->settings->get('storage_zone')); ?>" class="regular-text bunny-readonly-field" readonly />
+                            <span class="bunny-config-source"><?php esc_html_e('Configured in wp-config.php', 'bunny-media-offload'); ?></span>
                             <?php else: ?>
                                 <input type="text" name="bunny_media_offload_settings[storage_zone]" value="<?php echo esc_attr($settings['storage_zone'] ?? ''); ?>" class="regular-text" />
                             <?php endif; ?>
-                            <p class="description"><?php esc_html_e('Your Bunny.net Storage Zone name.', 'bunny-media-offload'); ?></p>
+                        <p class="description"><?php esc_html_e('Your Bunny.net Storage Zone name. This is the name you gave your storage zone when creating it.', 'bunny-media-offload'); ?></p>
                         </td>
                     </tr>
-                    <tr>
-                        <th scope="row"><?php esc_html_e('Custom Hostname', 'bunny-media-offload'); ?></th>
+            </table>
+        </div>
+        
+        <div class="bunny-settings-section">
+            <h3><?php esc_html_e('CDN Configuration', 'bunny-media-offload'); ?></h3>
+            
+            <table class="form-table">
+                <tr>
+                    <th scope="row"><?php esc_html_e('Custom Hostname', 'bunny-media-offload'); ?></th>
                         <td>
                             <?php if ($this->settings->is_constant_defined('custom_hostname')): ?>
                                 <input type="text" value="<?php echo esc_attr($this->settings->get('custom_hostname')); ?>" class="regular-text bunny-readonly-field" readonly />
-                                <span class="bunny-config-source"><?php esc_html_e('Configured in wp-config.php', 'bunny-media-offload'); ?></span>
+                            <span class="bunny-config-source"><?php esc_html_e('Configured in wp-config.php', 'bunny-media-offload'); ?></span>
                             <?php else: ?>
-                                <input type="text" name="bunny_media_offload_settings[custom_hostname]" value="<?php echo esc_attr($settings['custom_hostname'] ?? ''); ?>" class="regular-text" />
+                            <input type="text" name="bunny_media_offload_settings[custom_hostname]" value="<?php echo esc_attr($settings['custom_hostname'] ?? ''); ?>" class="regular-text" placeholder="cdn.example.com" />
                             <?php endif; ?>
-                            <p class="description"><?php esc_html_e('Optional: Custom CDN hostname (e.g., cdn.example.com).', 'bunny-media-offload'); ?></p>
+                        <p class="description"><?php esc_html_e('Optional: Custom CDN hostname (without https://). Leave blank to use the default Bunny.net CDN URL.', 'bunny-media-offload'); ?></p>
                         </td>
                     </tr>
                     <tr>
-                        <th scope="row"><?php esc_html_e('Auto Offload', 'bunny-media-offload'); ?></th>
+                    <th scope="row"><?php esc_html_e('File Versioning', 'bunny-media-offload'); ?></th>
                         <td>
                             <label>
-                                <input type="checkbox" name="bunny_media_offload_settings[auto_offload]" value="1" <?php checked($settings['auto_offload'] ?? false); ?> />
-                                <?php esc_html_e('Automatically offload new uploads to Bunny.net', 'bunny-media-offload'); ?>
+                            <input type="checkbox" name="bunny_media_offload_settings[file_versioning]" value="1" <?php checked($settings['file_versioning'] ?? false); ?> />
+                            <?php esc_html_e('Add version parameter to URLs for cache busting', 'bunny-media-offload'); ?>
                             </label>
+                        <p class="description"><?php esc_html_e('Adds a version parameter to media URLs to help with browser cache invalidation when files are updated.', 'bunny-media-offload'); ?></p>
                         </td>
                     </tr>
-                    <tr>
-                        <th scope="row"><?php esc_html_e('Delete Local Files', 'bunny-media-offload'); ?></th>
+            </table>
+        </div>
+        <?php
+    }
+    
+    /**
+     * Render General Settings
+     */
+    private function render_general_settings($settings) {        
+        ?>
+        <div class="bunny-settings-section">
+            <h3><?php esc_html_e('Upload Behavior', 'bunny-media-offload'); ?></h3>
+            
+            <table class="form-table">
+                <tr>
+                    <th scope="row"><?php esc_html_e('Auto Offload', 'bunny-media-offload'); ?></th>
                         <td>
                             <label>
-                                <input type="checkbox" name="bunny_media_offload_settings[delete_local]" value="1" <?php checked($settings['delete_local'] ?? true); ?> />
-                                <?php esc_html_e('Delete local files after successful upload to save server space', 'bunny-media-offload'); ?>
+                            <input type="checkbox" name="bunny_media_offload_settings[auto_offload]" value="1" <?php checked($settings['auto_offload'] ?? false); ?> />
+                            <?php esc_html_e('Automatically offload new uploads to Bunny.net', 'bunny-media-offload'); ?>
                             </label>
-                            <div class="notice notice-warning inline" style="margin-top: 10px; padding: 10px;">
-                                <p><strong><?php esc_html_e('Warning:', 'bunny-media-offload'); ?></strong> <?php esc_html_e('When local files are deleted, they are also permanently removed from the cloud if you later disable this plugin. Only disable this option if you plan to use the Sync & Recovery features.', 'bunny-media-offload'); ?></p>
-                            </div>
+                        <p class="description"><?php esc_html_e('When enabled, newly uploaded media files will be automatically transferred to Bunny.net CDN.', 'bunny-media-offload'); ?></p>
                         </td>
                     </tr>
                     <tr>
-                        <th scope="row"><?php esc_html_e('File Versioning', 'bunny-media-offload'); ?></th>
+                    <th scope="row"><?php esc_html_e('Delete Local Files', 'bunny-media-offload'); ?></th>
                         <td>
                             <label>
-                                <input type="checkbox" name="bunny_media_offload_settings[file_versioning]" value="1" <?php checked($settings['file_versioning'] ?? false); ?> />
-                                <?php esc_html_e('Add version parameter to URLs for cache busting', 'bunny-media-offload'); ?>
+                            <input type="checkbox" name="bunny_media_offload_settings[delete_local]" value="1" <?php checked($settings['delete_local'] ?? true); ?> />
+                            <?php esc_html_e('Delete local files after successful upload to save server space', 'bunny-media-offload'); ?>
                             </label>
-                        </td>
-                    </tr>
-                    <tr>
-                        <th scope="row"><?php esc_html_e('Batch Size', 'bunny-media-offload'); ?></th>
-                        <td>
-                            <?php if ($this->settings->is_constant_defined('batch_size')): ?>
-                                <input type="text" value="<?php echo esc_attr($this->settings->get('batch_size')); ?>" class="small-text" readonly />
-                                <span class="bunny-config-source"><?php esc_html_e('Configured in wp-config.php', 'bunny-media-offload'); ?></span>
-                            <?php else: ?>
-                                <select name="bunny_media_offload_settings[batch_size]">
-                                    <option value="50" <?php selected($settings['batch_size'] ?? 100, 50); ?>>50</option>
-                                    <option value="100" <?php selected($settings['batch_size'] ?? 100, 100); ?>>100</option>
-                                    <option value="150" <?php selected($settings['batch_size'] ?? 100, 150); ?>>150</option>
-                                    <option value="250" <?php selected($settings['batch_size'] ?? 100, 250); ?>>250</option>
-                                </select>
-                            <?php endif; ?>
-                            <p class="description"><?php esc_html_e('Number of files to process in each migration batch.', 'bunny-media-offload'); ?></p>
-                        </td>
-                    </tr>
-                    <tr>
-                        <th scope="row"><?php esc_html_e('Migration Concurrent Limit', 'bunny-media-offload'); ?></th>
-                        <td>
-                            <select name="bunny_media_offload_settings[migration_concurrent_limit]">
-                                <option value="2" <?php selected($settings['migration_concurrent_limit'] ?? 4, 2); ?>>2</option>
-                                <option value="4" <?php selected($settings['migration_concurrent_limit'] ?? 4, 4); ?>>4</option>
-                                <option value="8" <?php selected($settings['migration_concurrent_limit'] ?? 4, 8); ?>>8</option>
-                            </select>
-                            <p class="description"><?php esc_html_e('Number of images to migrate simultaneously at a time.', 'bunny-media-offload'); ?></p>
+                        <div class="bunny-info-box warning">
+                            <p><strong><?php esc_html_e('⚠️ Important:', 'bunny-media-offload'); ?></strong> <?php esc_html_e('When local files are deleted, they are also permanently removed from the cloud if you later disable this plugin. Only disable this option if you plan to use the Sync & Recovery features to maintain local copies.', 'bunny-media-offload'); ?></p>
+                        </div>
                         </td>
                     </tr>
                 </table>
-                
-                <h2><?php esc_html_e('Image Optimization', 'bunny-media-offload'); ?></h2>
+        </div>
+        <?php
+    }
+    
+    /**
+     * Render Image Optimization Settings
+     */
+    private function render_optimization_settings($settings) {
+        ?>
+        <div class="bunny-settings-section">
+            <h3><?php esc_html_e('Optimization Features', 'bunny-media-offload'); ?></h3>
+            
+            <div class="bunny-info-box">
+                <p><?php esc_html_e('Image optimization converts your images to modern formats (AVIF/WebP) and compresses them to reduce file sizes and improve loading speeds.', 'bunny-media-offload'); ?></p>
+            </div>
+            
                 <table class="form-table">
                     <tr>
-                        <th scope="row"><?php esc_html_e('Enable Optimization', 'bunny-media-offload'); ?></th>
+                    <th scope="row"><?php esc_html_e('Enable Optimization', 'bunny-media-offload'); ?></th>
                         <td>
                             <label>
                                 <input type="checkbox" name="bunny_media_offload_settings[optimization_enabled]" value="1" <?php checked($settings['optimization_enabled'] ?? false); ?> />
-                                <?php esc_html_e('Enable automatic image optimization', 'bunny-media-offload'); ?>
+                            <?php esc_html_e('Enable automatic image optimization', 'bunny-media-offload'); ?>
                             </label>
-                            <p class="description"><?php esc_html_e('Convert images to modern formats (AVIF/WebP) and compress to reduce file sizes.', 'bunny-media-offload'); ?></p>
+                        <p class="description"><?php esc_html_e('Convert images to modern formats (AVIF/WebP) and compress to reduce file sizes by up to 80%.', 'bunny-media-offload'); ?></p>
                         </td>
                     </tr>
                     <tr>
-                        <th scope="row"><?php esc_html_e('Optimize on Upload', 'bunny-media-offload'); ?></th>
+                    <th scope="row"><?php esc_html_e('Optimize on Upload', 'bunny-media-offload'); ?></th>
                         <td>
                             <label>
                                 <input type="checkbox" name="bunny_media_offload_settings[optimize_on_upload]" value="1" <?php checked($settings['optimize_on_upload'] ?? true); ?> />
-                                <?php esc_html_e('Optimize images automatically during upload', 'bunny-media-offload'); ?>
+                            <?php esc_html_e('Optimize images automatically during upload', 'bunny-media-offload'); ?>
                             </label>
+                        <p class="description"><?php esc_html_e('New uploads will be optimized automatically. Existing images can be optimized using the Optimization page.', 'bunny-media-offload'); ?></p>
                         </td>
                     </tr>
-                    <tr>
-                        <th scope="row"><?php esc_html_e('Preferred Format', 'bunny-media-offload'); ?></th>
+            </table>
+        </div>
+        
+        <div class="bunny-settings-section">
+            <h3><?php esc_html_e('Optimization Parameters', 'bunny-media-offload'); ?></h3>
+            
+            <table class="form-table">
+                <tr>
+                    <th scope="row"><?php esc_html_e('Preferred Format', 'bunny-media-offload'); ?></th>
                         <td>
                             <select name="bunny_media_offload_settings[optimization_format]">
                                 <option value="avif" <?php selected($settings['optimization_format'] ?? 'avif', 'avif'); ?>>AVIF (best compression)</option>
                                 <option value="webp" <?php selected($settings['optimization_format'] ?? 'avif', 'webp'); ?>>WebP (better compatibility)</option>
                             </select>
-                            <p class="description"><?php esc_html_e('AVIF offers better compression but WebP has wider browser support.', 'bunny-media-offload'); ?></p>
+                        <p class="description"><?php esc_html_e('AVIF offers superior compression (~50% smaller than WebP) but WebP has wider browser support. Modern browsers support both formats.', 'bunny-media-offload'); ?></p>
                         </td>
                     </tr>
                     <tr>
-                        <th scope="row"><?php esc_html_e('Maximum File Size', 'bunny-media-offload'); ?></th>
+                    <th scope="row"><?php esc_html_e('Maximum File Size', 'bunny-media-offload'); ?></th>
                         <td>
                             <select name="bunny_media_offload_settings[optimization_max_size]">
                                 <option value="40kb" <?php selected($settings['optimization_max_size'] ?? '50kb', '40kb'); ?>>40 KB</option>
                                 <option value="45kb" <?php selected($settings['optimization_max_size'] ?? '50kb', '45kb'); ?>>45 KB</option>
-                                <option value="50kb" <?php selected($settings['optimization_max_size'] ?? '50kb', '50kb'); ?>>50 KB</option>
+                            <option value="50kb" <?php selected($settings['optimization_max_size'] ?? '50kb', '50kb'); ?>>50 KB (recommended)</option>
                                 <option value="55kb" <?php selected($settings['optimization_max_size'] ?? '50kb', '55kb'); ?>>55 KB</option>
                                 <option value="60kb" <?php selected($settings['optimization_max_size'] ?? '50kb', '60kb'); ?>>60 KB</option>
                             </select>
-                            <p class="description"><?php esc_html_e('Images larger than this will be compressed further.', 'bunny-media-offload'); ?></p>
+                        <p class="description"><?php esc_html_e('Images larger than this threshold will be recompressed. WebP/AVIF files above this size will be optimized further.', 'bunny-media-offload'); ?></p>
                         </td>
                     </tr>
-                    <tr>
-                        <th scope="row"><?php esc_html_e('Optimization Batch Size', 'bunny-media-offload'); ?></th>
+            </table>
+        </div>
+        <?php
+    }
+    
+    /**
+     * Render Performance Settings
+     */
+    private function render_performance_settings($settings) {
+        ?>
+        <div class="bunny-settings-section">
+            <h3><?php esc_html_e('Migration Performance', 'bunny-media-offload'); ?></h3>
+            
+            <div class="bunny-info-box">
+                <p><?php esc_html_e('These settings control how many files are processed simultaneously. Higher values may improve speed but can increase server load.', 'bunny-media-offload'); ?></p>
+            </div>
+            
+            <table class="form-table">
+                <tr>
+                    <th scope="row"><?php esc_html_e('Migration Batch Size', 'bunny-media-offload'); ?></th>
+                    <td>
+                        <?php if ($this->settings->is_constant_defined('batch_size')): ?>
+                            <input type="text" value="<?php echo esc_attr($this->settings->get('batch_size')); ?>" class="small-text bunny-readonly-field" readonly />
+                            <span class="bunny-config-source"><?php esc_html_e('Configured in wp-config.php', 'bunny-media-offload'); ?></span>
+                        <?php else: ?>
+                            <select name="bunny_media_offload_settings[batch_size]">
+                                <option value="50" <?php selected($settings['batch_size'] ?? 100, 50); ?>>50</option>
+                                <option value="100" <?php selected($settings['batch_size'] ?? 100, 100); ?>>100 (recommended)</option>
+                                <option value="150" <?php selected($settings['batch_size'] ?? 100, 150); ?>>150</option>
+                                <option value="250" <?php selected($settings['batch_size'] ?? 100, 250); ?>>250</option>
+                            </select>
+                        <?php endif; ?>
+                        <p class="description"><?php esc_html_e('Number of files to process in each migration batch. Higher values process more files at once.', 'bunny-media-offload'); ?></p>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row"><?php esc_html_e('Migration Concurrent Limit', 'bunny-media-offload'); ?></th>
+                    <td>
+                        <select name="bunny_media_offload_settings[migration_concurrent_limit]">
+                            <option value="2" <?php selected($settings['migration_concurrent_limit'] ?? 4, 2); ?>>2 (safe)</option>
+                            <option value="4" <?php selected($settings['migration_concurrent_limit'] ?? 4, 4); ?>>4 (recommended)</option>
+                            <option value="8" <?php selected($settings['migration_concurrent_limit'] ?? 4, 8); ?>>8 (fast)</option>
+                        </select>
+                        <p class="description"><?php esc_html_e('Number of images to migrate simultaneously. Use lower values for shared hosting.', 'bunny-media-offload'); ?></p>
+                    </td>
+                </tr>
+            </table>
+        </div>
+        
+        <div class="bunny-settings-section">
+            <h3><?php esc_html_e('Optimization Performance', 'bunny-media-offload'); ?></h3>
+            
+            <table class="form-table">
+                <tr>
+                    <th scope="row"><?php esc_html_e('Optimization Batch Size', 'bunny-media-offload'); ?></th>
                         <td>
                             <select name="bunny_media_offload_settings[optimization_batch_size]">
                                 <option value="30" <?php selected($settings['optimization_batch_size'] ?? 60, 30); ?>>30</option>
-                                <option value="60" <?php selected($settings['optimization_batch_size'] ?? 60, 60); ?>>60</option>
+                            <option value="60" <?php selected($settings['optimization_batch_size'] ?? 60, 60); ?>>60 (recommended)</option>
                                 <option value="90" <?php selected($settings['optimization_batch_size'] ?? 60, 90); ?>>90</option>
                                 <option value="150" <?php selected($settings['optimization_batch_size'] ?? 60, 150); ?>>150</option>
                             </select>
-                            <p class="description"><?php esc_html_e('Number of images to optimize in each batch.', 'bunny-media-offload'); ?></p>
+                        <p class="description"><?php esc_html_e('Number of images to optimize in each batch. Image optimization is CPU-intensive, so smaller batches are recommended.', 'bunny-media-offload'); ?></p>
                         </td>
                     </tr>
                     <tr>
-                        <th scope="row"><?php esc_html_e('Optimization Concurrent Limit', 'bunny-media-offload'); ?></th>
+                    <th scope="row"><?php esc_html_e('Optimization Concurrent Limit', 'bunny-media-offload'); ?></th>
                         <td>
                             <select name="bunny_media_offload_settings[optimization_concurrent_limit]">
-                                <option value="2" <?php selected($settings['optimization_concurrent_limit'] ?? 3, 2); ?>>2</option>
-                                <option value="3" <?php selected($settings['optimization_concurrent_limit'] ?? 3, 3); ?>>3</option>
-                                <option value="5" <?php selected($settings['optimization_concurrent_limit'] ?? 3, 5); ?>>5</option>
+                            <option value="2" <?php selected($settings['optimization_concurrent_limit'] ?? 3, 2); ?>>2 (safe)</option>
+                            <option value="3" <?php selected($settings['optimization_concurrent_limit'] ?? 3, 3); ?>>3 (recommended)</option>
+                            <option value="5" <?php selected($settings['optimization_concurrent_limit'] ?? 3, 5); ?>>5 (fast)</option>
                             </select>
-                            <p class="description"><?php esc_html_e('Number of images to optimize simultaneously at a time.', 'bunny-media-offload'); ?></p>
+                        <p class="description"><?php esc_html_e('Number of images to optimize simultaneously. Use lower values to reduce CPU usage.', 'bunny-media-offload'); ?></p>
                         </td>
                     </tr>
                 </table>
-                
-                <?php 
-                // Add WPML settings section if WPML is active
-                if ($this->wpml && $this->wpml->is_wpml_active()) {
-                    echo wp_kses_post($this->wpml->add_wpml_settings_section());
-                }
-                ?>
-                
-                <?php submit_button(); ?>
-                
-                <button type="button" class="button" id="test-connection"><?php esc_html_e('Test Connection', 'bunny-media-offload'); ?></button>
-            </form>
         </div>
-        <?php
+                <?php 
+    }
+    
+    /**
+     * Render WPML Settings
+     */
+    private function render_wpml_settings($settings) {
+        if ($this->wpml && $this->wpml->is_wpml_active()) {
+            echo wp_kses_post($this->wpml->add_wpml_settings_section());
+        }
     }
     
     /**
@@ -701,7 +951,49 @@ class Bunny_Admin {
             return;
         }
         
-        $detailed_stats = $this->optimizer->get_detailed_optimization_stats();
+        // Debug: Check if we can get stats
+        try {
+            $detailed_stats = $this->optimizer->get_detailed_optimization_stats();
+            if (!$detailed_stats || !is_array($detailed_stats)) {
+                $detailed_stats = array(
+                    'local' => array(
+                        'jpg_png_to_convert' => 0,
+                        'webp_avif_to_recompress' => 0,
+                        'total_eligible' => 0,
+                        'has_files_to_optimize' => false
+                    ),
+                    'cloud' => array(
+                        'jpg_png_to_convert' => 0,
+                        'webp_avif_to_recompress' => 0,
+                        'total_eligible' => 0,
+                        'has_files_to_optimize' => false
+                    ),
+                    'already_optimized' => 0,
+                    'batch_size' => 60,
+                    'max_size_threshold' => '50KB'
+                );
+            }
+        } catch (Exception $e) {
+            error_log('Bunny Optimization Stats Error: ' . $e->getMessage());
+            $detailed_stats = array(
+                'local' => array(
+                    'jpg_png_to_convert' => 0,
+                    'webp_avif_to_recompress' => 0,
+                    'total_eligible' => 0,
+                    'has_files_to_optimize' => false
+                ),
+                'cloud' => array(
+                    'jpg_png_to_convert' => 0,
+                    'webp_avif_to_recompress' => 0,
+                    'total_eligible' => 0,
+                    'has_files_to_optimize' => false
+                ),
+                'already_optimized' => 0,
+                'batch_size' => 60,
+                'max_size_threshold' => '50KB'
+            );
+        }
+        
         $max_file_size = $this->settings->get('optimization_max_size', '50kb');
         
         ?>
@@ -719,67 +1011,127 @@ class Bunny_Admin {
                             printf(esc_html__('Modern format images larger than %s will be recompressed.', 'bunny-media-offload'), esc_html($max_file_size)); 
                         ?></li>
                     </ul>
-                </div>
-            </div>
-            
-            <div class="bunny-optimization-statistics">
-                <h3><?php esc_html_e('Optimization Statistics', 'bunny-media-offload'); ?></h3>
-                <div class="bunny-stats-grid">
-                    <div class="bunny-stat-card">
-                        <h4><?php esc_html_e('Total Images to Optimize', 'bunny-media-offload'); ?></h4>
-                        <div class="bunny-stat-number"><?php echo number_format($detailed_stats['total_eligible']); ?></div>
-                        <div class="bunny-stat-breakdown">
-                            <span><?php echo esc_html(number_format($detailed_stats['jpg_png_to_convert'])); ?> <?php esc_html_e('JPG/PNG to convert', 'bunny-media-offload'); ?></span><br>
-                            <span><?php echo esc_html(number_format($detailed_stats['webp_avif_to_recompress'])); ?> <?php esc_html_e('WebP/AVIF to recompress', 'bunny-media-offload'); ?></span>
-                        </div>
                     </div>
                     
-                    <div class="bunny-stat-card">
-                        <h4><?php esc_html_e('Images per Batch', 'bunny-media-offload'); ?></h4>
-                        <div class="bunny-stat-number"><?php echo number_format($detailed_stats['batch_size']); ?></div>
-                        <div class="bunny-stat-description"><?php esc_html_e('Configurable in Settings', 'bunny-media-offload'); ?></div>
+                <?php if (WP_DEBUG): ?>
+                <div class="notice notice-warning">
+                    <p><strong>Debug Info:</strong></p>
+                    <p>Local eligible: <?php echo esc_html($detailed_stats['local']['total_eligible']); ?></p>
+                    <p>Cloud eligible: <?php echo esc_html($detailed_stats['cloud']['total_eligible']); ?></p>
+                    <p>Batch size: <?php echo esc_html($detailed_stats['batch_size']); ?></p>
+                    <p>Max size: <?php echo esc_html($detailed_stats['max_size_threshold']); ?></p>
                     </div>
-                    
-                    <div class="bunny-stat-card">
-                        <h4><?php esc_html_e('Remaining to Optimize', 'bunny-media-offload'); ?></h4>
-                        <div class="bunny-stat-number"><?php echo number_format($detailed_stats['total_eligible']); ?></div>
-                        <div class="bunny-stat-description">
-                            <?php 
-                            // translators: %s is the maximum file size threshold
-                            printf(esc_html__('Images larger than %s or in legacy formats', 'bunny-media-offload'), esc_html($detailed_stats['max_size_threshold'])); 
-                            ?>
-                        </div>
-                    </div>
+                <?php endif; ?>
                 </div>
-            </div>
             
-            <div class="bunny-optimization-form">
-                <h3><?php esc_html_e('Start Step-by-Step Optimization', 'bunny-media-offload'); ?></h3>
+            <div class="bunny-optimization-cards">
+                <h3><?php esc_html_e('Choose Optimization Target', 'bunny-media-offload'); ?></h3>
+                <p class="bunny-optimization-description"><?php esc_html_e('Click on the optimization target you want to process. Only targets with images that need optimization are clickable.', 'bunny-media-offload'); ?></p>
                 
-                <form id="optimization-form">
-                    <table class="form-table">
-                        <tr>
-                            <th scope="row"><?php esc_html_e('Optimization Target', 'bunny-media-offload'); ?></th>
-                            <td>
-                                <label><input type="radio" name="optimization_target" value="local" checked> <?php esc_html_e('Local Images Only', 'bunny-media-offload'); ?></label><br>
-                                <label><input type="radio" name="optimization_target" value="cloud"> <?php esc_html_e('Cloud Images Only', 'bunny-media-offload'); ?></label><br>
-                                <label><input type="radio" name="optimization_target" value="all"> <?php esc_html_e('Both Local and Cloud Images', 'bunny-media-offload'); ?></label>
-                                <p class="description"><?php esc_html_e('Choose whether to optimize images stored locally, in the cloud, or both.', 'bunny-media-offload'); ?></p>
-                            </td>
-                        </tr>
-                    </table>
-                    
-                    <p class="submit">
-                        <button type="submit" class="button button-primary" id="start-optimization" <?php echo $detailed_stats['has_files_to_optimize'] ? '' : 'disabled'; ?>>
-                            <?php if ($detailed_stats['has_files_to_optimize']): ?>
-                                <?php esc_html_e('Start Optimization', 'bunny-media-offload'); ?>
+                <div class="bunny-optimization-targets">
+                    <!-- Local Images Card -->
+                    <div class="bunny-optimization-card <?php echo $detailed_stats['local']['has_files_to_optimize'] ? 'clickable' : 'disabled'; ?>" 
+                         data-target="local" 
+                         data-enabled="<?php echo $detailed_stats['local']['has_files_to_optimize'] ? '1' : '0'; ?>">
+                        <div class="bunny-card-header">
+                            <div class="bunny-card-icon">💻</div>
+                            <h4><?php esc_html_e('Local Images', 'bunny-media-offload'); ?></h4>
+                            <p><?php esc_html_e('Optimize images stored on your server', 'bunny-media-offload'); ?></p>
+            </div>
+            
+                        <div class="bunny-card-stats">
+                            <div class="bunny-main-stat">
+                                <span class="bunny-stat-number"><?php echo number_format($detailed_stats['local']['total_eligible']); ?></span>
+                                <span class="bunny-stat-label"><?php esc_html_e('Images to Optimize', 'bunny-media-offload'); ?></span>
+            </div>
+            
+                            <?php if ($detailed_stats['local']['total_eligible'] > 0): ?>
+                                <div class="bunny-breakdown">
+                                    <?php if ($detailed_stats['local']['jpg_png_to_convert'] > 0): ?>
+                                        <div class="bunny-breakdown-item">
+                                            <span class="bunny-breakdown-number"><?php echo number_format($detailed_stats['local']['jpg_png_to_convert']); ?></span>
+                                            <span class="bunny-breakdown-label"><?php esc_html_e('JPG/PNG to convert', 'bunny-media-offload'); ?></span>
+                </div>
+                                    <?php endif; ?>
+                                    <?php if ($detailed_stats['local']['webp_avif_to_recompress'] > 0): ?>
+                                        <div class="bunny-breakdown-item">
+                                            <span class="bunny-breakdown-number"><?php echo number_format($detailed_stats['local']['webp_avif_to_recompress']); ?></span>
+                                            <span class="bunny-breakdown-label"><?php esc_html_e('WebP/AVIF to recompress', 'bunny-media-offload'); ?></span>
+            </div>
+                                    <?php endif; ?>
+                            </div>
                             <?php else: ?>
-                                <?php esc_html_e('No Images to Optimize', 'bunny-media-offload'); ?>
+                                <div class="bunny-no-images">
+                                    <span><?php esc_html_e('All local images are already optimized', 'bunny-media-offload'); ?></span>
+                                </div>
                             <?php endif; ?>
-                        </button>
-                        <button type="button" class="button" id="cancel-optimization" style="display: none;"><?php esc_html_e('Cancel Optimization', 'bunny-media-offload'); ?></button>
-                    </p>
-                </form>
+                        </div>
+                        
+                        <?php if ($detailed_stats['local']['has_files_to_optimize']): ?>
+                            <div class="bunny-card-action">
+                                <span class="bunny-click-hint"><?php esc_html_e('Click to Start Optimization', 'bunny-media-offload'); ?></span>
+                            </div>
+                        <?php endif; ?>
+                        </div>
+                        
+                    <!-- Cloud Images Card -->
+                    <div class="bunny-optimization-card <?php echo $detailed_stats['cloud']['has_files_to_optimize'] ? 'clickable' : 'disabled'; ?>" 
+                         data-target="cloud" 
+                         data-enabled="<?php echo $detailed_stats['cloud']['has_files_to_optimize'] ? '1' : '0'; ?>">
+                        <div class="bunny-card-header">
+                            <div class="bunny-card-icon">☁️</div>
+                            <h4><?php esc_html_e('Cloud Images', 'bunny-media-offload'); ?></h4>
+                            <p><?php esc_html_e('Optimize images stored on Bunny.net CDN', 'bunny-media-offload'); ?></p>
+                            </div>
+                        
+                        <div class="bunny-card-stats">
+                            <div class="bunny-main-stat">
+                                <span class="bunny-stat-number"><?php echo number_format($detailed_stats['cloud']['total_eligible']); ?></span>
+                                <span class="bunny-stat-label"><?php esc_html_e('Images to Optimize', 'bunny-media-offload'); ?></span>
+                        </div>
+                        
+                            <?php if ($detailed_stats['cloud']['total_eligible'] > 0): ?>
+                                <div class="bunny-breakdown">
+                                    <?php if ($detailed_stats['cloud']['jpg_png_to_convert'] > 0): ?>
+                                        <div class="bunny-breakdown-item">
+                                            <span class="bunny-breakdown-number"><?php echo number_format($detailed_stats['cloud']['jpg_png_to_convert']); ?></span>
+                                            <span class="bunny-breakdown-label"><?php esc_html_e('JPG/PNG to convert', 'bunny-media-offload'); ?></span>
+                            </div>
+                                    <?php endif; ?>
+                                    <?php if ($detailed_stats['cloud']['webp_avif_to_recompress'] > 0): ?>
+                                        <div class="bunny-breakdown-item">
+                                            <span class="bunny-breakdown-number"><?php echo number_format($detailed_stats['cloud']['webp_avif_to_recompress']); ?></span>
+                                            <span class="bunny-breakdown-label"><?php esc_html_e('WebP/AVIF to recompress', 'bunny-media-offload'); ?></span>
+                        </div>
+                                    <?php endif; ?>
+                            </div>
+                            <?php else: ?>
+                                <div class="bunny-no-images">
+                                    <span><?php esc_html_e('All cloud images are already optimized', 'bunny-media-offload'); ?></span>
+                        </div>
+                            <?php endif; ?>
+                    </div>
+                    
+                        <?php if ($detailed_stats['cloud']['has_files_to_optimize']): ?>
+                            <div class="bunny-card-action">
+                                <span class="bunny-click-hint"><?php esc_html_e('Click to Start Optimization', 'bunny-media-offload'); ?></span>
+                    </div>
+                        <?php endif; ?>
+                        </div>
+                        </div>
+                
+                <div class="bunny-optimization-info">
+                    <div class="bunny-batch-info">
+                        <span class="bunny-batch-label"><?php esc_html_e('Batch Size:', 'bunny-media-offload'); ?></span>
+                        <span class="bunny-batch-value"><?php echo number_format($detailed_stats['batch_size']); ?> <?php esc_html_e('images per batch', 'bunny-media-offload'); ?></span>
+                        <span class="bunny-batch-note"><?php esc_html_e('(configurable in Settings)', 'bunny-media-offload'); ?></span>
+                        </div>
+                        </div>
+                
+                <!-- Hidden Cancel Button -->
+                <div class="bunny-optimization-controls" style="display: none;">
+                    <button type="button" class="button button-secondary" id="cancel-optimization"><?php esc_html_e('Cancel Optimization', 'bunny-media-offload'); ?></button>
+                </div>
             </div>
             
             <div id="optimization-progress" style="display: none;">
@@ -791,9 +1143,298 @@ class Bunny_Admin {
                 <div id="optimization-errors" style="display: none;">
                     <h4><?php esc_html_e('Errors', 'bunny-media-offload'); ?></h4>
                     <ul id="optimization-error-list"></ul>
-                </div>
             </div>
         </div>
+        </div>
+        
+        <style>
+        .bunny-optimization-cards {
+            margin-top: 20px;
+        }
+
+        .bunny-optimization-description {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 30px;
+        }
+
+        .bunny-optimization-targets {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 30px;
+            margin: 30px 0;
+        }
+
+        .bunny-optimization-card {
+            background: white;
+            border: 2px solid #e0e0e0;
+            border-radius: 12px;
+            padding: 25px;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .bunny-optimization-card.clickable {
+            cursor: pointer;
+            border-color: #0073aa;
+            box-shadow: 0 2px 8px rgba(0, 115, 170, 0.1);
+        }
+
+        .bunny-optimization-card.clickable:hover {
+            border-color: #005a87;
+            box-shadow: 0 4px 16px rgba(0, 115, 170, 0.15);
+            transform: translateY(-2px);
+        }
+
+        .bunny-optimization-card.disabled {
+            background: #f8f9fa;
+            border-color: #dee2e6;
+            opacity: 0.7;
+            cursor: not-allowed;
+        }
+
+        .bunny-optimization-card.disabled .bunny-card-icon {
+            opacity: 0.5;
+        }
+
+        .bunny-card-header {
+            text-align: center;
+            margin-bottom: 25px;
+        }
+
+        .bunny-card-icon {
+            font-size: 48px;
+            margin-bottom: 15px;
+            display: block;
+        }
+
+        .bunny-card-header h4 {
+            margin: 0 0 8px 0;
+            font-size: 20px;
+            color: #333;
+            font-weight: 600;
+        }
+
+        .bunny-card-header p {
+            margin: 0;
+            color: #666;
+            font-size: 14px;
+        }
+
+        .bunny-card-stats {
+            text-align: center;
+        }
+
+        .bunny-main-stat {
+            margin-bottom: 20px;
+        }
+
+        .bunny-stat-number {
+            display: block;
+            font-size: 36px;
+            font-weight: bold;
+            color: #0073aa;
+            line-height: 1;
+            margin-bottom: 5px;
+        }
+
+        .bunny-optimization-card.disabled .bunny-stat-number {
+            color: #999;
+        }
+
+        .bunny-stat-label {
+            display: block;
+            font-size: 14px;
+            color: #666;
+            font-weight: 500;
+        }
+
+        .bunny-breakdown {
+            display: flex;
+            justify-content: space-around;
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid #e0e0e0;
+        }
+
+        .bunny-breakdown-item {
+            text-align: center;
+            flex: 1;
+        }
+
+        .bunny-breakdown-number {
+            display: block;
+            font-size: 18px;
+            font-weight: bold;
+            color: #0073aa;
+            margin-bottom: 4px;
+        }
+
+        .bunny-optimization-card.disabled .bunny-breakdown-number {
+            color: #999;
+        }
+
+        .bunny-breakdown-label {
+            display: block;
+            font-size: 11px;
+            color: #888;
+            line-height: 1.2;
+        }
+
+        .bunny-no-images {
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            margin-top: 15px;
+        }
+
+        .bunny-no-images span {
+            color: #666;
+            font-style: italic;
+            font-size: 14px;
+        }
+
+        .bunny-card-action {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(135deg, #0073aa, #005a87);
+            color: white;
+            padding: 12px;
+            text-align: center;
+            transform: translateY(100%);
+            transition: transform 0.3s ease;
+        }
+
+        .bunny-optimization-card.clickable:hover .bunny-card-action {
+            transform: translateY(0);
+        }
+
+        .bunny-click-hint {
+            font-weight: 500;
+            font-size: 14px;
+        }
+
+        .bunny-optimization-info {
+            margin: 30px 0;
+            text-align: center;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border: 1px solid #e0e0e0;
+        }
+
+        .bunny-batch-info {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .bunny-batch-label {
+            font-weight: 600;
+            color: #333;
+        }
+
+        .bunny-batch-value {
+            color: #0073aa;
+            font-weight: 600;
+        }
+
+        .bunny-batch-note {
+            color: #666;
+            font-size: 13px;
+            font-style: italic;
+        }
+
+        .bunny-optimization-controls {
+            text-align: center;
+            margin-top: 20px;
+        }
+
+        /* Progress styles remain the same */
+        #optimization-progress {
+            margin-top: 30px;
+            padding: 25px;
+            background: white;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+        }
+
+        .bunny-progress-bar {
+            width: 100%;
+            height: 20px;
+            background: #f0f0f0;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 20px 0;
+        }
+
+        .bunny-progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #0073aa, #005a87);
+            border-radius: 10px;
+            transition: width 0.3s ease;
+        }
+
+        #optimization-status-text {
+            text-align: center;
+            font-weight: 500;
+            color: #333;
+            margin: 10px 0;
+        }
+
+        #optimization-errors {
+            background: #fff2f2;
+            border: 1px solid #f5c6cb;
+            border-radius: 6px;
+            padding: 15px;
+            margin-top: 20px;
+        }
+
+        #optimization-errors h4 {
+            color: #721c24;
+            margin: 0 0 10px 0;
+        }
+
+        #optimization-error-list {
+            margin: 0;
+            color: #721c24;
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            .bunny-optimization-targets {
+                grid-template-columns: 1fr;
+                gap: 20px;
+            }
+            
+            .bunny-optimization-card {
+                padding: 20px;
+            }
+            
+            .bunny-card-icon {
+                font-size: 36px;
+            }
+            
+            .bunny-stat-number {
+                font-size: 28px;
+            }
+            
+            .bunny-breakdown {
+                flex-direction: column;
+                gap: 10px;
+            }
+            
+            .bunny-batch-info {
+                flex-direction: column;
+                gap: 4px;
+            }
+        }
+        </style>
         <?php
     }
     
@@ -860,130 +1501,360 @@ class Bunny_Admin {
             <h1><?php esc_html_e('Bunny Media Offload Documentation', 'bunny-media-offload'); ?></h1>
             
             <div class="bunny-documentation">
-                <div class="bunny-doc-content">
-                    <div class="notice notice-info">
-                        <h3><?php esc_html_e('Complete Documentation', 'bunny-media-offload'); ?></h3>
-                        <p><?php esc_html_e('The complete documentation has been created as DOCUMENTATION.md in your plugin directory.', 'bunny-media-offload'); ?></p>
-                        <p><strong><?php esc_html_e('Key Topics Covered:', 'bunny-media-offload'); ?></strong></p>
-                        <ul style="margin-left: 20px;">
-                            <li><?php esc_html_e('wp-config.php Security Configuration', 'bunny-media-offload'); ?></li>
-                            <li><?php esc_html_e('Detailed Setup Instructions', 'bunny-media-offload'); ?></li>
-                            <li><?php esc_html_e('Media Migration Guide', 'bunny-media-offload'); ?></li>
-                            <li><?php esc_html_e('Image Optimization', 'bunny-media-offload'); ?></li>
-                            <li><?php esc_html_e('WPML Multilingual Support', 'bunny-media-offload'); ?></li>
-                            <li><?php esc_html_e('WP-CLI Commands Reference', 'bunny-media-offload'); ?></li>
-                            <li><?php esc_html_e('Troubleshooting Guide', 'bunny-media-offload'); ?></li>
-                        </ul>
+                <!-- Navigation Tabs -->
+                <div class="bunny-doc-tabs">
+                    <button class="bunny-tab-button active" data-tab="getting-started"><?php esc_html_e('🚀 Getting Started', 'bunny-media-offload'); ?></button>
+                    <button class="bunny-tab-button" data-tab="configuration"><?php esc_html_e('⚙️ Configuration', 'bunny-media-offload'); ?></button>
+                    <button class="bunny-tab-button" data-tab="migration"><?php esc_html_e('📁 Migration', 'bunny-media-offload'); ?></button>
+                    <button class="bunny-tab-button" data-tab="optimization"><?php esc_html_e('🖼️ Optimization', 'bunny-media-offload'); ?></button>
+                    <button class="bunny-tab-button" data-tab="cli-commands"><?php esc_html_e('💻 CLI Commands', 'bunny-media-offload'); ?></button>
+                    <button class="bunny-tab-button" data-tab="troubleshooting"><?php esc_html_e('🔧 Troubleshooting', 'bunny-media-offload'); ?></button>
                     </div>
                     
-                    <section id="wp-config-security">
-                        <h2><?php esc_html_e('wp-config.php Security Setup (Recommended)', 'bunny-media-offload'); ?></h2>
+                <!-- Getting Started Tab -->
+                <div class="bunny-tab-content active" id="getting-started">
+                    <h2><?php esc_html_e('Getting Started with Bunny Media Offload', 'bunny-media-offload'); ?></h2>
+                    
+                    <div class="bunny-info-card">
+                        <h3><?php esc_html_e('📋 Prerequisites', 'bunny-media-offload'); ?></h3>
+                        <ul>
+                            <li><?php esc_html_e('Active Bunny.net account', 'bunny-media-offload'); ?></li>
+                            <li><?php esc_html_e('WordPress 5.0 or higher', 'bunny-media-offload'); ?></li>
+                            <li><?php esc_html_e('PHP 7.4 or higher', 'bunny-media-offload'); ?></li>
+                            <li><?php esc_html_e('cURL extension enabled', 'bunny-media-offload'); ?></li>
+                            </ul>
+                        </div>
                         
-                        <div class="bunny-config-benefits">
-                            <h3><?php esc_html_e('Why Use wp-config.php?', 'bunny-media-offload'); ?></h3>
+                    <div class="bunny-step-guide">
+                        <h3><?php esc_html_e('Quick Setup Steps', 'bunny-media-offload'); ?></h3>
+                        
+                        <div class="bunny-step">
+                            <div class="bunny-step-number">1</div>
+                            <div class="bunny-step-content">
+                                <h4><?php esc_html_e('Create Bunny.net Storage Zone', 'bunny-media-offload'); ?></h4>
+                                <p><?php esc_html_e('Log into your Bunny.net dashboard and create a new Storage Zone for your media files.', 'bunny-media-offload'); ?></p>
+                            </div>
+                        </div>
+
+                        <div class="bunny-step">
+                            <div class="bunny-step-number">2</div>
+                            <div class="bunny-step-content">
+                                <h4><?php esc_html_e('Get API Credentials', 'bunny-media-offload'); ?></h4>
+                                <p><?php esc_html_e('Copy your Storage Zone API key and zone name from the Bunny.net dashboard.', 'bunny-media-offload'); ?></p>
+                            </div>
+                        </div>
+
+                        <div class="bunny-step">
+                            <div class="bunny-step-number">3</div>
+                            <div class="bunny-step-content">
+                                <h4><?php esc_html_e('Configure Plugin', 'bunny-media-offload'); ?></h4>
+                                <p><?php esc_html_e('Go to Bunny CDN > Settings and enter your API credentials, or add them to wp-config.php for better security.', 'bunny-media-offload'); ?></p>
+                            </div>
+                        </div>
+
+                        <div class="bunny-step">
+                            <div class="bunny-step-number">4</div>
+                            <div class="bunny-step-content">
+                                <h4><?php esc_html_e('Test Connection', 'bunny-media-offload'); ?></h4>
+                                <p><?php esc_html_e('Use the "Test Connection" button in Settings to verify your configuration works correctly.', 'bunny-media-offload'); ?></p>
+                            </div>
+                        </div>
+
+                        <div class="bunny-step">
+                            <div class="bunny-step-number">5</div>
+                            <div class="bunny-step-content">
+                                <h4><?php esc_html_e('Start Migration', 'bunny-media-offload'); ?></h4>
+                                <p><?php esc_html_e('Go to Bunny CDN > Migration to begin transferring your existing media files to Bunny.net.', 'bunny-media-offload'); ?></p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Configuration Tab -->
+                <div class="bunny-tab-content" id="configuration">
+                    <h2><?php esc_html_e('Configuration Options', 'bunny-media-offload'); ?></h2>
+                    
+                    <div class="bunny-config-section">
+                        <h3><?php esc_html_e('🔐 Secure Configuration (Recommended)', 'bunny-media-offload'); ?></h3>
+                        
+                        <div class="bunny-info-card success">
+                            <h4><?php esc_html_e('Why use wp-config.php?', 'bunny-media-offload'); ?></h4>
                             <ul>
-                                <li><?php esc_html_e('🔒 Enhanced Security: Credentials not stored in database', 'bunny-media-offload'); ?></li>
+                                <li><?php esc_html_e('🔒 Enhanced Security: API keys not stored in database', 'bunny-media-offload'); ?></li>
                                 <li><?php esc_html_e('🚀 Environment Portability: Easy staging/production deployment', 'bunny-media-offload'); ?></li>
-                                <li><?php esc_html_e('🔐 Version Control Safe: Exclude wp-config.php from commits', 'bunny-media-offload'); ?></li>
+                                <li><?php esc_html_e('🔐 Version Control Safe: Exclude wp-config.php from Git commits', 'bunny-media-offload'); ?></li>
                                 <li><?php esc_html_e('💾 Backup Safety: Settings preserved during database restores', 'bunny-media-offload'); ?></li>
                             </ul>
                         </div>
-                        
-                        <h3><?php esc_html_e('Configuration Constants', 'bunny-media-offload'); ?></h3>
+
                         <p><?php esc_html_e('Add these constants to your wp-config.php file before the "/* That\'s all, stop editing! */" line:', 'bunny-media-offload'); ?></p>
                         
-                        <pre class="bunny-config-example">
-// Bunny.net Edge Storage Configuration
-// Only store API credentials in wp-config.php for security
-
-// Required: Your Bunny.net Storage API Key
+                        <div class="bunny-code-block">
+                            <div class="bunny-code-header">
+                                <span><?php esc_html_e('wp-config.php', 'bunny-media-offload'); ?></span>
+                                <button class="bunny-copy-btn" data-copy="config-basic"><?php esc_html_e('Copy', 'bunny-media-offload'); ?></button>
+                            </div>
+                            <pre id="config-basic">// Bunny.net Configuration
 define('BUNNY_API_KEY', 'your-storage-api-key-here');
-
-// Required: Your Bunny.net Storage Zone Name
 define('BUNNY_STORAGE_ZONE', 'your-storage-zone-name');
+define('BUNNY_CUSTOM_HOSTNAME', 'cdn.yoursite.com'); // Optional</pre>
+                        </div>
+                    </div>
 
-// Optional: Custom hostname for CDN URLs (without https://)
-define('BUNNY_CUSTOM_HOSTNAME', 'cdn.yoursite.com');
-
-// Note: Configure other settings via the WordPress admin interface
-// for better flexibility and management</pre>
+                    <div class="bunny-config-section">
+                        <h3><?php esc_html_e('📝 Configuration Reference', 'bunny-media-offload'); ?></h3>
                         
-                        <h3><?php esc_html_e('Complete Example', 'bunny-media-offload'); ?></h3>
-                        <pre class="bunny-config-example">
-&lt;?php
-/**
- * WordPress Configuration File
- */
+                        <div class="bunny-config-table">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th><?php esc_html_e('Setting', 'bunny-media-offload'); ?></th>
+                                        <th><?php esc_html_e('Description', 'bunny-media-offload'); ?></th>
+                                        <th><?php esc_html_e('Default', 'bunny-media-offload'); ?></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td><code>BUNNY_API_KEY</code></td>
+                                        <td><?php esc_html_e('Your Bunny.net Storage Zone API key', 'bunny-media-offload'); ?></td>
+                                        <td><?php esc_html_e('Required', 'bunny-media-offload'); ?></td>
+                                    </tr>
+                                    <tr>
+                                        <td><code>BUNNY_STORAGE_ZONE</code></td>
+                                        <td><?php esc_html_e('Your Bunny.net Storage Zone name', 'bunny-media-offload'); ?></td>
+                                        <td><?php esc_html_e('Required', 'bunny-media-offload'); ?></td>
+                                    </tr>
+                                    <tr>
+                                        <td><code>BUNNY_CUSTOM_HOSTNAME</code></td>
+                                        <td><?php esc_html_e('Custom CDN hostname (without https://)', 'bunny-media-offload'); ?></td>
+                                        <td><?php esc_html_e('Optional', 'bunny-media-offload'); ?></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
 
-// ** Database settings ** //
-define('DB_NAME', 'your_database');
-define('DB_USER', 'your_username');
-define('DB_PASSWORD', 'your_password');
-define('DB_HOST', 'localhost');
-
-// ** Bunny.net Configuration ** //
-define('BUNNY_API_KEY', 'b8f2c4d5-1234-5678-9abc-def123456789');
-define('BUNNY_STORAGE_ZONE', 'mysite-storage');
-define('BUNNY_CUSTOM_HOSTNAME', 'cdn.mysite.com');
-
-// ** Security keys ** //
-define('AUTH_KEY', 'your-auth-key');
-// ... other security keys
-
-/* That's all, stop editing! Happy publishing. */
-require_once ABSPATH . 'wp-settings.php';</pre>
-                    </section>
+                <!-- Migration Tab -->
+                <div class="bunny-tab-content" id="migration">
+                    <h2><?php esc_html_e('Media Migration Guide', 'bunny-media-offload'); ?></h2>
                     
-                    <section id="quick-cli">
-                        <h2><?php esc_html_e('Quick WP-CLI Reference', 'bunny-media-offload'); ?></h2>
+                    <div class="bunny-info-card warning">
+                        <h3><?php esc_html_e('⚠️ Before You Start', 'bunny-media-offload'); ?></h3>
+                        <ul>
+                            <li><?php esc_html_e('Create a full website backup', 'bunny-media-offload'); ?></li>
+                            <li><?php esc_html_e('Test the plugin on a staging site first', 'bunny-media-offload'); ?></li>
+                            <li><?php esc_html_e('Ensure your Bunny.net storage has sufficient quota', 'bunny-media-offload'); ?></li>
+                            <li><?php esc_html_e('Consider running migration during low-traffic hours', 'bunny-media-offload'); ?></li>
+                        </ul>
+                    </div>
+
+                    <div class="bunny-feature-section">
+                        <h3><?php esc_html_e('Migration Features', 'bunny-media-offload'); ?></h3>
                         
-                        <h3><?php esc_html_e('Status & Testing', 'bunny-media-offload'); ?></h3>
-                        <pre class="bunny-config-example">wp bunny status                    # Plugin status overview
-wp bunny test-connection          # Test API connection
-wp bunny status --detailed       # Detailed file statistics</pre>
-                        
-                        <h3><?php esc_html_e('Migration', 'bunny-media-offload'); ?></h3>
-                        <pre class="bunny-config-example">wp bunny migrate                           # Migrate all files
-wp bunny migrate --file-types=image       # Migrate images only
+                        <div class="bunny-feature-grid">
+                            <div class="bunny-feature-item">
+                                <h4><?php esc_html_e('🎯 Smart File Selection', 'bunny-media-offload'); ?></h4>
+                                <p><?php esc_html_e('Only AVIF and WebP files with size below your configured limit are migrated automatically.', 'bunny-media-offload'); ?></p>
+                            </div>
+                            
+                            <div class="bunny-feature-item">
+                                <h4><?php esc_html_e('📊 Real-time Progress', 'bunny-media-offload'); ?></h4>
+                                <p><?php esc_html_e('Monitor migration progress with live statistics and detailed breakdowns by file type.', 'bunny-media-offload'); ?></p>
+                            </div>
+                            
+                            <div class="bunny-feature-item">
+                                <h4><?php esc_html_e('🔄 Batch Processing', 'bunny-media-offload'); ?></h4>
+                                <p><?php esc_html_e('Files are processed in configurable batches to prevent server timeouts and memory issues.', 'bunny-media-offload'); ?></p>
+                            </div>
+                            
+                            <div class="bunny-feature-item">
+                                <h4><?php esc_html_e('🛡️ Error Handling', 'bunny-media-offload'); ?></h4>
+                                <p><?php esc_html_e('Automatic retry logic for failed uploads with detailed error reporting and recovery options.', 'bunny-media-offload'); ?></p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="bunny-best-practices">
+                        <h3><?php esc_html_e('📋 Migration Best Practices', 'bunny-media-offload'); ?></h3>
+                        <div class="bunny-tip-list">
+                            <div class="bunny-tip">
+                                <strong><?php esc_html_e('Start Small:', 'bunny-media-offload'); ?></strong>
+                                <span><?php esc_html_e('Begin with a small batch size (25-50 files) to test your server\'s capabilities.', 'bunny-media-offload'); ?></span>
+                            </div>
+                            <div class="bunny-tip">
+                                <strong><?php esc_html_e('Monitor Progress:', 'bunny-media-offload'); ?></strong>
+                                <span><?php esc_html_e('Keep the migration page open to monitor progress and catch any issues early.', 'bunny-media-offload'); ?></span>
+                            </div>
+                            <div class="bunny-tip">
+                                <strong><?php esc_html_e('Check Logs:', 'bunny-media-offload'); ?></strong>
+                                <span><?php esc_html_e('Review the logs page for detailed information about any failed uploads.', 'bunny-media-offload'); ?></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Optimization Tab -->
+                <div class="bunny-tab-content" id="optimization">
+                    <h2><?php esc_html_e('Image Optimization Guide', 'bunny-media-offload'); ?></h2>
+                    
+                    <div class="bunny-info-card">
+                        <h3><?php esc_html_e('🎯 What Gets Optimized?', 'bunny-media-offload'); ?></h3>
+                        <ul>
+                            <li><?php esc_html_e('JPG/PNG files are converted to modern WebP or AVIF formats', 'bunny-media-offload'); ?></li>
+                            <li><?php esc_html_e('WebP/AVIF files larger than your size limit are recompressed', 'bunny-media-offload'); ?></li>
+                            <li><?php esc_html_e('Files already optimized and under the size limit are skipped', 'bunny-media-offload'); ?></li>
+                        </ul>
+                    </div>
+
+                    <div class="bunny-optimization-comparison">
+                        <h3><?php esc_html_e('📈 Format Comparison', 'bunny-media-offload'); ?></h3>
+                        <div class="bunny-comparison-table">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th><?php esc_html_e('Format', 'bunny-media-offload'); ?></th>
+                                        <th><?php esc_html_e('Compression', 'bunny-media-offload'); ?></th>
+                                        <th><?php esc_html_e('Browser Support', 'bunny-media-offload'); ?></th>
+                                        <th><?php esc_html_e('Best For', 'bunny-media-offload'); ?></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td><strong>AVIF</strong></td>
+                                        <td><?php esc_html_e('Excellent (50% smaller)', 'bunny-media-offload'); ?></td>
+                                        <td><?php esc_html_e('Modern browsers', 'bunny-media-offload'); ?></td>
+                                        <td><?php esc_html_e('Future-proof sites', 'bunny-media-offload'); ?></td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>WebP</strong></td>
+                                        <td><?php esc_html_e('Very Good (30% smaller)', 'bunny-media-offload'); ?></td>
+                                        <td><?php esc_html_e('95%+ browsers', 'bunny-media-offload'); ?></td>
+                                        <td><?php esc_html_e('Most websites', 'bunny-media-offload'); ?></td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>JPEG</strong></td>
+                                        <td><?php esc_html_e('Standard', 'bunny-media-offload'); ?></td>
+                                        <td><?php esc_html_e('Universal', 'bunny-media-offload'); ?></td>
+                                        <td><?php esc_html_e('Legacy support', 'bunny-media-offload'); ?></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- CLI Commands Tab -->
+                <div class="bunny-tab-content" id="cli-commands">
+                    <h2><?php esc_html_e('WP-CLI Commands Reference', 'bunny-media-offload'); ?></h2>
+                    
+                    <div class="bunny-cli-section">
+                        <h3><?php esc_html_e('📊 Status & Information', 'bunny-media-offload'); ?></h3>
+                        <div class="bunny-code-block">
+                            <pre>wp bunny status                    # Plugin status overview
+wp bunny status --detailed       # Detailed statistics
+wp bunny test-connection          # Test API connection</pre>
+                        </div>
+                    </div>
+
+                    <div class="bunny-cli-section">
+                        <h3><?php esc_html_e('📁 Migration Commands', 'bunny-media-offload'); ?></h3>
+                        <div class="bunny-code-block">
+                            <pre>wp bunny migrate                           # Migrate all files
 wp bunny migrate --batch-size=25          # Custom batch size
-wp bunny migration-status                 # Check progress</pre>
-                        
-                        <h3><?php esc_html_e('Optimization', 'bunny-media-offload'); ?></h3>
-                        <pre class="bunny-config-example">wp bunny optimize                         # Optimize all images
-wp bunny optimize --format=webp          # Specific format
-wp bunny optimization-status              # Check queue status</pre>
-                    </section>
+wp bunny migrate --dry-run                # Preview without changes
+wp bunny migration-status                 # Check migration progress</pre>
+                        </div>
+                    </div>
+
+                    <div class="bunny-cli-section">
+                        <h3><?php esc_html_e('🖼️ Optimization Commands', 'bunny-media-offload'); ?></h3>
+                        <div class="bunny-code-block">
+                            <pre>wp bunny optimize                         # Optimize all images
+wp bunny optimize --target=local         # Local images only
+wp bunny optimize --target=cloud         # Cloud images only
+wp bunny optimization-status              # Check optimization queue</pre>
+                        </div>
+                    </div>
+
+                    <div class="bunny-cli-section">
+                        <h3><?php esc_html_e('🧹 Maintenance Commands', 'bunny-media-offload'); ?></h3>
+                        <div class="bunny-code-block">
+                            <pre>wp bunny sync-verify                      # Verify file integrity
+wp bunny cleanup-orphaned                # Clean orphaned files
+wp bunny clear-cache                      # Clear plugin cache
+wp bunny logs --export                    # Export logs to CSV</pre>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Troubleshooting Tab -->
+                <div class="bunny-tab-content" id="troubleshooting">
+                    <h2><?php esc_html_e('Troubleshooting Guide', 'bunny-media-offload'); ?></h2>
                     
-                    <section id="troubleshooting">
-                        <h2><?php esc_html_e('Quick Troubleshooting', 'bunny-media-offload'); ?></h2>
-                        
+                    <div class="bunny-troubleshoot-section">
+                        <h3><?php esc_html_e('🔗 Connection Issues', 'bunny-media-offload'); ?></h3>
                         <div class="bunny-troubleshoot-item">
-                            <h4><?php esc_html_e('🔧 Connection Issues', 'bunny-media-offload'); ?></h4>
-                            <ul>
-                                <li><?php esc_html_e('Verify API key in Bunny.net dashboard', 'bunny-media-offload'); ?></li>
-                                <li><?php esc_html_e('Check Storage Zone name spelling', 'bunny-media-offload'); ?></li>
-                                <li><?php esc_html_e('Test connection using the "Test Connection" button', 'bunny-media-offload'); ?></li>
+                            <h4><?php esc_html_e('API Connection Failed', 'bunny-media-offload'); ?></h4>
+                            <div class="bunny-solution">
+                                <p><strong><?php esc_html_e('Symptoms:', 'bunny-media-offload'); ?></strong> <?php esc_html_e('Cannot connect to Bunny.net, "Test Connection" fails', 'bunny-media-offload'); ?></p>
+                                <p><strong><?php esc_html_e('Solutions:', 'bunny-media-offload'); ?></strong></p>
+                                <ul>
+                                    <li><?php esc_html_e('Verify API key is correct in Bunny.net dashboard', 'bunny-media-offload'); ?></li>
+                                    <li><?php esc_html_e('Check Storage Zone name spelling (case-sensitive)', 'bunny-media-offload'); ?></li>
+                                    <li><?php esc_html_e('Ensure cURL extension is installed: php -m | grep curl', 'bunny-media-offload'); ?></li>
+                                    <li><?php esc_html_e('Check if firewall is blocking outbound connections', 'bunny-media-offload'); ?></li>
                             </ul>
+                            </div>
+                        </div>
                         </div>
                         
+                    <div class="bunny-troubleshoot-section">
+                        <h3><?php esc_html_e('📤 Upload Problems', 'bunny-media-offload'); ?></h3>
                         <div class="bunny-troubleshoot-item">
-                            <h4><?php esc_html_e('📁 Migration Issues', 'bunny-media-offload'); ?></h4>
-                            <ul>
-                                <li><?php esc_html_e('Reduce batch size to 10-25 files', 'bunny-media-offload'); ?></li>
-                                <li><?php esc_html_e('Check available storage quota in Bunny.net', 'bunny-media-offload'); ?></li>
-                                <li><?php esc_html_e('Monitor logs: Bunny CDN > Logs', 'bunny-media-offload'); ?></li>
+                            <h4><?php esc_html_e('Files Not Uploading', 'bunny-media-offload'); ?></h4>
+                            <div class="bunny-solution">
+                                <p><strong><?php esc_html_e('Symptoms:', 'bunny-media-offload'); ?></strong> <?php esc_html_e('Migration stalls, files remain local', 'bunny-media-offload'); ?></p>
+                                <p><strong><?php esc_html_e('Solutions:', 'bunny-media-offload'); ?></strong></p>
+                                <ul>
+                                    <li><?php esc_html_e('Reduce batch size to 10-25 files in Settings', 'bunny-media-offload'); ?></li>
+                                    <li><?php esc_html_e('Check available storage quota in Bunny.net dashboard', 'bunny-media-offload'); ?></li>
+                                    <li><?php esc_html_e('Monitor logs: Bunny CDN > Logs for specific error messages', 'bunny-media-offload'); ?></li>
+                                    <li><?php esc_html_e('Increase PHP max_execution_time and memory_limit', 'bunny-media-offload'); ?></li>
                             </ul>
+                            </div>
+                        </div>
                         </div>
                         
+                    <div class="bunny-troubleshoot-section">
+                        <h3><?php esc_html_e('🖼️ Optimization Issues', 'bunny-media-offload'); ?></h3>
                         <div class="bunny-troubleshoot-item">
-                            <h4><?php esc_html_e('🖼️ Optimization Problems', 'bunny-media-offload'); ?></h4>
-                            <ul>
-                                <li><?php esc_html_e('Ensure GD library is installed: php -m | grep -i gd', 'bunny-media-offload'); ?></li>
-                                <li><?php esc_html_e('Increase PHP memory limit in wp-config.php', 'bunny-media-offload'); ?></li>
-                                <li><?php esc_html_e('Clear optimization queue: wp bunny optimization-clear', 'bunny-media-offload'); ?></li>
+                            <h4><?php esc_html_e('Optimization Failing', 'bunny-media-offload'); ?></h4>
+                            <div class="bunny-solution">
+                                <p><strong><?php esc_html_e('Symptoms:', 'bunny-media-offload'); ?></strong> <?php esc_html_e('Images not converting, optimization queue stuck', 'bunny-media-offload'); ?></p>
+                                <p><strong><?php esc_html_e('Solutions:', 'bunny-media-offload'); ?></strong></p>
+                                <ul>
+                                    <li><?php esc_html_e('Ensure GD library is installed: php -m | grep -i gd', 'bunny-media-offload'); ?></li>
+                                    <li><?php esc_html_e('Check PHP memory limit (minimum 256M recommended)', 'bunny-media-offload'); ?></li>
+                                    <li><?php esc_html_e('Verify file permissions on wp-content/uploads/', 'bunny-media-offload'); ?></li>
+                                    <li><?php esc_html_e('Clear optimization queue: wp bunny optimization-clear', 'bunny-media-offload'); ?></li>
                             </ul>
                         </div>
-                    </section>
+                        </div>
+                    </div>
+
+                    <div class="bunny-troubleshoot-section">
+                        <h3><?php esc_html_e('⚡ Performance Tips', 'bunny-media-offload'); ?></h3>
+                        <div class="bunny-info-card success">
+                            <ul>
+                                <li><?php esc_html_e('Run migrations during low-traffic hours', 'bunny-media-offload'); ?></li>
+                                <li><?php esc_html_e('Use smaller batch sizes for shared hosting', 'bunny-media-offload'); ?></li>
+                                <li><?php esc_html_e('Consider using WP-CLI for large migrations', 'bunny-media-offload'); ?></li>
+                                <li><?php esc_html_e('Monitor server resources during processing', 'bunny-media-offload'); ?></li>
+                                <li><?php esc_html_e('Keep the logs page open to track progress', 'bunny-media-offload'); ?></li>
+                            </ul>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -993,65 +1864,336 @@ wp bunny optimization-status              # Check queue status</pre>
             margin-top: 20px;
         }
         
-        .bunny-doc-content section {
-            margin-bottom: 40px;
-            padding-bottom: 30px;
-            border-bottom: 1px solid #eee;
+        /* Tab Navigation */
+        .bunny-doc-tabs {
+            display: flex;
+            margin-bottom: 30px;
+            border-bottom: 2px solid #e0e0e0;
+            flex-wrap: wrap;
         }
-        
-        .bunny-doc-content h2 {
+
+        .bunny-tab-button {
+            background: none;
+            border: none;
+            padding: 12px 20px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            color: #666;
+            border-bottom: 2px solid transparent;
+            transition: all 0.3s ease;
+            margin-bottom: -2px;
+        }
+
+        .bunny-tab-button:hover {
+            color: #0073aa;
+            background-color: #f8f9fa;
+        }
+
+        .bunny-tab-button.active {
+            color: #0073aa;
+            border-bottom-color: #0073aa;
+            background-color: #f8f9fa;
+        }
+
+        /* Tab Content */
+        .bunny-tab-content {
+            display: none;
+        }
+
+        .bunny-tab-content.active {
+            display: block;
+        }
+
+        .bunny-tab-content h2 {
             color: #0073aa;
             border-bottom: 2px solid #0073aa;
             padding-bottom: 10px;
+            margin-bottom: 30px;
         }
-        
-        .bunny-config-example {
-            background: #f8f8f8;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            padding: 15px;
-            font-family: Consolas, Monaco, 'Courier New', monospace;
-            font-size: 13px;
-            line-height: 1.4;
-            overflow-x: auto;
-            margin: 15px 0;
-        }
-        
-        .bunny-config-benefits {
-            background: #f0f6fc;
-            border: 1px solid #c3c4c7;
+
+        /* Info Cards */
+        .bunny-info-card {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
             border-left: 4px solid #0073aa;
             border-radius: 4px;
             padding: 20px;
             margin: 20px 0;
         }
-        
-        .bunny-config-benefits h3 {
+
+        .bunny-info-card.success {
+            border-left-color: #28a745;
+            background: #f8fff8;
+        }
+
+        .bunny-info-card.warning {
+            border-left-color: #ffc107;
+            background: #fffdf7;
+        }
+
+        .bunny-info-card h3, .bunny-info-card h4 {
             margin-top: 0;
             color: #0073aa;
         }
+
+        .bunny-info-card.success h3, .bunny-info-card.success h4 {
+            color: #28a745;
+        }
+
+        .bunny-info-card.warning h3, .bunny-info-card.warning h4 {
+            color: #ffc107;
+        }
+
+        /* Step Guide */
+        .bunny-step-guide {
+            margin: 30px 0;
+        }
+
+        .bunny-step {
+            display: flex;
+            margin: 20px 0;
+            align-items: flex-start;
+        }
+
+        .bunny-step-number {
+            background: #0073aa;
+            color: white;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            margin-right: 15px;
+            flex-shrink: 0;
+        }
+
+        .bunny-step-content h4 {
+            margin: 0 0 8px 0;
+            color: #333;
+        }
+
+        .bunny-step-content p {
+            margin: 0;
+            color: #666;
+        }
+
+        /* Code Blocks */
+        .bunny-code-block {
+            background: #f8f8f8;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            margin: 15px 0;
+            overflow: hidden;
+        }
+
+        .bunny-code-header {
+            background: #333;
+            color: white;
+            padding: 10px 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 13px;
+        }
+
+        .bunny-copy-btn {
+            background: #0073aa;
+            color: white;
+            border: none;
+            padding: 4px 12px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 11px;
+        }
+
+        .bunny-copy-btn:hover {
+            background: #005a87;
+        }
+
+        .bunny-code-block pre {
+            margin: 0;
+            padding: 15px;
+            font-family: Consolas, Monaco, 'Courier New', monospace;
+            font-size: 13px;
+            line-height: 1.4;
+            overflow-x: auto;
+            background: #f8f8f8;
+        }
+
+        /* Tables */
+        .bunny-config-table table, .bunny-comparison-table table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            background: white;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .bunny-config-table th, .bunny-comparison-table th,
+        .bunny-config-table td, .bunny-comparison-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #dee2e6;
+        }
+
+        .bunny-config-table th, .bunny-comparison-table th {
+            background: #f8f9fa;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .bunny-config-table code {
+            background: #f8f9fa;
+            padding: 2px 4px;
+            border-radius: 3px;
+            font-family: Consolas, Monaco, monospace;
+            font-size: 12px;
+        }
+
+        /* Feature Grid */
+        .bunny-feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin: 20px 0;
+        }
+
+        .bunny-feature-item {
+            background: white;
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+            padding: 20px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .bunny-feature-item h4 {
+            margin: 0 0 10px 0;
+            color: #0073aa;
+        }
+
+        .bunny-feature-item p {
+            margin: 0;
+            color: #666;
+            font-size: 14px;
+        }
+
+        /* Tips */
+        .bunny-tip-list {
+            margin: 20px 0;
+        }
         
-        .bunny-config-benefits ul {
-            margin-bottom: 0;
+        .bunny-tip {
+            background: white;
+            border-left: 4px solid #0073aa;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 4px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .bunny-tip strong {
+            color: #0073aa;
+            display: block;
+            margin-bottom: 5px;
+        }
+        
+        /* Troubleshooting */
+        .bunny-troubleshoot-section {
+            margin: 30px 0;
         }
         
         .bunny-troubleshoot-item {
-            background: #f9f9f9;
-            border-left: 4px solid #ffb900;
-            padding: 15px;
-            margin: 15px 0;
+            background: white;
+            border: 1px solid #dee2e6;
+            border-left: 4px solid #dc3545;
             border-radius: 4px;
+            padding: 20px;
+            margin: 15px 0;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
         }
         
         .bunny-troubleshoot-item h4 {
-            margin-top: 0;
-            color: #d63638;
+            margin: 0 0 15px 0;
+            color: #dc3545;
         }
-        
-        .bunny-troubleshoot-item ul {
+
+        .bunny-solution p {
+            margin: 10px 0;
+            color: #333;
+        }
+
+        .bunny-solution strong {
+            color: #0073aa;
+        }
+
+        .bunny-solution ul {
+            margin: 10px 0 0 20px;
+            color: #666;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .bunny-doc-tabs {
+                flex-direction: column;
+            }
+            
+            .bunny-tab-button {
             margin-bottom: 0;
+                border-bottom: 1px solid #e0e0e0;
+                border-radius: 0;
+            }
+            
+            .bunny-feature-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .bunny-step {
+                flex-direction: column;
+            }
+            
+            .bunny-step-number {
+                margin: 0 0 10px 0;
+            }
         }
         </style>
+
+        <script>
+        jQuery(document).ready(function($) {
+            // Tab switching
+            $('.bunny-tab-button').on('click', function() {
+                var targetTab = $(this).data('tab');
+                
+                // Update button states
+                $('.bunny-tab-button').removeClass('active');
+                $(this).addClass('active');
+                
+                // Update content
+                $('.bunny-tab-content').removeClass('active');
+                $('#' + targetTab).addClass('active');
+            });
+            
+            // Copy to clipboard
+            $('.bunny-copy-btn').on('click', function() {
+                var targetId = $(this).data('copy');
+                var text = $('#' + targetId).text();
+                
+                if (navigator.clipboard) {
+                    navigator.clipboard.writeText(text).then(function() {
+                        // Show feedback
+                        var btn = $(this);
+                        var originalText = btn.text();
+                        btn.text('Copied!');
+                        setTimeout(function() {
+                            btn.text(originalText);
+                        }, 1500);
+                    }.bind(this));
+                }
+            });
+        });
+        </script>
         <?php
     }
     
@@ -1204,10 +2346,10 @@ wp bunny optimization-status              # Check queue status</pre>
                         
                         if ($queue_status === false) {
                             // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Caching implemented above
-                            $queue_status = $wpdb->get_var($wpdb->prepare(
+                        $queue_status = $wpdb->get_var($wpdb->prepare(
                                 "SELECT status FROM {$wpdb->prefix}bunny_optimization_queue WHERE attachment_id = %d ORDER BY date_added DESC LIMIT 1",
-                                $attachment_id
-                            ));
+                            $attachment_id
+                        ));
                             
                             // Cache for 2 minutes
                             wp_cache_set($queue_status_cache_key, $queue_status, 'bunny_media_offload', 2 * MINUTE_IN_SECONDS);
@@ -1224,6 +2366,125 @@ wp bunny optimization-status              # Check queue status</pre>
                 }
             } else {
                 echo '<span class="bunny-status bunny-status-local">✗ ' . esc_html__('Local', 'bunny-media-offload') . '</span>';
+            }
+        }
+    }
+    
+    /**
+     * Add filter dropdown to media library
+     */
+    public function add_media_library_filter() {
+        global $pagenow;
+        
+        if ($pagenow === 'upload.php') {
+            $selected = isset($_GET['bunny_filter']) ? sanitize_text_field($_GET['bunny_filter']) : '';
+            
+            ?>
+            <select name="bunny_filter" class="bunny-media-filter">
+                <option value=""><?php esc_html_e('All files', 'bunny-media-offload'); ?></option>
+                <option value="local" <?php selected($selected, 'local'); ?>><?php esc_html_e('💾 Local only', 'bunny-media-offload'); ?></option>
+                <option value="cloud" <?php selected($selected, 'cloud'); ?>><?php esc_html_e('☁️ Cloud only', 'bunny-media-offload'); ?></option>
+            </select>
+            
+            <style>
+            .bunny-status {
+                font-weight: 500;
+                font-size: 12px;
+                padding: 2px 6px;
+                border-radius: 3px;
+                display: inline-block;
+            }
+            
+            .bunny-status-offloaded {
+                color: #0073aa;
+                background: #e7f3ff;
+                border: 1px solid #b8daff;
+            }
+            
+            .bunny-status-local {
+                color: #666;
+                background: #f8f9fa;
+                border: 1px solid #dee2e6;
+            }
+            
+            .bunny-optimization-status {
+                font-size: 11px;
+                padding: 1px 4px;
+                border-radius: 2px;
+                margin-top: 2px;
+                display: inline-block;
+            }
+            
+            .bunny-optimization-status.optimized {
+                color: #155724;
+                background: #d4edda;
+            }
+            
+            .bunny-optimization-status.pending {
+                color: #856404;
+                background: #fff3cd;
+            }
+            
+            .bunny-optimization-status.failed {
+                color: #721c24;
+                background: #f8d7da;
+            }
+            
+            .bunny-optimization-status.not-optimized {
+                color: #6c757d;
+                background: #e9ecef;
+            }
+            
+            .bunny-media-filter {
+                margin-left: 8px;
+                min-width: 120px;
+            }
+            
+            /* Media library enhancements */
+            .wp-list-table .column-bunny_status {
+                width: 120px;
+                text-align: center;
+            }
+            </style>
+            <?php
+        }
+    }
+    
+    /**
+     * Filter media library query based on bunny filter
+     */
+    public function filter_media_library_query($query) {
+        global $pagenow, $wpdb;
+        
+        if ($pagenow === 'upload.php' && isset($_GET['bunny_filter']) && !empty($_GET['bunny_filter'])) {
+            $filter = sanitize_text_field($_GET['bunny_filter']);
+            
+            if ($filter === 'cloud') {
+                // Show only files that are offloaded to cloud
+                // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Direct query needed for filtering
+                $offloaded_ids = $wpdb->get_col(
+                    "SELECT attachment_id FROM {$wpdb->prefix}bunny_offloaded_files WHERE bunny_url IS NOT NULL AND bunny_url != ''"
+                );
+                
+                if (!empty($offloaded_ids)) {
+                    $query->set('post__in', $offloaded_ids);
+                } else {
+                    // No offloaded files, show nothing
+                    $query->set('post__in', array(0));
+                }
+            } elseif ($filter === 'local') {
+                // Show only files that are NOT offloaded to cloud
+                // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Direct query needed for filtering
+                $offloaded_ids = $wpdb->get_col(
+                    "SELECT attachment_id FROM {$wpdb->prefix}bunny_offloaded_files WHERE bunny_url IS NOT NULL AND bunny_url != ''"
+                );
+                
+                if (!empty($offloaded_ids)) {
+                    $query->set('post__not_in', $offloaded_ids);
+                }
+                
+                // Also ensure we're only showing attachment posts
+                $query->set('post_type', 'attachment');
             }
         }
     }

@@ -909,12 +909,13 @@ class Bunny_Optimizer {
         $upload_dir = wp_upload_dir();
         $batch_size = $this->settings->get('optimization_batch_size', 60);
         
-        // Get all image attachments with file paths
+        // Get all image attachments with file paths and cloud status
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Caching implemented above
         $all_images = $wpdb->get_results("
-            SELECT p.ID, p.post_mime_type, m.meta_value as file_path
+            SELECT p.ID, p.post_mime_type, m.meta_value as file_path, bof.bunny_url
             FROM {$wpdb->posts} p
             LEFT JOIN {$wpdb->postmeta} m ON p.ID = m.post_id AND m.meta_key = '_wp_attached_file'
+            LEFT JOIN {$wpdb->prefix}bunny_offloaded_files bof ON p.ID = bof.attachment_id
             WHERE p.post_type = 'attachment' 
             AND p.post_mime_type LIKE 'image/%'
         ");
@@ -928,11 +929,20 @@ class Bunny_Optimizer {
             AND meta_value = '1'
         ");
         
-        // Initialize counters
+        // Initialize counters for local and cloud
         $stats = array(
-            'jpg_png_to_convert' => 0,
-            'webp_avif_to_recompress' => 0,
-            'total_eligible' => 0,
+            'local' => array(
+                'jpg_png_to_convert' => 0,
+                'webp_avif_to_recompress' => 0,
+                'total_eligible' => 0,
+                'has_files_to_optimize' => false
+            ),
+            'cloud' => array(
+                'jpg_png_to_convert' => 0,
+                'webp_avif_to_recompress' => 0,
+                'total_eligible' => 0,
+                'has_files_to_optimize' => false
+            ),
             'already_optimized' => (int) $optimized_count,
             'batch_size' => $batch_size,
             'max_size_threshold' => round($max_size / 1024) . 'KB'
@@ -942,36 +952,55 @@ class Bunny_Optimizer {
             if (!$image->file_path) continue;
             
             $file_path = $upload_dir['basedir'] . '/' . $image->file_path;
-            if (!file_exists($file_path)) continue;
+            $is_local = file_exists($file_path);
+            $is_cloud = !empty($image->bunny_url);
             
-            $file_size = filesize($file_path);
-            $file_info = pathinfo($file_path);
-            $current_format = strtolower($file_info['extension']);
+            // Skip if file doesn't exist anywhere
+            if (!$is_local && !$is_cloud) continue;
             
             // Check if already optimized
             $is_optimized = get_post_meta($image->ID, '_bunny_optimized', true);
             if ($is_optimized) continue;
             
+            $file_size = $is_local ? filesize($file_path) : 0;
+            $file_info = pathinfo($file_path);
+            $current_format = strtolower($file_info['extension']);
+            
             $needs_optimization = false;
+            $jpg_png_format = in_array($current_format, array('jpg', 'jpeg', 'png'));
+            $webp_avif_oversized = in_array($current_format, array('webp', 'avif')) && $file_size > $max_size;
             
-            // JPG/PNG that need conversion to modern formats
-            if (in_array($current_format, array('jpg', 'jpeg', 'png'))) {
-                $stats['jpg_png_to_convert']++;
+            if ($jpg_png_format || $webp_avif_oversized) {
                 $needs_optimization = true;
             }
             
-            // WebP/AVIF that exceed size limit and need recompression
-            if (in_array($current_format, array('webp', 'avif')) && $file_size > $max_size) {
-                $stats['webp_avif_to_recompress']++;
-                $needs_optimization = true;
+            if (!$needs_optimization) continue;
+            
+            // Count for local images
+            if ($is_local) {
+                if ($jpg_png_format) {
+                    $stats['local']['jpg_png_to_convert']++;
+                }
+                if ($webp_avif_oversized) {
+                    $stats['local']['webp_avif_to_recompress']++;
+                }
+                $stats['local']['total_eligible']++;
             }
             
-            if ($needs_optimization) {
-                $stats['total_eligible']++;
+            // Count for cloud images
+            if ($is_cloud) {
+                if ($jpg_png_format) {
+                    $stats['cloud']['jpg_png_to_convert']++;
+                }
+                if ($webp_avif_oversized) {
+                    $stats['cloud']['webp_avif_to_recompress']++;
+                }
+                $stats['cloud']['total_eligible']++;
             }
         }
         
-        $stats['has_files_to_optimize'] = $stats['total_eligible'] > 0;
+        $stats['local']['has_files_to_optimize'] = $stats['local']['total_eligible'] > 0;
+        $stats['cloud']['has_files_to_optimize'] = $stats['cloud']['total_eligible'] > 0;
         
         // Cache for 5 minutes
         wp_cache_set($cache_key, $stats, 'bunny_media_offload', 5 * MINUTE_IN_SECONDS);
