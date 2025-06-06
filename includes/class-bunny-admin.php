@@ -362,109 +362,6 @@ class Bunny_Admin {
                 </form>
             </div>
         </div>
-        
-        <style>
-        .bunny-settings-tabs {
-            margin-bottom: 20px;
-        }
-        
-        .bunny-settings-tabs .nav-tab {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            padding: 12px 20px;
-            border-radius: 8px 8px 0 0;
-            transition: all 0.2s ease;
-        }
-        
-        .bunny-settings-tabs .nav-tab:hover {
-            background-color: #f0f0f1;
-        }
-        
-        .bunny-settings-tabs .nav-tab-active {
-            background-color: #0073aa;
-            color: white;
-            border-color: #0073aa;
-        }
-        
-        .bunny-settings-tabs .nav-tab-active:hover {
-            background-color: #005a87;
-        }
-        
-        .bunny-settings-tabs .dashicons {
-            font-size: 16px;
-            width: 16px;
-            height: 16px;
-        }
-        
-        .bunny-settings-content {
-            background: white;
-            border: 1px solid #c3c4c7;
-            border-radius: 0 8px 8px 8px;
-            padding: 30px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        }
-        
-        .bunny-settings-section {
-            margin-bottom: 40px;
-        }
-        
-        .bunny-settings-section:last-child {
-            margin-bottom: 0;
-        }
-        
-        .bunny-settings-section h3 {
-            margin: 0 0 20px 0;
-            padding: 0 0 10px 0;
-            border-bottom: 2px solid #0073aa;
-            color: #0073aa;
-            font-size: 18px;
-        }
-        
-        .bunny-settings-section .form-table {
-            margin-top: 0;
-        }
-        
-        .bunny-settings-actions {
-            margin-top: 30px;
-            padding-top: 20px;
-            border-top: 1px solid #ddd;
-            display: flex;
-            gap: 10px;
-            align-items: center;
-        }
-        
-        .bunny-readonly-field {
-            background-color: #f9f9f9 !important;
-        }
-        
-        .bunny-config-source {
-            margin-left: 10px;
-            color: #666;
-            font-style: italic;
-            font-size: 13px;
-        }
-        
-        .bunny-info-box {
-            background: #e7f3ff;
-            border: 1px solid #b8daff;
-            border-radius: 6px;
-            padding: 15px;
-            margin: 15px 0;
-        }
-        
-        .bunny-info-box.warning {
-            background: #fff3cd;
-            border-color: #ffc107;
-            color: #856404;
-        }
-        
-        .bunny-info-box.success {
-            background: #d4edda;
-            border-color: #28a745;
-            color: #155724;
-        }
-        </style>
         <?php
     }
     
@@ -868,18 +765,18 @@ class Bunny_Admin {
                                 <?php esc_html_e('No Files to Migrate', 'bunny-media-offload'); ?>
                             <?php endif; ?>
                         </button>
-                        <button type="button" class="button" id="cancel-migration" style="display: none;"><?php esc_html_e('Cancel Migration', 'bunny-media-offload'); ?></button>
+                        <button type="button" class="button bunny-button-hidden" id="cancel-migration"><?php esc_html_e('Cancel Migration', 'bunny-media-offload'); ?></button>
                     </p>
                 </form>
             </div>
             
-            <div id="migration-progress" style="display: none;">
+            <div id="migration-progress" class="bunny-status-hidden">
                 <h3><?php esc_html_e('Migration Progress', 'bunny-media-offload'); ?></h3>
                 <div class="bunny-progress-bar">
                     <div class="bunny-progress-fill" id="migration-progress-bar" style="width: 0%"></div>
                 </div>
                 <p id="migration-status-text"></p>
-                <div id="migration-errors" style="display: none;">
+                <div id="migration-errors" class="bunny-errors-hidden">
                     <h4><?php esc_html_e('Errors', 'bunny-media-offload'); ?></h4>
                     <ul id="migration-error-list"></ul>
                 </div>
@@ -893,7 +790,7 @@ class Bunny_Admin {
                     <div class="bunny-actions">
                         <button type="button" class="button button-secondary" id="regenerate-thumbnails"><?php esc_html_e('Regenerate All Thumbnails', 'bunny-media-offload'); ?></button>
                     </div>
-                    <div id="thumbnail-regeneration-status" style="display: none; margin-top: 15px;">
+                    <div id="thumbnail-regeneration-status" class="bunny-status-hidden">
                         <p id="thumbnail-status-text"></p>
                     </div>
                 </div>
@@ -927,7 +824,7 @@ class Bunny_Admin {
                 </div>
             </div>
             
-            <div id="sync-results" style="display: none;">
+            <div id="sync-results" class="bunny-status-hidden">
                 <h3><?php esc_html_e('Sync Results', 'bunny-media-offload'); ?></h3>
                 <div id="sync-results-content"></div>
             </div>
@@ -1004,7 +901,7 @@ class Bunny_Admin {
                 <div class="notice notice-info">
                     <h3><?php esc_html_e('Optimization Criteria', 'bunny-media-offload'); ?></h3>
                     <p><?php esc_html_e('The following optimization criteria will always be applied:', 'bunny-media-offload'); ?></p>
-                    <ul style="margin-left: 20px;">
+                    <ul class="bunny-list-indent">
                         <li><strong><?php esc_html_e('Convert JPG/PNG to modern formats:', 'bunny-media-offload'); ?></strong> <?php esc_html_e('Legacy format images will be converted to WebP or AVIF for better compression.', 'bunny-media-offload'); ?></li>
                         <li><strong><?php esc_html_e('Recompress existing WebP/AVIF if oversized:', 'bunny-media-offload'); ?></strong> <?php 
                             // translators: %s is the maximum file size setting
@@ -1129,312 +1026,23 @@ class Bunny_Admin {
                         </div>
                 
                 <!-- Hidden Cancel Button -->
-                <div class="bunny-optimization-controls" style="display: none;">
+                <div class="bunny-optimization-controls bunny-controls-hidden">
                     <button type="button" class="button button-secondary" id="cancel-optimization"><?php esc_html_e('Cancel Optimization', 'bunny-media-offload'); ?></button>
                 </div>
             </div>
             
-            <div id="optimization-progress" style="display: none;">
+            <div id="optimization-progress" class="bunny-status-hidden">
                 <h3><?php esc_html_e('Optimization Progress', 'bunny-media-offload'); ?></h3>
                 <div class="bunny-progress-bar">
                     <div class="bunny-progress-fill" id="optimization-progress-bar" style="width: 0%"></div>
                 </div>
                 <p id="optimization-status-text"></p>
-                <div id="optimization-errors" style="display: none;">
+                <div id="optimization-errors" class="bunny-errors-hidden">
                     <h4><?php esc_html_e('Errors', 'bunny-media-offload'); ?></h4>
                     <ul id="optimization-error-list"></ul>
             </div>
         </div>
         </div>
-        
-        <style>
-        .bunny-optimization-cards {
-            margin-top: 20px;
-        }
-
-        .bunny-optimization-description {
-            color: #666;
-            font-size: 14px;
-            margin-bottom: 30px;
-        }
-
-        .bunny-optimization-targets {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
-            gap: 30px;
-            margin: 30px 0;
-        }
-
-        .bunny-optimization-card {
-            background: white;
-            border: 2px solid #e0e0e0;
-            border-radius: 12px;
-            padding: 25px;
-            transition: all 0.3s ease;
-            position: relative;
-            overflow: hidden;
-        }
-
-        .bunny-optimization-card.clickable {
-            cursor: pointer;
-            border-color: #0073aa;
-            box-shadow: 0 2px 8px rgba(0, 115, 170, 0.1);
-        }
-
-        .bunny-optimization-card.clickable:hover {
-            border-color: #005a87;
-            box-shadow: 0 4px 16px rgba(0, 115, 170, 0.15);
-            transform: translateY(-2px);
-        }
-
-        .bunny-optimization-card.disabled {
-            background: #f8f9fa;
-            border-color: #dee2e6;
-            opacity: 0.7;
-            cursor: not-allowed;
-        }
-
-        .bunny-optimization-card.disabled .bunny-card-icon {
-            opacity: 0.5;
-        }
-
-        .bunny-card-header {
-            text-align: center;
-            margin-bottom: 25px;
-        }
-
-        .bunny-card-icon {
-            font-size: 48px;
-            margin-bottom: 15px;
-            display: block;
-        }
-
-        .bunny-card-header h4 {
-            margin: 0 0 8px 0;
-            font-size: 20px;
-            color: #333;
-            font-weight: 600;
-        }
-
-        .bunny-card-header p {
-            margin: 0;
-            color: #666;
-            font-size: 14px;
-        }
-
-        .bunny-card-stats {
-            text-align: center;
-        }
-
-        .bunny-main-stat {
-            margin-bottom: 20px;
-        }
-
-        .bunny-stat-number {
-            display: block;
-            font-size: 36px;
-            font-weight: bold;
-            color: #0073aa;
-            line-height: 1;
-            margin-bottom: 5px;
-        }
-
-        .bunny-optimization-card.disabled .bunny-stat-number {
-            color: #999;
-        }
-
-        .bunny-stat-label {
-            display: block;
-            font-size: 14px;
-            color: #666;
-            font-weight: 500;
-        }
-
-        .bunny-breakdown {
-            display: flex;
-            justify-content: space-around;
-            margin-top: 15px;
-            padding-top: 15px;
-            border-top: 1px solid #e0e0e0;
-        }
-
-        .bunny-breakdown-item {
-            text-align: center;
-            flex: 1;
-        }
-
-        .bunny-breakdown-number {
-            display: block;
-            font-size: 18px;
-            font-weight: bold;
-            color: #0073aa;
-            margin-bottom: 4px;
-        }
-
-        .bunny-optimization-card.disabled .bunny-breakdown-number {
-            color: #999;
-        }
-
-        .bunny-breakdown-label {
-            display: block;
-            font-size: 11px;
-            color: #888;
-            line-height: 1.2;
-        }
-
-        .bunny-no-images {
-            padding: 15px;
-            background: #f8f9fa;
-            border-radius: 6px;
-            margin-top: 15px;
-        }
-
-        .bunny-no-images span {
-            color: #666;
-            font-style: italic;
-            font-size: 14px;
-        }
-
-        .bunny-card-action {
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            background: linear-gradient(135deg, #0073aa, #005a87);
-            color: white;
-            padding: 12px;
-            text-align: center;
-            transform: translateY(100%);
-            transition: transform 0.3s ease;
-        }
-
-        .bunny-optimization-card.clickable:hover .bunny-card-action {
-            transform: translateY(0);
-        }
-
-        .bunny-click-hint {
-            font-weight: 500;
-            font-size: 14px;
-        }
-
-        .bunny-optimization-info {
-            margin: 30px 0;
-            text-align: center;
-            padding: 20px;
-            background: #f8f9fa;
-            border-radius: 8px;
-            border: 1px solid #e0e0e0;
-        }
-
-        .bunny-batch-info {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-            flex-wrap: wrap;
-        }
-
-        .bunny-batch-label {
-            font-weight: 600;
-            color: #333;
-        }
-
-        .bunny-batch-value {
-            color: #0073aa;
-            font-weight: 600;
-        }
-
-        .bunny-batch-note {
-            color: #666;
-            font-size: 13px;
-            font-style: italic;
-        }
-
-        .bunny-optimization-controls {
-            text-align: center;
-            margin-top: 20px;
-        }
-
-        /* Progress styles remain the same */
-        #optimization-progress {
-            margin-top: 30px;
-            padding: 25px;
-            background: white;
-            border: 1px solid #e0e0e0;
-            border-radius: 8px;
-        }
-
-        .bunny-progress-bar {
-            width: 100%;
-            height: 20px;
-            background: #f0f0f0;
-            border-radius: 10px;
-            overflow: hidden;
-            margin: 20px 0;
-        }
-
-        .bunny-progress-fill {
-            height: 100%;
-            background: linear-gradient(90deg, #0073aa, #005a87);
-            border-radius: 10px;
-            transition: width 0.3s ease;
-        }
-
-        #optimization-status-text {
-            text-align: center;
-            font-weight: 500;
-            color: #333;
-            margin: 10px 0;
-        }
-
-        #optimization-errors {
-            background: #fff2f2;
-            border: 1px solid #f5c6cb;
-            border-radius: 6px;
-            padding: 15px;
-            margin-top: 20px;
-        }
-
-        #optimization-errors h4 {
-            color: #721c24;
-            margin: 0 0 10px 0;
-        }
-
-        #optimization-error-list {
-            margin: 0;
-            color: #721c24;
-        }
-
-        /* Responsive adjustments */
-        @media (max-width: 768px) {
-            .bunny-optimization-targets {
-                grid-template-columns: 1fr;
-                gap: 20px;
-            }
-            
-            .bunny-optimization-card {
-                padding: 20px;
-            }
-            
-            .bunny-card-icon {
-                font-size: 36px;
-            }
-            
-            .bunny-stat-number {
-                font-size: 28px;
-            }
-            
-            .bunny-breakdown {
-                flex-direction: column;
-                gap: 10px;
-            }
-            
-            .bunny-batch-info {
-                flex-direction: column;
-                gap: 4px;
-            }
-        }
-        </style>
         <?php
     }
     
@@ -1858,307 +1466,6 @@ wp bunny logs --export                    # Export logs to CSV</pre>
                 </div>
             </div>
         </div>
-        
-        <style>
-        .bunny-documentation {
-            margin-top: 20px;
-        }
-        
-        /* Tab Navigation */
-        .bunny-doc-tabs {
-            display: flex;
-            margin-bottom: 30px;
-            border-bottom: 2px solid #e0e0e0;
-            flex-wrap: wrap;
-        }
-
-        .bunny-tab-button {
-            background: none;
-            border: none;
-            padding: 12px 20px;
-            cursor: pointer;
-            font-size: 14px;
-            font-weight: 500;
-            color: #666;
-            border-bottom: 2px solid transparent;
-            transition: all 0.3s ease;
-            margin-bottom: -2px;
-        }
-
-        .bunny-tab-button:hover {
-            color: #0073aa;
-            background-color: #f8f9fa;
-        }
-
-        .bunny-tab-button.active {
-            color: #0073aa;
-            border-bottom-color: #0073aa;
-            background-color: #f8f9fa;
-        }
-
-        /* Tab Content */
-        .bunny-tab-content {
-            display: none;
-        }
-
-        .bunny-tab-content.active {
-            display: block;
-        }
-
-        .bunny-tab-content h2 {
-            color: #0073aa;
-            border-bottom: 2px solid #0073aa;
-            padding-bottom: 10px;
-            margin-bottom: 30px;
-        }
-
-        /* Info Cards */
-        .bunny-info-card {
-            background: #f8f9fa;
-            border: 1px solid #dee2e6;
-            border-left: 4px solid #0073aa;
-            border-radius: 4px;
-            padding: 20px;
-            margin: 20px 0;
-        }
-
-        .bunny-info-card.success {
-            border-left-color: #28a745;
-            background: #f8fff8;
-        }
-
-        .bunny-info-card.warning {
-            border-left-color: #ffc107;
-            background: #fffdf7;
-        }
-
-        .bunny-info-card h3, .bunny-info-card h4 {
-            margin-top: 0;
-            color: #0073aa;
-        }
-
-        .bunny-info-card.success h3, .bunny-info-card.success h4 {
-            color: #28a745;
-        }
-
-        .bunny-info-card.warning h3, .bunny-info-card.warning h4 {
-            color: #ffc107;
-        }
-
-        /* Step Guide */
-        .bunny-step-guide {
-            margin: 30px 0;
-        }
-
-        .bunny-step {
-            display: flex;
-            margin: 20px 0;
-            align-items: flex-start;
-        }
-
-        .bunny-step-number {
-            background: #0073aa;
-            color: white;
-            width: 30px;
-            height: 30px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: bold;
-            margin-right: 15px;
-            flex-shrink: 0;
-        }
-
-        .bunny-step-content h4 {
-            margin: 0 0 8px 0;
-            color: #333;
-        }
-
-        .bunny-step-content p {
-            margin: 0;
-            color: #666;
-        }
-
-        /* Code Blocks */
-        .bunny-code-block {
-            background: #f8f8f8;
-            border: 1px solid #ddd;
-            border-radius: 6px;
-            margin: 15px 0;
-            overflow: hidden;
-        }
-
-        .bunny-code-header {
-            background: #333;
-            color: white;
-            padding: 10px 15px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            font-size: 13px;
-        }
-
-        .bunny-copy-btn {
-            background: #0073aa;
-            color: white;
-            border: none;
-            padding: 4px 12px;
-            border-radius: 3px;
-            cursor: pointer;
-            font-size: 11px;
-        }
-
-        .bunny-copy-btn:hover {
-            background: #005a87;
-        }
-
-        .bunny-code-block pre {
-            margin: 0;
-            padding: 15px;
-            font-family: Consolas, Monaco, 'Courier New', monospace;
-            font-size: 13px;
-            line-height: 1.4;
-            overflow-x: auto;
-            background: #f8f8f8;
-        }
-
-        /* Tables */
-        .bunny-config-table table, .bunny-comparison-table table {
-            width: 100%;
-            border-collapse: collapse;
-            margin: 20px 0;
-            background: white;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        }
-
-        .bunny-config-table th, .bunny-comparison-table th,
-        .bunny-config-table td, .bunny-comparison-table td {
-            padding: 12px;
-            text-align: left;
-            border-bottom: 1px solid #dee2e6;
-        }
-
-        .bunny-config-table th, .bunny-comparison-table th {
-            background: #f8f9fa;
-            font-weight: 600;
-            color: #333;
-        }
-
-        .bunny-config-table code {
-            background: #f8f9fa;
-            padding: 2px 4px;
-            border-radius: 3px;
-            font-family: Consolas, Monaco, monospace;
-            font-size: 12px;
-        }
-
-        /* Feature Grid */
-        .bunny-feature-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 20px;
-            margin: 20px 0;
-        }
-
-        .bunny-feature-item {
-            background: white;
-            border: 1px solid #dee2e6;
-            border-radius: 6px;
-            padding: 20px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        }
-
-        .bunny-feature-item h4 {
-            margin: 0 0 10px 0;
-            color: #0073aa;
-        }
-
-        .bunny-feature-item p {
-            margin: 0;
-            color: #666;
-            font-size: 14px;
-        }
-
-        /* Tips */
-        .bunny-tip-list {
-            margin: 20px 0;
-        }
-        
-        .bunny-tip {
-            background: white;
-            border-left: 4px solid #0073aa;
-            padding: 15px;
-            margin: 10px 0;
-            border-radius: 4px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        }
-
-        .bunny-tip strong {
-            color: #0073aa;
-            display: block;
-            margin-bottom: 5px;
-        }
-        
-        /* Troubleshooting */
-        .bunny-troubleshoot-section {
-            margin: 30px 0;
-        }
-        
-        .bunny-troubleshoot-item {
-            background: white;
-            border: 1px solid #dee2e6;
-            border-left: 4px solid #dc3545;
-            border-radius: 4px;
-            padding: 20px;
-            margin: 15px 0;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        }
-        
-        .bunny-troubleshoot-item h4 {
-            margin: 0 0 15px 0;
-            color: #dc3545;
-        }
-
-        .bunny-solution p {
-            margin: 10px 0;
-            color: #333;
-        }
-
-        .bunny-solution strong {
-            color: #0073aa;
-        }
-
-        .bunny-solution ul {
-            margin: 10px 0 0 20px;
-            color: #666;
-        }
-
-        /* Responsive */
-        @media (max-width: 768px) {
-            .bunny-doc-tabs {
-                flex-direction: column;
-            }
-            
-            .bunny-tab-button {
-            margin-bottom: 0;
-                border-bottom: 1px solid #e0e0e0;
-                border-radius: 0;
-            }
-            
-            .bunny-feature-grid {
-                grid-template-columns: 1fr;
-            }
-            
-            .bunny-step {
-                flex-direction: column;
-            }
-            
-            .bunny-step-number {
-                margin: 0 0 10px 0;
-            }
-        }
-        </style>
 
         <script>
         jQuery(document).ready(function($) {
@@ -2385,67 +1692,6 @@ wp bunny logs --export                    # Export logs to CSV</pre>
                 <option value="local" <?php selected($selected, 'local'); ?>><?php esc_html_e('💾 Local only', 'bunny-media-offload'); ?></option>
                 <option value="cloud" <?php selected($selected, 'cloud'); ?>><?php esc_html_e('☁️ Cloud only', 'bunny-media-offload'); ?></option>
             </select>
-            
-            <style>
-            .bunny-status {
-                font-weight: 500;
-                font-size: 12px;
-                padding: 2px 6px;
-                border-radius: 3px;
-                display: inline-block;
-            }
-            
-            .bunny-status-offloaded {
-                color: #0073aa;
-                background: #e7f3ff;
-                border: 1px solid #b8daff;
-            }
-            
-            .bunny-status-local {
-                color: #666;
-                background: #f8f9fa;
-                border: 1px solid #dee2e6;
-            }
-            
-            .bunny-optimization-status {
-                font-size: 11px;
-                padding: 1px 4px;
-                border-radius: 2px;
-                margin-top: 2px;
-                display: inline-block;
-            }
-            
-            .bunny-optimization-status.optimized {
-                color: #155724;
-                background: #d4edda;
-            }
-            
-            .bunny-optimization-status.pending {
-                color: #856404;
-                background: #fff3cd;
-            }
-            
-            .bunny-optimization-status.failed {
-                color: #721c24;
-                background: #f8d7da;
-            }
-            
-            .bunny-optimization-status.not-optimized {
-                color: #6c757d;
-                background: #e9ecef;
-            }
-            
-            .bunny-media-filter {
-                margin-left: 8px;
-                min-width: 120px;
-            }
-            
-            /* Media library enhancements */
-            .wp-list-table .column-bunny_status {
-                width: 120px;
-                text-align: center;
-            }
-            </style>
             <?php
         }
     }

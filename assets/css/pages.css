@@ -1,0 +1,451 @@
+/* Bunny Media Offload - Page Specific Styles */
+
+/* Settings Navigation Tabs */
+.bunny-settings-tabs {
+    margin-bottom: 20px;
+}
+
+.bunny-settings-tabs .nav-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 20px;
+    border-radius: 8px 8px 0 0;
+    transition: all 0.2s ease;
+}
+
+.bunny-settings-tabs .nav-tab:hover {
+    background-color: #f0f0f1;
+}
+
+.bunny-settings-tabs .nav-tab-active {
+    background-color: #0073aa;
+    color: white;
+    border-color: #0073aa;
+}
+
+.bunny-settings-tabs .nav-tab-active:hover {
+    background-color: #005a87;
+}
+
+.bunny-settings-tabs .dashicons {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+}
+
+.bunny-settings-content {
+    background: white;
+    border: 1px solid #c3c4c7;
+    border-radius: 0 8px 8px 8px;
+    padding: 30px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.bunny-settings-section {
+    margin-bottom: 40px;
+}
+
+.bunny-settings-section:last-child {
+    margin-bottom: 0;
+}
+
+.bunny-settings-section h3 {
+    margin: 0 0 20px 0;
+    padding: 0 0 10px 0;
+    border-bottom: 2px solid #0073aa;
+    color: #0073aa;
+    font-size: 18px;
+}
+
+.bunny-settings-section .form-table {
+    margin-top: 0;
+}
+
+.bunny-settings-actions {
+    margin-top: 30px;
+    padding-top: 20px;
+    border-top: 1px solid #ddd;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.bunny-readonly-field {
+    background-color: #f9f9f9 !important;
+}
+
+.bunny-config-source {
+    margin-left: 10px;
+    color: #666;
+    font-style: italic;
+    font-size: 13px;
+}
+
+.bunny-info-box {
+    background: #e7f3ff;
+    border: 1px solid #b8daff;
+    border-radius: 6px;
+    padding: 15px;
+    margin: 15px 0;
+}
+
+.bunny-info-box.warning {
+    background: #fff3cd;
+    border-color: #ffc107;
+    color: #856404;
+}
+
+.bunny-info-box.success {
+    background: #d4edda;
+    border-color: #28a745;
+    color: #155724;
+}
+
+/* Optimization Cards */
+.bunny-optimization-cards {
+    margin-top: 20px;
+}
+
+.bunny-optimization-description {
+    color: #666;
+    font-size: 14px;
+    margin-bottom: 30px;
+}
+
+.bunny-optimization-targets {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+    gap: 30px;
+    margin: 30px 0;
+}
+
+.bunny-optimization-card {
+    background: white;
+    border: 2px solid #e0e0e0;
+    border-radius: 12px;
+    padding: 25px;
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.bunny-optimization-card.clickable {
+    cursor: pointer;
+    border-color: #0073aa;
+    box-shadow: 0 2px 8px rgba(0, 115, 170, 0.1);
+}
+
+.bunny-optimization-card.clickable:hover {
+    border-color: #005a87;
+    box-shadow: 0 4px 16px rgba(0, 115, 170, 0.15);
+    transform: translateY(-2px);
+}
+
+.bunny-optimization-card.disabled {
+    background: #f8f9fa;
+    border-color: #dee2e6;
+    opacity: 0.7;
+    cursor: not-allowed;
+}
+
+.bunny-optimization-card.disabled .bunny-card-icon {
+    opacity: 0.5;
+}
+
+.bunny-card-header {
+    text-align: center;
+    margin-bottom: 25px;
+}
+
+.bunny-card-icon {
+    font-size: 48px;
+    margin-bottom: 15px;
+    display: block;
+}
+
+.bunny-card-header h4 {
+    margin: 0 0 8px 0;
+    font-size: 20px;
+    font-weight: 600;
+    color: #333;
+}
+
+.bunny-card-header p {
+    margin: 0;
+    color: #666;
+    font-size: 14px;
+}
+
+.bunny-card-stats {
+    text-align: center;
+}
+
+.bunny-main-stat {
+    margin-bottom: 20px;
+}
+
+.bunny-stat-number {
+    display: block;
+    font-size: 36px;
+    font-weight: bold;
+    color: #0073aa;
+    line-height: 1;
+    margin-bottom: 5px;
+}
+
+.bunny-stat-label {
+    display: block;
+    font-size: 14px;
+    color: #666;
+    margin-top: 5px;
+    font-weight: 500;
+}
+
+.bunny-breakdown {
+    display: flex;
+    justify-content: space-around;
+    margin-top: 15px;
+    padding-top: 15px;
+    border-top: 1px solid #e0e0e0;
+}
+
+.bunny-breakdown-item {
+    text-align: center;
+    flex: 1;
+}
+
+.bunny-breakdown-number {
+    display: block;
+    font-size: 18px;
+    font-weight: bold;
+    color: #0073aa;
+    margin-bottom: 4px;
+}
+
+.bunny-breakdown-label {
+    display: block;
+    font-size: 11px;
+    color: #888;
+    line-height: 1.2;
+}
+
+.bunny-no-images {
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 6px;
+    margin-top: 15px;
+}
+
+.bunny-no-images span {
+    color: #666;
+    font-style: italic;
+    font-size: 14px;
+}
+
+.bunny-card-action {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: linear-gradient(135deg, #0073aa, #005a87);
+    color: white;
+    padding: 12px;
+    text-align: center;
+    transform: translateY(100%);
+    transition: transform 0.3s ease;
+}
+
+.bunny-optimization-card.clickable:hover .bunny-card-action {
+    transform: translateY(0);
+}
+
+.bunny-click-hint {
+    font-weight: 500;
+    font-size: 14px;
+}
+
+.bunny-optimization-info {
+    margin: 30px 0;
+    text-align: center;
+    padding: 20px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    border: 1px solid #e0e0e0;
+}
+
+.bunny-batch-info {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.bunny-batch-label {
+    font-weight: 600;
+    color: #333;
+    margin-right: 8px;
+}
+
+.bunny-batch-value {
+    color: #0073aa;
+    font-weight: 600;
+    margin-right: 8px;
+}
+
+.bunny-batch-note {
+    color: #666;
+    font-size: 13px;
+    font-style: italic;
+}
+
+/* WPML Integration */
+.bunny-wpml-notice {
+    margin-top: 20px;
+}
+
+.bunny-wpml-status {
+    background: #f0f8ff;
+    border: 1px solid #0073aa;
+    border-radius: 4px;
+    padding: 15px;
+    margin-bottom: 20px;
+}
+
+.bunny-language-selector {
+    margin: 15px 0;
+}
+
+.bunny-language-selector label {
+    display: block;
+    margin-bottom: 8px;
+}
+
+.bunny-wpml-info {
+    background: #f8f9fa;
+    border-radius: 4px;
+    padding: 15px;
+    margin: 15px 0;
+}
+
+.bunny-wpml-info h4 {
+    margin-top: 0;
+    color: #0073aa;
+    font-size: 16px;
+}
+
+.bunny-wpml-languages {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.bunny-wpml-language {
+    background: #e8f4f8;
+    color: #0073aa;
+    padding: 5px 12px;
+    border-radius: 15px;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.bunny-wpml-language.default {
+    background: #d4edda;
+    color: #155724;
+    border: 1px solid #c3e6cb;
+}
+
+/* Optimization Page Specific Styles */
+.bunny-optimization-card.disabled .bunny-stat-number {
+    color: #999;
+}
+
+.bunny-optimization-card.disabled .bunny-breakdown-number {
+    color: #999;
+}
+
+.bunny-optimization-controls {
+    text-align: center;
+    margin-top: 20px;
+}
+
+#optimization-progress {
+    margin-top: 30px;
+    padding: 25px;
+    background: white;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+}
+
+.bunny-optimization-progress .bunny-progress-bar {
+    width: 100%;
+    height: 20px;
+    background: #f0f0f0;
+    border-radius: 10px;
+    overflow: hidden;
+    margin: 20px 0;
+}
+
+.bunny-optimization-progress .bunny-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #0073aa, #005a87);
+    border-radius: 10px;
+    transition: width 0.3s ease;
+}
+
+#optimization-status-text {
+    text-align: center;
+    font-weight: 500;
+    color: #333;
+    margin: 10px 0;
+}
+
+#optimization-errors {
+    background: #fff2f2;
+    border: 1px solid #f5c6cb;
+    border-radius: 6px;
+    padding: 15px;
+    margin-top: 20px;
+}
+
+#optimization-errors h4 {
+    color: #721c24;
+    margin: 0 0 10px 0;
+}
+
+#optimization-error-list {
+    margin: 0;
+    color: #721c24;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .bunny-optimization-targets {
+        grid-template-columns: 1fr;
+        gap: 20px;
+    }
+    
+    .bunny-optimization-card {
+        padding: 20px;
+    }
+    
+    .bunny-card-icon {
+        font-size: 36px;
+    }
+    
+    .bunny-stat-number {
+        font-size: 28px;
+    }
+    
+    .bunny-breakdown {
+        flex-direction: column;
+        gap: 10px;
+    }
+    
+    .bunny-batch-info {
+        flex-direction: column;
+        gap: 4px;
+    }
+} 

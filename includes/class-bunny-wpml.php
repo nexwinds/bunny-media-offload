@@ -426,7 +426,7 @@ class Bunny_WPML {
                 <th scope="row"><?php esc_html_e('Active Languages', 'bunny-media-offload'); ?></th>
                 <td>
                     <?php if ($active_languages): ?>
-                        <ul style="margin: 0; padding-left: 20px;">
+                        <ul class="bunny-list">
                             <?php foreach ($active_languages as $lang): ?>
                                 <li>
                                     <?php echo esc_html($lang['translated_name']); ?> 

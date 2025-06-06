@@ -1,0 +1,246 @@
+/* Bunny Media Offload - Components */
+
+/* Progress Bars */
+.bunny-progress-bar {
+    background: #f0f0f1;
+    border-radius: 3px;
+    height: 8px;
+    margin-top: 10px;
+    overflow: hidden;
+}
+
+.bunny-progress-fill {
+    background: #00a32a;
+    height: 100%;
+    transition: width 0.3s ease;
+}
+
+/* Cards */
+.bunny-card {
+    background: #fff;
+    border: 1px solid #ccd0d4;
+    border-radius: 4px;
+    padding: 20px;
+    box-shadow: 0 1px 1px rgba(0,0,0,.04);
+}
+
+.bunny-card h3 {
+    margin-top: 0;
+    margin-bottom: 15px;
+    font-size: 16px;
+}
+
+.bunny-card h4 {
+    margin-top: 0;
+    margin-bottom: 10px;
+    font-size: 14px;
+}
+
+/* Stat Cards */
+.bunny-stat-card {
+    background: #fff;
+    border: 1px solid #ccd0d4;
+    border-radius: 4px;
+    padding: 20px;
+    text-align: center;
+    box-shadow: 0 1px 1px rgba(0,0,0,.04);
+}
+
+.bunny-stat-card h3 {
+    margin: 0 0 10px 0;
+    font-size: 14px;
+    color: #555;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.bunny-stat-card h4 {
+    margin: 0 0 10px 0;
+    font-size: 14px;
+    color: #555;
+}
+
+.bunny-stat-number {
+    font-size: 32px;
+    font-weight: bold;
+    color: #0073aa;
+    margin-bottom: 5px;
+}
+
+.bunny-stat-breakdown {
+    font-size: 12px;
+    color: #666;
+    margin-top: 5px;
+}
+
+.bunny-stat-description {
+    font-size: 12px;
+    color: #666;
+    margin-top: 5px;
+}
+
+/* Status Indicators */
+.bunny-status {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 3px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.bunny-status-offloaded {
+    background: #d4edda;
+    color: #155724;
+}
+
+.bunny-status-local {
+    background: #f8d7da;
+    color: #721c24;
+}
+
+/* Buttons */
+.bunny-button-primary {
+    background: #0073aa;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-block;
+}
+
+.bunny-button-primary:hover {
+    background: #005a87;
+}
+
+.bunny-button-secondary {
+    background: #f7f7f7;
+    color: #333;
+    border: 1px solid #ccd0d4;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-block;
+}
+
+.bunny-button-secondary:hover {
+    background: #e8e8e8;
+}
+
+/* Quick Actions */
+.bunny-quick-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 20px;
+}
+
+.bunny-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 15px;
+}
+
+/* Notices */
+.bunny-notice {
+    background: #fff;
+    border-left: 4px solid #0073aa;
+    padding: 12px;
+    margin: 15px 0;
+    box-shadow: 0 1px 1px rgba(0,0,0,.04);
+}
+
+.bunny-notice.bunny-notice-success {
+    border-left-color: #00a32a;
+}
+
+.bunny-notice.bunny-notice-error {
+    border-left-color: #d63638;
+}
+
+.bunny-notice.bunny-notice-warning {
+    border-left-color: #dba617;
+}
+
+.bunny-notice.bunny-notice-info {
+    border-left-color: #0073aa;
+}
+
+/* Loading Spinner */
+.bunny-loading {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    border: 3px solid #f3f3f3;
+    border-top: 3px solid #0073aa;
+    border-radius: 50%;
+    animation: bunny-spin 1s linear infinite;
+}
+
+@keyframes bunny-spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Media Library Components */
+.bunny-status {
+    font-weight: 500;
+    font-size: 12px;
+    padding: 2px 6px;
+    border-radius: 3px;
+    display: inline-block;
+}
+
+.bunny-status-offloaded {
+    color: #0073aa;
+    background: #e7f3ff;
+    border: 1px solid #b8daff;
+}
+
+.bunny-status-local {
+    color: #666;
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+}
+
+.bunny-optimization-status {
+    font-size: 11px;
+    padding: 1px 4px;
+    border-radius: 2px;
+    margin-top: 2px;
+    display: inline-block;
+}
+
+.bunny-optimization-status.optimized {
+    color: #155724;
+    background: #d4edda;
+}
+
+.bunny-optimization-status.pending {
+    color: #856404;
+    background: #fff3cd;
+}
+
+.bunny-optimization-status.failed {
+    color: #721c24;
+    background: #f8d7da;
+}
+
+.bunny-optimization-status.not-optimized {
+    color: #6c757d;
+    background: #e9ecef;
+}
+
+.bunny-media-filter {
+    margin-left: 8px;
+    min-width: 120px;
+}
+
+/* Media library enhancements */
+.wp-list-table .column-bunny_status {
+    width: 120px;
+    text-align: center;
+} 

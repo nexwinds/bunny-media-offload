@@ -1,0 +1,85 @@
+/* Bunny Media Offload - Core Styles */
+
+/* Utility Classes */
+.bunny-hidden {
+    display: none !important;
+}
+
+.bunny-visible {
+    display: block !important;
+}
+
+.bunny-text-center {
+    text-align: center;
+}
+
+.bunny-margin-top {
+    margin-top: 15px;
+}
+
+.bunny-margin-bottom {
+    margin-bottom: 15px;
+}
+
+/* Progress Bars - Dynamic width styles */
+.bunny-progress-fill[style*="width"] {
+    transition: width 0.3s ease;
+}
+
+.bunny-progress-fill {
+    background: #00a32a;
+    height: 100%;
+    transition: width 0.3s ease;
+}
+
+#migration-progress-bar,
+#optimization-progress-bar {
+    transition: width 0.3s ease;
+}
+
+/* Button States */
+.bunny-button-hidden {
+    display: none;
+}
+
+.bunny-button-visible {
+    display: inline-block;
+}
+
+/* Control Containers */
+.bunny-controls-hidden {
+    display: none;
+}
+
+.bunny-controls-visible {
+    display: block;
+}
+
+/* Status Containers */
+.bunny-status-hidden {
+    display: none;
+}
+
+.bunny-status-visible {
+    display: block;
+    margin-top: 15px;
+}
+
+/* Error Containers */
+.bunny-errors-hidden {
+    display: none;
+}
+
+.bunny-errors-visible {
+    display: block;
+}
+
+/* Lists */
+.bunny-list {
+    margin: 0;
+    padding-left: 20px;
+}
+
+.bunny-list-indent {
+    margin-left: 20px;
+} 

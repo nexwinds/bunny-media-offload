@@ -1,5 +1,11 @@
 /* Bunny Media Offload Admin Styles */
 
+/* Import modular stylesheets */
+@import url('core.css');
+@import url('components.css');
+@import url('pages.css');
+@import url('documentation.css');
+
 .bunny-dashboard {
     margin-top: 20px;
 }
