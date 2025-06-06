@@ -207,12 +207,12 @@ class Bunny_Logger {
         $count = $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}bunny_logs");
         
         if ($count > 1000) {
-            // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Using safe table name with wpdb prefix, no caching needed for maintenance operations
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- No caching needed for maintenance operations
             $wpdb->query("
-                DELETE FROM {$this->table_name} 
+                DELETE FROM {$wpdb->prefix}bunny_logs 
                 WHERE id NOT IN (
                     SELECT id FROM (
-                        SELECT id FROM {$this->table_name} 
+                        SELECT id FROM {$wpdb->prefix}bunny_logs 
                         ORDER BY date_created DESC 
                         LIMIT 1000
                     ) as keep_logs

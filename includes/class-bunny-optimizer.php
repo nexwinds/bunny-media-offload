@@ -320,7 +320,7 @@ class Bunny_Optimizer {
                     (attachment_id, priority, status, date_added) 
                     VALUES " . implode(', ', $placeholders);
             
-            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- $sql is safely constructed with placeholders above
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared,WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- $sql is safely constructed with placeholders above, no caching needed for queue insertion
             $result = $wpdb->query($wpdb->prepare($sql, $values));
             
             $this->logger->log('info', "Added {$result} files to optimization queue");

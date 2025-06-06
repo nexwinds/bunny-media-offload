@@ -224,9 +224,9 @@ class Bunny_Media_Offload {
         ) $charset_collate;";
         
         require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.DirectDatabaseQuery.SchemaChange -- Creating plugin tables during activation
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.DirectDatabaseQuery.SchemaChange -- Creating plugin tables during activation, schema changes required for plugin functionality
         dbDelta($sql);
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.DirectDatabaseQuery.SchemaChange -- Creating plugin tables during activation
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.DirectDatabaseQuery.SchemaChange -- Creating plugin tables during activation, schema changes required for plugin functionality
         dbDelta($log_sql);
         
         // Create optimization queue table
@@ -259,7 +259,7 @@ class Bunny_Media_Offload {
         ) $charset_collate;";
         
         require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.DirectDatabaseQuery.SchemaChange -- Creating optimization queue table during activation
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.DirectDatabaseQuery.SchemaChange -- Creating optimization queue table during activation, schema changes required for plugin functionality
         dbDelta($sql);
     }
     
@@ -269,8 +269,11 @@ class Bunny_Media_Offload {
     private static function drop_tables() {
         global $wpdb;
         
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.DirectDatabaseQuery.SchemaChange -- Dropping plugin tables during uninstallation, schema changes required for cleanup
         $wpdb->query("DROP TABLE IF EXISTS {$wpdb->prefix}bunny_offloaded_files");
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.DirectDatabaseQuery.SchemaChange -- Dropping plugin tables during uninstallation, schema changes required for cleanup
         $wpdb->query("DROP TABLE IF EXISTS {$wpdb->prefix}bunny_logs");
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.DirectDatabaseQuery.SchemaChange -- Dropping plugin tables during uninstallation, schema changes required for cleanup
         $wpdb->query("DROP TABLE IF EXISTS {$wpdb->prefix}bunny_optimization_queue");
     }
     

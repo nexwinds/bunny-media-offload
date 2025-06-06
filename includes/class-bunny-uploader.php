@@ -778,6 +778,7 @@ class Bunny_Uploader {
         
         $table_name = $wpdb->prefix . 'bunny_offloaded_files';
         
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery -- Inserting plugin-specific data not available via WordPress functions
         $wpdb->insert($table_name, array(
             'attachment_id' => $attachment_id,
             'bunny_url' => $bunny_url,
@@ -803,12 +804,13 @@ class Bunny_Uploader {
         $table_name = $wpdb->prefix . 'bunny_offloaded_files';
         
         // Get file info before deletion for stats
-        // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Using safe table name with wpdb prefix
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Querying plugin-specific table for file info before deletion
         $file_info = $wpdb->get_row($wpdb->prepare(
-            "SELECT file_size FROM $table_name WHERE attachment_id = %d",
+            "SELECT file_size FROM {$wpdb->prefix}bunny_offloaded_files WHERE attachment_id = %d",
             $attachment_id
         ));
         
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Deleting plugin-specific data not available via WordPress functions
         $wpdb->delete($table_name, array('attachment_id' => $attachment_id));
         
         // Update stats
@@ -823,11 +825,9 @@ class Bunny_Uploader {
     private function get_bunny_file_by_attachment($attachment_id) {
         global $wpdb;
         
-        $table_name = $wpdb->prefix . 'bunny_offloaded_files';
-        
-        // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Using safe table name with wpdb prefix
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Querying plugin-specific table for attachment data
         return $wpdb->get_row($wpdb->prepare(
-            "SELECT * FROM $table_name WHERE attachment_id = %d",
+            "SELECT * FROM {$wpdb->prefix}bunny_offloaded_files WHERE attachment_id = %d",
             $attachment_id
         ));
     }
@@ -1193,6 +1193,7 @@ class Bunny_Uploader {
     private function get_attachment_id_by_url($url) {
         global $wpdb;
         
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Querying WordPress core table for attachment lookup by URL
         $attachment_id = $wpdb->get_var($wpdb->prepare(
             "SELECT ID FROM {$wpdb->posts} WHERE guid = %s AND post_type = 'attachment'",
             $url
@@ -1201,6 +1202,7 @@ class Bunny_Uploader {
         if (!$attachment_id) {
             // Try alternative method - search by filename
             $filename = basename($url);
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Querying WordPress core table for attachment lookup by filename
             $attachment_id = $wpdb->get_var($wpdb->prepare(
                 "SELECT post_id FROM {$wpdb->postmeta} WHERE meta_key = '_wp_attached_file' AND meta_value LIKE %s",
                 '%' . $filename
@@ -1251,6 +1253,7 @@ class Bunny_Uploader {
             $attachment_ids = array($attachment_id);
         } else {
             // Get all migrated images
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Querying WordPress core table for all migrated attachments
             $attachment_ids = $wpdb->get_col(
                 "SELECT DISTINCT post_id FROM {$wpdb->postmeta} 
                  WHERE meta_key = '_bunny_url' AND meta_value != ''"

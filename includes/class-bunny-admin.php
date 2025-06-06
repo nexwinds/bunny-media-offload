@@ -127,7 +127,53 @@ class Bunny_Admin {
      * Register settings
      */
     public function register_settings() {
-        register_setting('bunny_media_offload_settings', 'bunny_media_offload_settings');
+        register_setting('bunny_media_offload_settings', 'bunny_media_offload_settings', array(
+            'sanitize_callback' => array($this, 'sanitize_settings')
+        ));
+    }
+    
+    /**
+     * Sanitize settings
+     */
+    public function sanitize_settings($input) {
+        $sanitized = array();
+        
+        if (isset($input['api_key'])) {
+            $sanitized['api_key'] = sanitize_text_field($input['api_key']);
+        }
+        
+        if (isset($input['storage_zone'])) {
+            $sanitized['storage_zone'] = sanitize_text_field($input['storage_zone']);
+        }
+        
+        if (isset($input['custom_hostname'])) {
+            $sanitized['custom_hostname'] = sanitize_text_field($input['custom_hostname']);
+        }
+        
+        $sanitized['auto_offload'] = isset($input['auto_offload']) ? (bool) $input['auto_offload'] : false;
+        $sanitized['delete_local'] = isset($input['delete_local']) ? (bool) $input['delete_local'] : false;
+        $sanitized['file_versioning'] = isset($input['file_versioning']) ? (bool) $input['file_versioning'] : false;
+        
+        if (isset($input['batch_size'])) {
+            $sanitized['batch_size'] = max(1, min(200, absint($input['batch_size'])));
+        }
+        
+        if (isset($input['log_level'])) {
+            $allowed_levels = array('debug', 'info', 'warning', 'error');
+            $sanitized['log_level'] = in_array($input['log_level'], $allowed_levels, true) ? $input['log_level'] : 'info';
+        }
+        
+        $sanitized['enable_logs'] = isset($input['enable_logs']) ? (bool) $input['enable_logs'] : false;
+        
+        if (isset($input['allowed_file_types']) && is_array($input['allowed_file_types'])) {
+            $sanitized['allowed_file_types'] = array_map('sanitize_text_field', $input['allowed_file_types']);
+        }
+        
+        if (isset($input['allowed_post_types']) && is_array($input['allowed_post_types'])) {
+            $sanitized['allowed_post_types'] = array_map('sanitize_text_field', $input['allowed_post_types']);
+        }
+        
+        return $sanitized;
     }
     
     /**
@@ -1241,6 +1287,7 @@ wp bunny optimization-status              # Check queue status</pre>
         if ($column_name === 'bunny_status') {
             global $wpdb;
             
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery -- Querying plugin-specific table for media library column display
             $bunny_file = $wpdb->get_row($wpdb->prepare(
                 "SELECT * FROM {$wpdb->prefix}bunny_offloaded_files WHERE attachment_id = %d",
                 $attachment_id

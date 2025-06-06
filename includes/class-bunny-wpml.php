@@ -74,6 +74,7 @@ class Bunny_WPML {
         
         // Check if original attachment is offloaded
         $bunny_table = $wpdb->prefix . 'bunny_offloaded_files';
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Querying plugin-specific table for WPML integration, caching not needed for one-time duplication operation
         $original_bunny_data = $wpdb->get_row($wpdb->prepare(
             "SELECT * FROM {$wpdb->prefix}bunny_offloaded_files WHERE attachment_id = %d",
             $original_attachment_id
@@ -188,6 +189,7 @@ class Bunny_WPML {
             
             if ($translated_id && $translated_id !== $attachment_id) {
                 // Check if translation already has Bunny data
+                // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Checking plugin-specific table for WPML synchronization, caching not needed for one-time sync operation
                 $existing_data = $wpdb->get_var($wpdb->prepare(
                     "SELECT id FROM {$wpdb->prefix}bunny_offloaded_files WHERE attachment_id = %d",
                     $translated_id
@@ -195,6 +197,7 @@ class Bunny_WPML {
                 
                 if (!$existing_data) {
                     // Copy Bunny data to translation
+                    // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Querying plugin-specific table for WPML synchronization, caching not needed for one-time sync operation
                     $original_data = $wpdb->get_row($wpdb->prepare(
                         "SELECT * FROM {$wpdb->prefix}bunny_offloaded_files WHERE attachment_id = %d",
                         $attachment_id

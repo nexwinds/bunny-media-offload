@@ -38,7 +38,7 @@ class Bunny_Sync {
             wp_die(esc_html__('Insufficient permissions.', 'bunny-media-offload'));
         }
         
-        $attachment_id = intval($_POST['attachment_id']);
+        $attachment_id = isset($_POST['attachment_id']) ? intval($_POST['attachment_id']) : 0;
         
         $result = $this->sync_file_to_local($attachment_id);
         
@@ -59,7 +59,7 @@ class Bunny_Sync {
             wp_die(esc_html__('Insufficient permissions.', 'bunny-media-offload'));
         }
         
-        $attachment_ids = array_map('intval', $_POST['attachment_ids']);
+        $attachment_ids = isset($_POST['attachment_ids']) ? array_map('intval', $_POST['attachment_ids']) : array();
         $results = array();
         
         foreach ($attachment_ids as $attachment_id) {
@@ -140,8 +140,8 @@ class Bunny_Sync {
     public function sync_all_files() {
         global $wpdb;
         
-        $table_name = $wpdb->prefix . 'bunny_offloaded_files';
-        $offloaded_files = $wpdb->get_results("SELECT * FROM $table_name WHERE is_synced = 1");
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Querying plugin-specific table for sync operation, no caching needed for bulk sync
+        $offloaded_files = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}bunny_offloaded_files WHERE is_synced = 1");
         
         $results = array(
             'total' => count($offloaded_files),
@@ -170,8 +170,8 @@ class Bunny_Sync {
     public function verify_all_files() {
         global $wpdb;
         
-        $table_name = $wpdb->prefix . 'bunny_offloaded_files';
-        $offloaded_files = $wpdb->get_results("SELECT * FROM $table_name WHERE is_synced = 1");
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Querying plugin-specific table for file verification, no caching needed for verification process
+        $offloaded_files = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}bunny_offloaded_files WHERE is_synced = 1");
         
         $results = array(
             'total' => count($offloaded_files),
@@ -282,8 +282,9 @@ class Bunny_Sync {
         $table_name = $wpdb->prefix . 'bunny_offloaded_files';
         
         // Find records where the attachment no longer exists
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Querying plugin-specific table for orphaned file cleanup, no caching needed for cleanup operations
         $orphaned_files = $wpdb->get_results("
-            SELECT bf.* FROM $table_name bf
+            SELECT bf.* FROM {$wpdb->prefix}bunny_offloaded_files bf
             LEFT JOIN {$wpdb->posts} p ON bf.attachment_id = p.ID
             WHERE p.ID IS NULL
         ");
@@ -306,7 +307,8 @@ class Bunny_Sync {
                 $results['deleted']++;
                 
                 // Remove from tracking table
-                $wpdb->delete($table_name, array('id' => $file->id));
+                // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Direct delete needed for orphaned file cleanup
+                $wpdb->delete($wpdb->prefix . 'bunny_offloaded_files', array('id' => $file->id));
             }
         }
         
@@ -319,8 +321,8 @@ class Bunny_Sync {
     public function get_remote_only_files() {
         global $wpdb;
         
-        $table_name = $wpdb->prefix . 'bunny_offloaded_files';
-        $files = $wpdb->get_results("SELECT * FROM $table_name WHERE is_synced = 1");
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Querying plugin-specific table for remote-only file identification
+        $files = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}bunny_offloaded_files WHERE is_synced = 1");
         
         $remote_only = array();
         
@@ -341,10 +343,9 @@ class Bunny_Sync {
     private function get_bunny_file_by_attachment($attachment_id) {
         global $wpdb;
         
-        $table_name = $wpdb->prefix . 'bunny_offloaded_files';
-        
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Querying plugin-specific table for file lookup
         return $wpdb->get_row($wpdb->prepare(
-            "SELECT * FROM $table_name WHERE attachment_id = %d",
+            "SELECT * FROM {$wpdb->prefix}bunny_offloaded_files WHERE attachment_id = %d",
             $attachment_id
         ));
     }
