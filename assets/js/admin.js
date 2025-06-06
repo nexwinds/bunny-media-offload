@@ -18,6 +18,12 @@
             errors: []
         },
         
+        optimizationState: {
+            active: false,
+            sessionId: null,
+            totalImages: 0
+        },
+        
         /**
          * Initialize
          */
@@ -100,27 +106,20 @@
             $(document).on('submit', '#optimization-form', function(e) {
                 e.preventDefault();
                 
-                var optimizationTarget = $('#optimization-form input[name="optimization_target"]:checked').val();
-                var optimizationCriteria = [];
-                $('#optimization-form input[name="optimization_criteria[]"]:checked').each(function() {
-                    optimizationCriteria.push($(this).val());
-                });
-                var processingMode = $('#optimization-form select[name="processing_mode"]').val();
-                
-                if (optimizationCriteria.length === 0) {
-                    alert('Please select at least one optimization criteria.');
+                // Check if optimization button is disabled
+                if ($('#start-optimization').prop('disabled')) {
                     return;
                 }
                 
-                BunnyAdmin.startStepOptimization(optimizationTarget, optimizationCriteria, processingMode);
+                var optimizationTarget = $('#optimization-form input[name="optimization_target"]:checked').val();
+                
+                BunnyAdmin.startStepOptimization(optimizationTarget);
             });
             
-            // Auto-refresh optimization status
-            if ($('#optimization-progress').length > 0) {
-                setInterval(function() {
-                    BunnyAdmin.updateOptimizationStatus();
-                }, 3000);
-            }
+            $(document).on('click', '#cancel-optimization', function(e) {
+                e.preventDefault();
+                BunnyAdmin.cancelOptimization();
+            });
         },
         
         /**
@@ -637,137 +636,171 @@
         /**
          * Start step-by-step optimization
          */
-        startStepOptimization: function(target, criteria, mode) {
+        startStepOptimization: function(target) {
+            var self = this;
+            
             $.ajax({
                 url: bunnyAjax.ajaxurl,
                 type: 'POST',
                 data: {
                     action: 'bunny_start_step_optimization',
                     nonce: bunnyAjax.nonce,
-                    optimization_target: target,
-                    optimization_criteria: criteria,
-                    processing_mode: mode
+                    optimization_target: target
                 },
                 success: function(response) {
                     if (response.success) {
-                        $('#optimization-progress').show();
-                        $('#start-optimization').hide();
-                        $('#cancel-optimization').show();
+                        self.optimizationState = {
+                            active: true,
+                            sessionId: response.data.session_id,
+                            totalImages: response.data.total_images
+                        };
                         
-                        BunnyAdmin.showNotice(response.data.message, 'success');
-                        BunnyAdmin.startOptimizationSteps(response.data.session_id);
+                        // Show optimization progress interface
+                        self.initOptimizationInterface();
+                        
+                        // Start processing
+                        self.processOptimizationBatch(self.optimizationState.sessionId);
                     } else {
-                        BunnyAdmin.showNotice(response.data.message, 'error');
+                        alert('Failed to start optimization: ' + response.data.message);
                     }
                 },
                 error: function() {
-                    BunnyAdmin.showNotice('Failed to start optimization.', 'error');
+                    alert('Failed to start optimization.');
                 }
             });
         },
         
         /**
-         * Start optimization steps visualization
+         * Initialize optimization interface
          */
-        startOptimizationSteps: function(sessionId) {
-            BunnyAdmin.currentOptimizationSession = sessionId;
-            BunnyAdmin.currentStep = 1;
+        initOptimizationInterface: function() {
+            $('#optimization-progress').show();
+            $('#start-optimization').hide();
+            $('#cancel-optimization').show();
             
-            // Initialize all steps
-            $('.bunny-step').removeClass('active completed error');
-            $('#step-1').addClass('active');
-            $('#step-1-status').text('Scanning for images...');
-            
-            // Start step processing
-            BunnyAdmin.processOptimizationStep(1);
+            // Initialize progress bar
+            $('#optimization-progress-bar').css('width', '0%');
+            $('#optimization-status-text').text('Starting optimization...');
         },
         
         /**
-         * Process optimization step
+         * Process optimization batch
          */
-        processOptimizationStep: function(step) {
-            var stepMessages = {
-                1: 'Scanning images that meet optimization criteria...',
-                2: 'Analyzing file sizes and formats...',
-                3: 'Converting images to modern formats...',
-                4: 'Compressing images to target size...',
-                5: 'Uploading optimized images to cloud...'
-            };
+        processOptimizationBatch: function(sessionId) {
+            var self = this;
             
-            $('#step-' + step).addClass('active');
-            $('#step-' + step + '-status').text(stepMessages[step]);
+            if (!this.optimizationState.active) {
+                return;
+            }
             
-            // Simulate step completion (replace with actual API calls)
-            setTimeout(function() {
-                $('#step-' + step).removeClass('active').addClass('completed');
-                $('#step-' + step + '-status').text('✓ Completed');
-                
-                if (step < 5) {
-                    BunnyAdmin.processOptimizationStep(step + 1);
-                } else {
-                    BunnyAdmin.completeOptimization();
+            $.ajax({
+                url: bunnyAjax.ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'bunny_optimization_batch',
+                    nonce: bunnyAjax.nonce,
+                    session_id: sessionId
+                },
+                success: function(response) {
+                    if (response.success) {
+                        var data = response.data;
+                        
+                        // Update progress bar
+                        $('#optimization-progress-bar').css('width', data.progress + '%');
+                        
+                        // Update status text
+                        $('#optimization-status-text').text(
+                            'Processed: ' + data.processed + '/' + data.total + 
+                            ' (' + data.successful + ' successful, ' + data.failed + ' failed)'
+                        );
+                        
+                        // Handle errors
+                        if (data.errors && data.errors.length > 0) {
+                            self.displayOptimizationErrors(data.errors);
+                        }
+                        
+                        if (!data.completed && self.optimizationState.active) {
+                            // Continue processing
+                            setTimeout(function() {
+                                self.processOptimizationBatch(sessionId);
+                            }, 1000);
+                        } else {
+                            self.completeOptimization(data.completed);
+                        }
+                    } else {
+                        self.handleOptimizationError(response.data.message);
+                    }
+                },
+                error: function() {
+                    self.handleOptimizationError('Optimization batch failed.');
                 }
-            }, 2000); // 2 seconds per step for demo
+            });
+        },
+        
+        /**
+         * Display optimization errors
+         */
+        displayOptimizationErrors: function(errors) {
+            var $errorList = $('#optimization-error-list');
+            $errorList.empty();
+            
+            errors.forEach(function(error) {
+                $errorList.append('<li>' + error + '</li>');
+            });
+            
+            $('#optimization-errors').show();
+        },
+        
+        /**
+         * Handle optimization error
+         */
+        handleOptimizationError: function(message) {
+            this.optimizationState.active = false;
+            $('#optimization-status-text').text('Error: ' + message);
+            $('#start-optimization').show();
+            $('#cancel-optimization').hide();
+            alert('Optimization failed: ' + message);
         },
         
         /**
          * Complete optimization
          */
-        completeOptimization: function() {
+        completeOptimization: function(completed) {
+            this.optimizationState.active = false;
+            
+            if (completed) {
+                $('#optimization-status-text').text('Optimization completed successfully!');
+                alert('Optimization completed successfully!');
+            }
+            
             $('#start-optimization').show();
             $('#cancel-optimization').hide();
-            BunnyAdmin.showNotice('Optimization completed successfully!', 'success');
         },
         
         /**
-         * Update optimization status
+         * Cancel optimization
          */
-        updateOptimizationStatus: function() {
-            $.ajax({
-                url: bunnyAjax.ajaxurl,
-                type: 'POST',
-                data: {
-                    action: 'bunny_optimization_status',
-                    nonce: bunnyAjax.nonce
-                },
-                success: function(response) {
-                    if (response.success) {
-                        var stats = response.data;
-                        
-                        // Update counters
-                        $('#pending-count').text(stats.pending || 0);
-                        $('#processing-count').text(stats.processing || 0);
-                        $('#completed-count').text(stats.completed || 0);
-                        $('#failed-count').text(stats.failed || 0);
-                        
-                        // Update progress bar
-                        var total = stats.total || 0;
-                        var completed = (stats.completed || 0) + (stats.failed || 0);
-                        var progress = total > 0 ? (completed / total) * 100 : 0;
-                        
-                        $('#optimization-progress-bar').css('width', progress + '%');
-                        
-                        // Update status text
-                        $('#optimization-status-text').text(
-                            'Processed: ' + completed + '/' + total + 
-                            ' (' + (stats.completed || 0) + ' successful, ' + (stats.failed || 0) + ' failed)'
-                        );
-                        
-                        // Check if optimization is complete
-                        if (total > 0 && completed >= total) {
-                            $('#start-optimization').show();
-                            $('#cancel-optimization').hide();
-                            BunnyAdmin.showNotice('Optimization completed!', 'success');
-                            
-                            // Stop auto-refresh for this session
-                            clearInterval(window.optimizationInterval);
-                        }
+        cancelOptimization: function() {
+            if (this.optimizationState && this.optimizationState.active) {
+                this.optimizationState.active = false;
+                
+                $.ajax({
+                    url: bunnyAjax.ajaxurl,
+                    type: 'POST',
+                    data: {
+                        action: 'bunny_cancel_optimization',
+                        nonce: bunnyAjax.nonce,
+                        session_id: this.optimizationState.sessionId
+                    },
+                    success: function(response) {
+                        // Handle cancellation response if needed
                     }
-                },
-                error: function() {
-                    console.log('Failed to update optimization status');
-                }
-            });
+                });
+                
+                $('#optimization-status-text').text('Optimization cancelled.');
+                $('#start-optimization').show();
+                $('#cancel-optimization').hide();
+            }
         },
         
         /**

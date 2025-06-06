@@ -53,6 +53,8 @@ class Bunny_Optimizer {
         add_action('wp_ajax_bunny_process_optimization_queue', array($this, 'process_optimization_queue'));
         add_action('wp_ajax_bunny_start_step_optimization', array($this, 'handle_step_optimization'));
         add_action('wp_ajax_bunny_get_optimization_criteria', array($this, 'ajax_get_optimization_criteria'));
+        add_action('wp_ajax_bunny_optimization_batch', array($this, 'ajax_optimization_batch'));
+        add_action('wp_ajax_bunny_cancel_optimization', array($this, 'ajax_cancel_optimization'));
         
         // Scheduled optimization processing
         add_action('bunny_process_optimization_queue', array($this, 'process_optimization_queue'));
@@ -757,9 +759,10 @@ class Bunny_Optimizer {
             wp_die(esc_html__('Insufficient permissions.', 'bunny-media-offload'));
         }
         
-        $target = isset($_POST['optimization_target']) ? sanitize_text_field(wp_unslash($_POST['optimization_target'])) : 'all';
-        $criteria = isset($_POST['optimization_criteria']) ? array_map('sanitize_text_field', wp_unslash($_POST['optimization_criteria'])) : array();
-        $mode = isset($_POST['processing_mode']) ? sanitize_text_field(wp_unslash($_POST['processing_mode'])) : 'step_by_step';
+        $target = isset($_POST['optimization_target']) ? sanitize_text_field(wp_unslash($_POST['optimization_target'])) : 'local';
+        
+        // Always apply both optimization criteria (format conversion and recompression)
+        $criteria = array('format_conversion', 'recompress_modern');
         
         // Get images that meet the criteria
         $images = $this->get_images_for_optimization($target, $criteria);
@@ -775,14 +778,13 @@ class Bunny_Optimizer {
             'id' => $session_id,
             'target' => $target,
             'criteria' => $criteria,
-            'mode' => $mode,
             'total_images' => count($images),
             'processed' => 0,
             'successful' => 0,
             'failed' => 0,
-            'current_step' => 1,
             'status' => 'running',
             'start_time' => time(),
+            'errors' => array(),
             'images' => array_slice($images, 0, 100) // Process in chunks
         );
         
@@ -888,5 +890,231 @@ class Bunny_Optimizer {
         wp_cache_set($cache_key, $eligible_images, 'bunny_media_offload', 5 * MINUTE_IN_SECONDS);
         
         return $eligible_images;
+    }
+    
+    /**
+     * Get detailed optimization statistics for the optimization page
+     */
+    public function get_detailed_optimization_stats() {
+        $cache_key = 'bunny_detailed_optimization_stats';
+        $cached_stats = wp_cache_get($cache_key, 'bunny_media_offload');
+        
+        if ($cached_stats !== false) {
+            return $cached_stats;
+        }
+        
+        global $wpdb;
+        
+        $max_size = $this->get_max_file_size();
+        $upload_dir = wp_upload_dir();
+        $batch_size = $this->settings->get('optimization_batch_size', 60);
+        
+        // Get all image attachments with file paths
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Caching implemented above
+        $all_images = $wpdb->get_results("
+            SELECT p.ID, p.post_mime_type, m.meta_value as file_path
+            FROM {$wpdb->posts} p
+            LEFT JOIN {$wpdb->postmeta} m ON p.ID = m.post_id AND m.meta_key = '_wp_attached_file'
+            WHERE p.post_type = 'attachment' 
+            AND p.post_mime_type LIKE 'image/%'
+        ");
+        
+        // Get already optimized images count
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Caching implemented above
+        $optimized_count = $wpdb->get_var("
+            SELECT COUNT(*) 
+            FROM {$wpdb->postmeta} 
+            WHERE meta_key = '_bunny_optimized' 
+            AND meta_value = '1'
+        ");
+        
+        // Initialize counters
+        $stats = array(
+            'jpg_png_to_convert' => 0,
+            'webp_avif_to_recompress' => 0,
+            'total_eligible' => 0,
+            'already_optimized' => (int) $optimized_count,
+            'batch_size' => $batch_size,
+            'max_size_threshold' => round($max_size / 1024) . 'KB'
+        );
+        
+        foreach ($all_images as $image) {
+            if (!$image->file_path) continue;
+            
+            $file_path = $upload_dir['basedir'] . '/' . $image->file_path;
+            if (!file_exists($file_path)) continue;
+            
+            $file_size = filesize($file_path);
+            $file_info = pathinfo($file_path);
+            $current_format = strtolower($file_info['extension']);
+            
+            // Check if already optimized
+            $is_optimized = get_post_meta($image->ID, '_bunny_optimized', true);
+            if ($is_optimized) continue;
+            
+            $needs_optimization = false;
+            
+            // JPG/PNG that need conversion to modern formats
+            if (in_array($current_format, array('jpg', 'jpeg', 'png'))) {
+                $stats['jpg_png_to_convert']++;
+                $needs_optimization = true;
+            }
+            
+            // WebP/AVIF that exceed size limit and need recompression
+            if (in_array($current_format, array('webp', 'avif')) && $file_size > $max_size) {
+                $stats['webp_avif_to_recompress']++;
+                $needs_optimization = true;
+            }
+            
+            if ($needs_optimization) {
+                $stats['total_eligible']++;
+            }
+        }
+        
+        $stats['has_files_to_optimize'] = $stats['total_eligible'] > 0;
+        
+        // Cache for 5 minutes
+        wp_cache_set($cache_key, $stats, 'bunny_media_offload', 5 * MINUTE_IN_SECONDS);
+        
+        return $stats;
+    }
+    
+    /**
+     * Process optimization batch
+     */
+    public function ajax_optimization_batch() {
+        check_ajax_referer('bunny_ajax_nonce', 'nonce');
+        
+        if (!current_user_can('manage_options')) {
+            wp_die(esc_html__('Insufficient permissions.', 'bunny-media-offload'));
+        }
+        
+        $session_id = isset($_POST['session_id']) ? sanitize_text_field(wp_unslash($_POST['session_id'])) : '';
+        $session = get_transient('bunny_optimization_' . $session_id);
+        
+        if (!$session) {
+            wp_send_json_error(array('message' => __('Optimization session not found.', 'bunny-media-offload')));
+        }
+        
+        if ($session['status'] === 'cancelled') {
+            wp_send_json_error(array('message' => __('Optimization was cancelled.', 'bunny-media-offload')));
+        }
+        
+        $batch_size = $this->settings->get('optimization_batch_size', 60);
+        $result = $this->process_optimization_batch($session, $batch_size);
+        
+        // Update session
+        set_transient('bunny_optimization_' . $session_id, array_merge($session, array(
+            'processed' => $result['processed'],
+            'successful' => $result['successful'],
+            'failed' => $result['failed'],
+            'errors' => array_merge($session['errors'], $result['errors']),
+            'status' => $result['completed'] ? 'completed' : 'running'
+        )), 2 * HOUR_IN_SECONDS);
+        
+        $response = array(
+            'processed' => $result['processed'],
+            'successful' => $result['successful'],
+            'failed' => $result['failed'],
+            'total' => $session['total_images'],
+            'completed' => $result['completed'],
+            'progress' => $session['total_images'] > 0 ? round(($result['processed'] / $session['total_images']) * 100, 2) : 0,
+            'errors' => $result['errors']
+        );
+        
+        if ($result['completed']) {
+            $this->logger->log('info', 'Optimization completed', array(
+                'session_id' => $session_id,
+                'total_processed' => $result['processed'],
+                'successful' => $result['successful'],
+                'failed' => $result['failed']
+            ));
+            
+            $response['message'] = sprintf(
+                // translators: %1$d is the number of images processed, %2$d is the number of successful optimizations, %3$d is the number of failed optimizations
+                __('Optimization completed. %1$d images processed, %2$d successful, %3$d failed.', 'bunny-media-offload'),
+                $result['processed'],
+                $result['successful'],
+                $result['failed']
+            );
+        }
+        
+        wp_send_json_success($response);
+    }
+    
+    /**
+     * Cancel optimization
+     */
+    public function ajax_cancel_optimization() {
+        check_ajax_referer('bunny_ajax_nonce', 'nonce');
+        
+        if (!current_user_can('manage_options')) {
+            wp_die(esc_html__('Insufficient permissions.', 'bunny-media-offload'));
+        }
+        
+        $session_id = isset($_POST['session_id']) ? sanitize_text_field(wp_unslash($_POST['session_id'])) : '';
+        $session = get_transient('bunny_optimization_' . $session_id);
+        
+        if ($session) {
+            $session['status'] = 'cancelled';
+            set_transient('bunny_optimization_' . $session_id, $session, 2 * HOUR_IN_SECONDS);
+        }
+        
+        $this->logger->log('info', 'Optimization cancelled', array('session_id' => $session_id));
+        
+        wp_send_json_success(array('message' => __('Optimization cancelled.', 'bunny-media-offload')));
+    }
+    
+    /**
+     * Process a batch of optimization tasks
+     */
+    private function process_optimization_batch($session, $batch_size) {
+        $images_to_process = array_slice($session['images'], $session['processed'], $batch_size);
+        
+        $successful = 0;
+        $failed = 0;
+        $errors = array();
+        
+        foreach ($images_to_process as $image) {
+            if (!isset($image['ID'])) {
+                $failed++;
+                $errors[] = __('Invalid image data', 'bunny-media-offload');
+                continue;
+            }
+            
+            $result = $this->optimize_image_by_id($image['ID']);
+            
+            if ($result) {
+                $successful++;
+            } else {
+                $failed++;
+                // translators: %d is the attachment ID
+                $errors[] = sprintf(__('Failed to optimize image ID %d', 'bunny-media-offload'), $image['ID']);
+            }
+        }
+        
+        $total_processed = $session['processed'] + count($images_to_process);
+        $completed = $total_processed >= $session['total_images'];
+        
+        return array(
+            'processed' => $total_processed,
+            'successful' => $session['successful'] + $successful,
+            'failed' => $session['failed'] + $failed,
+            'errors' => $errors,
+            'completed' => $completed
+        );
+    }
+    
+    /**
+     * Optimize image by attachment ID
+     */
+    private function optimize_image_by_id($attachment_id) {
+        $file_path = get_attached_file($attachment_id);
+        
+        if (!$file_path || !file_exists($file_path)) {
+            return false;
+        }
+        
+        return $this->optimize_image($file_path, $attachment_id);
     }
 } 
