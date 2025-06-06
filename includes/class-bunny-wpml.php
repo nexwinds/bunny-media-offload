@@ -406,8 +406,10 @@ class Bunny_WPML {
                 <td>
                     <span class="bunny-status bunny-status-offloaded">✓ <?php _e('WPML Active', 'bunny-media-offload'); ?></span>
                     <p class="description">
-                        <?php printf(
-                            __('Detected %d active languages. Default language: %s', 'bunny-media-offload'),
+                        <?php 
+                        printf(
+                            // translators: %1$d is the number of active languages, %2$s is the default language code
+                            __('Detected %1$d active languages. Default language: %2$s', 'bunny-media-offload'),
                             count($active_languages),
                             strtoupper($default_language)
                         ); ?>

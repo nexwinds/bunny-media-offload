@@ -470,6 +470,7 @@ class Bunny_Optimizer {
         $added = $this->add_to_optimization_queue($attachment_ids, $priority);
         
         wp_send_json_success(array(
+            // translators: %d is the number of images added to the queue
             'message' => sprintf(__('Added %d images to optimization queue.', 'bunny-media-offload'), $added),
             'total' => $added
         ));
@@ -747,6 +748,7 @@ class Bunny_Optimizer {
         wp_send_json_success(array(
             'session_id' => $session_id,
             'total_images' => count($images),
+            // translators: %d is the number of images to be optimized
             'message' => sprintf(__('Starting optimization of %d images...', 'bunny-media-offload'), count($images))
         ));
     }

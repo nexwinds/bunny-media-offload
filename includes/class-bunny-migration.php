@@ -68,7 +68,8 @@ class Bunny_Migration {
             'migration_id' => $migration_id,
             'total_files' => $total_files,
             'concurrent_limit' => $concurrent_limit,
-            'message' => sprintf(__('Migration started. %d files to process with %d concurrent threads.', 'bunny-media-offload'), $total_files, $concurrent_limit)
+            // translators: %1$d is the total number of files, %2$d is the number of concurrent threads
+            'message' => sprintf(__('Migration started. %1$d files to process with %2$d concurrent threads.', 'bunny-media-offload'), $total_files, $concurrent_limit)
         ));
     }
     
@@ -124,7 +125,8 @@ class Bunny_Migration {
             ));
             
             $response['message'] = sprintf(
-                __('Migration completed. %d files processed, %d successful, %d failed.', 'bunny-media-offload'),
+                // translators: %1$d is the number of files processed, %2$d is the number of successful uploads, %3$d is the number of failed uploads
+                __('Migration completed. %1$d files processed, %2$d successful, %3$d failed.', 'bunny-media-offload'),
                 $result['processed'],
                 $result['successful'],
                 $result['failed']
@@ -304,6 +306,7 @@ class Bunny_Migration {
         foreach ($files as $file) {
             if (!$file->file_path) {
                 $failed++;
+                // translators: %d is the attachment ID
                 $errors[] = sprintf(__('File path not found for attachment ID %d', 'bunny-media-offload'), $file->ID);
                 continue;
             }
@@ -313,6 +316,7 @@ class Bunny_Migration {
             
             if (!file_exists($local_path)) {
                 $failed++;
+                // translators: %s is the local file path
                 $errors[] = sprintf(__('Local file not found: %s', 'bunny-media-offload'), $local_path);
                 continue;
             }
@@ -326,7 +330,8 @@ class Bunny_Migration {
             if (is_wp_error($bunny_url)) {
                 $failed++;
                 $errors[] = sprintf(
-                    __('Upload failed for %s: %s', 'bunny-media-offload'),
+                    // translators: %1$s is the file title, %2$s is the error message
+                    __('Upload failed for %1$s: %2$s', 'bunny-media-offload'),
                     $file->post_title,
                     $bunny_url->get_error_message()
                 );

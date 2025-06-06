@@ -49,6 +49,7 @@ class Bunny_API {
         }
         
         $this->logger->error('Connection test failed', array('response_code' => $response_code));
+        // translators: %d is the HTTP response code
         return new WP_Error('connection_failed', sprintf(__('Connection failed with response code: %d', 'bunny-media-offload'), $response_code));
     }
     
@@ -104,6 +105,7 @@ class Bunny_API {
             'response_code' => $response_code
         ));
         
+        // translators: %d is the HTTP response code
         return new WP_Error('upload_failed', sprintf(__('Upload failed with response code: %d', 'bunny-media-offload'), $response_code));
     }
     
@@ -148,6 +150,7 @@ class Bunny_API {
             'response_code' => $response_code
         ));
         
+        // translators: %d is the HTTP response code
         return new WP_Error('delete_failed', sprintf(__('Deletion failed with response code: %d', 'bunny-media-offload'), $response_code));
     }
     
@@ -176,6 +179,7 @@ class Bunny_API {
                 'file' => $remote_path,
                 'response_code' => $response_code
             ));
+            // translators: %d is the HTTP response code
             return new WP_Error('download_failed', sprintf(__('Download failed with response code: %d', 'bunny-media-offload'), $response_code));
         }
         
@@ -242,6 +246,7 @@ class Bunny_API {
         $response_code = wp_remote_retrieve_response_code($response);
         
         if ($response_code !== 200) {
+            // translators: %d is the HTTP response code
             return new WP_Error('list_failed', sprintf(__('List failed with response code: %d', 'bunny-media-offload'), $response_code));
         }
         

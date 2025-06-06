@@ -222,6 +222,7 @@ class Bunny_Admin {
                             <?php 
                             $active_languages = apply_filters('wpml_active_languages', null);
                             printf(
+                                // translators: %d is the number of active languages
                                 __('Media files are automatically synchronized across %d active languages.', 'bunny-media-offload'),
                                 count($active_languages)
                             ); 
@@ -533,11 +534,14 @@ define('BUNNY_CUSTOM_HOSTNAME', 'cdn.yoursite.com');
             
             <div class="bunny-migration-status">
                 <h3><?php _e('Migration Status', 'bunny-media-offload'); ?></h3>
-                <p><?php printf(__('%d of %d files migrated (%s%%)', 'bunny-media-offload'), 
-                    $migration_stats['migrated_files'], 
-                    $migration_stats['total_attachments'],
-                    $migration_stats['migration_percentage']
-                ); ?></p>
+                <p><?php 
+                    // translators: %1$d is the number of migrated files, %2$d is the total number of files, %3$s is the migration percentage
+                    printf(__('%1$d of %2$d files migrated (%3$s%%)', 'bunny-media-offload'), 
+                        $migration_stats['migrated_files'], 
+                        $migration_stats['total_attachments'],
+                        $migration_stats['migration_percentage']
+                    ); 
+                ?></p>
                 <div class="bunny-progress-bar">
                     <div class="bunny-progress-fill" style="width: <?php echo $migration_stats['migration_percentage']; ?>%"></div>
                 </div>
@@ -687,7 +691,10 @@ define('BUNNY_CUSTOM_HOSTNAME', 'cdn.yoursite.com');
                         <th scope="row"><?php _e('Size Threshold', 'bunny-media-offload'); ?></th>
                         <td>
                             <strong><?php echo number_format($optimization_criteria['oversized_count']); ?></strong> 
-                            <?php printf(__('images larger than %s need compression', 'bunny-media-offload'), $this->settings->get('optimization_max_size', '50kb')); ?>
+                            <?php 
+                            // translators: %s is the maximum file size setting
+                            printf(__('images larger than %s need compression', 'bunny-media-offload'), $this->settings->get('optimization_max_size', '50kb')); 
+                            ?>
                         </td>
                     </tr>
                     <tr>
@@ -725,7 +732,10 @@ define('BUNNY_CUSTOM_HOSTNAME', 'cdn.yoursite.com');
                             <tr>
                                 <th scope="row"><?php _e('Optimization Criteria', 'bunny-media-offload'); ?></th>
                                 <td>
-                                    <label><input type="checkbox" name="optimization_criteria[]" value="size_threshold" checked> <?php printf(__('Images larger than %s', 'bunny-media-offload'), $this->settings->get('optimization_max_size', '50kb')); ?></label><br>
+                                    <label><input type="checkbox" name="optimization_criteria[]" value="size_threshold" checked> <?php 
+                                        // translators: %s is the maximum file size setting
+                                        printf(__('Images larger than %s', 'bunny-media-offload'), $this->settings->get('optimization_max_size', '50kb')); 
+                                    ?></label><br>
                                     <label><input type="checkbox" name="optimization_criteria[]" value="format_conversion" checked> <?php _e('Convert JPG/PNG to modern formats', 'bunny-media-offload'); ?></label><br>
                                     <label><input type="checkbox" name="optimization_criteria[]" value="recompress_modern"> <?php _e('Recompress existing WebP/AVIF if oversized', 'bunny-media-offload'); ?></label>
                                     <p class="description"><?php _e('Select which optimization criteria to apply during processing.', 'bunny-media-offload'); ?></p>
@@ -1206,7 +1216,8 @@ wp bunny optimization-status              # Check queue status</pre>
         
         if (is_array($result)) {
             wp_send_json_success(array(
-                'message' => sprintf(__('Processed %d thumbnails with %d errors.', 'bunny-media-offload'), $result['processed'], $result['errors']),
+                // translators: %1$d is the number of processed thumbnails, %2$d is the number of errors
+                'message' => sprintf(__('Processed %1$d thumbnails with %2$d errors.', 'bunny-media-offload'), $result['processed'], $result['errors']),
                 'processed' => $result['processed'],
                 'errors' => $result['errors']
             ));
@@ -1246,6 +1257,7 @@ wp bunny optimization-status              # Check queue status</pre>
                     
                     if ($is_optimized && $optimization_data) {
                         $compression_ratio = $optimization_data['compression_ratio'] ?? 0;
+                        // translators: %s is the compression percentage
                         echo '<br><span class="bunny-optimization-status optimized" title="' . sprintf(__('Compressed by %s%%', 'bunny-media-offload'), $compression_ratio) . '">' . __('Optimized', 'bunny-media-offload') . '</span>';
                     } else {
                         // Check if in optimization queue

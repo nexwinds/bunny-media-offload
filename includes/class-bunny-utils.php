@@ -200,12 +200,15 @@ class Bunny_Utils {
             return __('Just now', 'bunny-media-offload');
         } elseif ($diff < 3600) {
             $minutes = floor($diff / 60);
+            // translators: %d is the number of minutes
             return sprintf(_n('%d minute ago', '%d minutes ago', $minutes, 'bunny-media-offload'), $minutes);
         } elseif ($diff < 86400) {
             $hours = floor($diff / 3600);
+            // translators: %d is the number of hours
             return sprintf(_n('%d hour ago', '%d hours ago', $hours, 'bunny-media-offload'), $hours);
         } elseif ($diff < 2592000) {
             $days = floor($diff / 86400);
+            // translators: %d is the number of days
             return sprintf(_n('%d day ago', '%d days ago', $days, 'bunny-media-offload'), $days);
         } else {
             return self::format_date($date);
@@ -263,14 +266,17 @@ class Bunny_Utils {
      */
     public static function format_duration($seconds) {
         if ($seconds < 60) {
+            // translators: %d is the number of seconds
             return sprintf(__('%d seconds', 'bunny-media-offload'), $seconds);
         } elseif ($seconds < 3600) {
             $minutes = floor($seconds / 60);
+            // translators: %d is the number of minutes
             return sprintf(__('%d minutes', 'bunny-media-offload'), $minutes);
         } else {
             $hours = floor($seconds / 3600);
             $minutes = floor(($seconds % 3600) / 60);
-            return sprintf(__('%d hours %d minutes', 'bunny-media-offload'), $hours, $minutes);
+            // translators: %1$d is the number of hours, %2$d is the number of minutes
+            return sprintf(__('%1$d hours %2$d minutes', 'bunny-media-offload'), $hours, $minutes);
         }
     }
 } 
