@@ -184,7 +184,7 @@ class Bunny_Optimizer {
             if ($result) {
                 // Replace original file
                 if (copy($temp_file, $file_path)) {
-                    unlink($temp_file);
+                    wp_delete_file($temp_file);
                     
                     return array(
                         'optimized_path' => $file_path,
@@ -200,7 +200,7 @@ class Bunny_Optimizer {
             
             // Clean up temp file
             if (file_exists($temp_file)) {
-                unlink($temp_file);
+                wp_delete_file($temp_file);
             }
             
         } catch (Exception $e) {
@@ -320,6 +320,7 @@ class Bunny_Optimizer {
                     (attachment_id, priority, status, date_added) 
                     VALUES " . implode(', ', $placeholders);
             
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- $sql is safely constructed with placeholders above
             $result = $wpdb->query($wpdb->prepare($sql, $values));
             
             $this->logger->log('info', "Added {$result} files to optimization queue");
@@ -339,6 +340,7 @@ class Bunny_Optimizer {
         $concurrent_limit = $this->settings->get('optimization_concurrent_limit', 3);
         
         // Get pending items from queue
+        // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Using safe table name with wpdb prefix
         $items = $wpdb->get_results($wpdb->prepare(
             "SELECT * FROM {$this->queue_table} 
              WHERE status = 'pending' 
@@ -453,11 +455,11 @@ class Bunny_Optimizer {
         check_ajax_referer('bunny_ajax_nonce', 'nonce');
         
         if (!current_user_can('manage_options')) {
-            wp_die(__('Insufficient permissions.', 'bunny-media-offload'));
+            wp_die(esc_html__('Insufficient permissions.', 'bunny-media-offload'));
         }
         
-        $file_types = isset($_POST['file_types']) ? array_map('sanitize_text_field', $_POST['file_types']) : array('jpg', 'jpeg', 'png', 'gif');
-        $priority = sanitize_text_field($_POST['priority'] ?? 'normal');
+        $file_types = isset($_POST['file_types']) ? array_map('sanitize_text_field', wp_unslash($_POST['file_types'])) : array('jpg', 'jpeg', 'png', 'gif');
+        $priority = isset($_POST['priority']) ? sanitize_text_field(wp_unslash($_POST['priority'])) : 'normal';
         
         // Get offloaded images that need optimization
         $attachment_ids = $this->get_optimizable_attachments($file_types);
@@ -484,6 +486,7 @@ class Bunny_Optimizer {
         
         global $wpdb;
         
+        // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Using safe table name with wpdb prefix
         $stats = $wpdb->get_row("
             SELECT 
                 COUNT(*) as total,
@@ -520,6 +523,7 @@ class Bunny_Optimizer {
             )
         ";
         
+        // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- $sql is safely constructed with escaped values above
         $results = $wpdb->get_col($sql);
         
         // Apply WPML filter to avoid optimizing duplicate translations
@@ -711,12 +715,12 @@ class Bunny_Optimizer {
         check_ajax_referer('bunny_ajax_nonce', 'nonce');
         
         if (!current_user_can('manage_options')) {
-            wp_die(__('Insufficient permissions.', 'bunny-media-offload'));
+            wp_die(esc_html__('Insufficient permissions.', 'bunny-media-offload'));
         }
         
-        $target = sanitize_text_field($_POST['optimization_target'] ?? 'all');
-        $criteria = isset($_POST['optimization_criteria']) ? array_map('sanitize_text_field', $_POST['optimization_criteria']) : array();
-        $mode = sanitize_text_field($_POST['processing_mode'] ?? 'step_by_step');
+        $target = isset($_POST['optimization_target']) ? sanitize_text_field(wp_unslash($_POST['optimization_target'])) : 'all';
+        $criteria = isset($_POST['optimization_criteria']) ? array_map('sanitize_text_field', wp_unslash($_POST['optimization_criteria'])) : array();
+        $mode = isset($_POST['processing_mode']) ? sanitize_text_field(wp_unslash($_POST['processing_mode'])) : 'step_by_step';
         
         // Get images that meet the criteria
         $images = $this->get_images_for_optimization($target, $criteria);

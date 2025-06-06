@@ -127,8 +127,8 @@ class Bunny_Utils {
      * Check if URL is external
      */
     public static function is_external_url($url) {
-        $site_url = parse_url(site_url());
-        $url_parts = parse_url($url);
+        $site_url = wp_parse_url(site_url());
+        $url_parts = wp_parse_url($url);
         
         return !empty($url_parts['host']) && $url_parts['host'] !== $site_url['host'];
     }

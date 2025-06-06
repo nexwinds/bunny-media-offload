@@ -74,6 +74,7 @@ class Bunny_WPML {
         
         // Check if original attachment is offloaded
         $bunny_table = $wpdb->prefix . 'bunny_offloaded_files';
+        // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Using safe table name with wpdb prefix
         $original_bunny_data = $wpdb->get_row($wpdb->prepare(
             "SELECT * FROM $bunny_table WHERE attachment_id = %d",
             $original_attachment_id
@@ -187,6 +188,7 @@ class Bunny_WPML {
             
             if ($translated_id && $translated_id !== $attachment_id) {
                 // Check if translation already has Bunny data
+                // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Using safe table name with wpdb prefix
                 $existing_data = $wpdb->get_var($wpdb->prepare(
                     "SELECT id FROM $bunny_table WHERE attachment_id = %d",
                     $translated_id
@@ -194,6 +196,7 @@ class Bunny_WPML {
                 
                 if (!$existing_data) {
                     // Copy Bunny data to translation
+                    // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Using safe table name with wpdb prefix
                     $original_data = $wpdb->get_row($wpdb->prepare(
                         "SELECT * FROM $bunny_table WHERE attachment_id = %d",
                         $attachment_id
@@ -399,25 +402,25 @@ class Bunny_WPML {
         
         ob_start();
         ?>
-        <h2><?php _e('Multilingual Settings (WPML)', 'bunny-media-offload'); ?></h2>
+        <h2><?php esc_html_e('Multilingual Settings (WPML)', 'bunny-media-offload'); ?></h2>
         <table class="form-table">
             <tr>
-                <th scope="row"><?php _e('WPML Status', 'bunny-media-offload'); ?></th>
+                <th scope="row"><?php esc_html_e('WPML Status', 'bunny-media-offload'); ?></th>
                 <td>
-                    <span class="bunny-status bunny-status-offloaded">✓ <?php _e('WPML Active', 'bunny-media-offload'); ?></span>
+                    <span class="bunny-status bunny-status-offloaded">✓ <?php esc_html_e('WPML Active', 'bunny-media-offload'); ?></span>
                     <p class="description">
                         <?php 
                         printf(
                             // translators: %1$d is the number of active languages, %2$s is the default language code
-                            __('Detected %1$d active languages. Default language: %2$s', 'bunny-media-offload'),
+                            esc_html__('Detected %1$d active languages. Default language: %2$s', 'bunny-media-offload'),
                             count($active_languages),
-                            strtoupper($default_language)
+                            esc_html(strtoupper($default_language))
                         ); ?>
                     </p>
                 </td>
             </tr>
             <tr>
-                <th scope="row"><?php _e('Active Languages', 'bunny-media-offload'); ?></th>
+                <th scope="row"><?php esc_html_e('Active Languages', 'bunny-media-offload'); ?></th>
                 <td>
                     <?php if ($active_languages): ?>
                         <ul style="margin: 0; padding-left: 20px;">
@@ -426,7 +429,7 @@ class Bunny_WPML {
                                     <?php echo esc_html($lang['translated_name']); ?> 
                                     (<?php echo esc_html($lang['code']); ?>)
                                     <?php if ($lang['code'] === $default_language): ?>
-                                        <em><?php _e('- Default', 'bunny-media-offload'); ?></em>
+                                        <em><?php esc_html_e('- Default', 'bunny-media-offload'); ?></em>
                                     <?php endif; ?>
                                 </li>
                             <?php endforeach; ?>
@@ -435,10 +438,10 @@ class Bunny_WPML {
                 </td>
             </tr>
             <tr>
-                <th scope="row"><?php _e('Media Synchronization', 'bunny-media-offload'); ?></th>
+                <th scope="row"><?php esc_html_e('Media Synchronization', 'bunny-media-offload'); ?></th>
                 <td>
                     <p class="description">
-                        <?php _e('Media files are automatically synchronized across all language versions. When a file is offloaded or optimized, all translations will reference the same CDN URL.', 'bunny-media-offload'); ?>
+                        <?php esc_html_e('Media files are automatically synchronized across all language versions. When a file is offloaded or optimized, all translations will reference the same CDN URL.', 'bunny-media-offload'); ?>
                     </p>
                 </td>
             </tr>

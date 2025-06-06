@@ -66,7 +66,7 @@ class Bunny_Stats {
             FROM $table_name 
             WHERE is_synced = 1 
             AND date_offloaded >= %s
-        ", date('Y-m-d H:i:s', strtotime('-30 days'))));
+        ", gmdate('Y-m-d H:i:s', strtotime('-30 days'))));
         
         // Process file types
         $type_stats = array(
@@ -166,7 +166,7 @@ class Bunny_Stats {
         // Get upload trend (last 7 days)
         $upload_trend = array();
         for ($i = 6; $i >= 0; $i--) {
-            $date = date('Y-m-d', strtotime("-$i days"));
+            $date = gmdate('Y-m-d', strtotime("-$i days"));
             $count = $wpdb->get_var($wpdb->prepare("
                 SELECT COUNT(*) 
                 FROM $table_name 

@@ -560,6 +560,7 @@ class Bunny_Uploader {
         }
         
         // Check call stack for WooCommerce functions
+        // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_debug_backtrace -- Used for context detection only
         $backtrace = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 10);
         foreach ($backtrace as $trace) {
             if (isset($trace['function']) && strpos($trace['function'], 'wc_') === 0) {
@@ -802,6 +803,7 @@ class Bunny_Uploader {
         $table_name = $wpdb->prefix . 'bunny_offloaded_files';
         
         // Get file info before deletion for stats
+        // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Using safe table name with wpdb prefix
         $file_info = $wpdb->get_row($wpdb->prepare(
             "SELECT file_size FROM $table_name WHERE attachment_id = %d",
             $attachment_id
@@ -823,6 +825,7 @@ class Bunny_Uploader {
         
         $table_name = $wpdb->prefix . 'bunny_offloaded_files';
         
+        // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Using safe table name with wpdb prefix
         return $wpdb->get_row($wpdb->prepare(
             "SELECT * FROM $table_name WHERE attachment_id = %d",
             $attachment_id
@@ -952,7 +955,7 @@ class Bunny_Uploader {
      */
     private function build_sized_bunny_url($base_bunny_url, $sized_filename) {
         // Extract the directory path and original filename from the base URL
-        $url_parts = parse_url($base_bunny_url);
+        $url_parts = wp_parse_url($base_bunny_url);
         $path_info = pathinfo($url_parts['path']);
         
         // Build new path with the sized filename
@@ -1001,7 +1004,7 @@ class Bunny_Uploader {
             return 'full';
         }
         
-        $filename = basename(parse_url($url, PHP_URL_PATH));
+        $filename = basename(wp_parse_url($url, PHP_URL_PATH));
         if (empty($filename)) {
             return 'full';
         }

@@ -36,12 +36,12 @@ class Bunny_Migration {
         check_ajax_referer('bunny_ajax_nonce', 'nonce');
         
         if (!current_user_can('manage_options')) {
-            wp_die(__('Insufficient permissions.', 'bunny-media-offload'));
+            wp_die(esc_html__('Insufficient permissions.', 'bunny-media-offload'));
         }
         
         // Get migration parameters
-        $file_types = isset($_POST['file_types']) ? array_map('sanitize_text_field', $_POST['file_types']) : array();
-        $post_types = isset($_POST['post_types']) ? array_map('sanitize_text_field', $_POST['post_types']) : array();
+        $file_types = isset($_POST['file_types']) ? array_map('sanitize_text_field', wp_unslash($_POST['file_types'])) : array();
+        $post_types = isset($_POST['post_types']) ? array_map('sanitize_text_field', wp_unslash($_POST['post_types'])) : array();
         
         // Get total files to migrate
         $total_files = $this->get_files_to_migrate_count($file_types, $post_types);
@@ -80,10 +80,10 @@ class Bunny_Migration {
         check_ajax_referer('bunny_ajax_nonce', 'nonce');
         
         if (!current_user_can('manage_options')) {
-            wp_die(__('Insufficient permissions.', 'bunny-media-offload'));
+            wp_die(esc_html__('Insufficient permissions.', 'bunny-media-offload'));
         }
         
-        $migration_id = sanitize_text_field($_POST['migration_id']);
+        $migration_id = isset($_POST['migration_id']) ? sanitize_text_field(wp_unslash($_POST['migration_id'])) : '';
         $session = $this->get_migration_session($migration_id);
         
         if (!$session) {
@@ -143,10 +143,10 @@ class Bunny_Migration {
         check_ajax_referer('bunny_ajax_nonce', 'nonce');
         
         if (!current_user_can('manage_options')) {
-            wp_die(__('Insufficient permissions.', 'bunny-media-offload'));
+            wp_die(esc_html__('Insufficient permissions.', 'bunny-media-offload'));
         }
         
-        $migration_id = sanitize_text_field($_POST['migration_id']);
+        $migration_id = isset($_POST['migration_id']) ? sanitize_text_field(wp_unslash($_POST['migration_id'])) : '';
         $session = $this->get_migration_session($migration_id);
         
         if (!$session) {
@@ -173,10 +173,10 @@ class Bunny_Migration {
         check_ajax_referer('bunny_ajax_nonce', 'nonce');
         
         if (!current_user_can('manage_options')) {
-            wp_die(__('Insufficient permissions.', 'bunny-media-offload'));
+            wp_die(esc_html__('Insufficient permissions.', 'bunny-media-offload'));
         }
         
-        $migration_id = sanitize_text_field($_POST['migration_id']);
+        $migration_id = isset($_POST['migration_id']) ? sanitize_text_field(wp_unslash($_POST['migration_id'])) : '';
         
         $this->update_migration_session($migration_id, array('status' => 'cancelled'));
         
@@ -236,10 +236,11 @@ class Bunny_Migration {
             $limit_clause
         ");
         
-        $results = '';
         if (!empty($params)) {
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Query is safely constructed above with placeholders
             $results = $wpdb->get_results($wpdb->prepare($query, $params));
         } else {
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Query contains only safe table names and WHERE clauses
             $results = $wpdb->get_results($query);
         }
         
@@ -570,7 +571,8 @@ class Bunny_Migration {
         $bunny_table = $wpdb->prefix . 'bunny_offloaded_files';
         
         $total_attachments = $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_type = 'attachment'");
-        $migrated_files = $wpdb->get_var("SELECT COUNT(*) FROM $bunny_table WHERE is_synced = 1");
+        // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Using safe table name with wpdb prefix
+        $migrated_files = $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM `{$bunny_table}` WHERE is_synced = 1"));
         $pending_files = $total_attachments - $migrated_files;
         
         return array(

@@ -35,7 +35,7 @@ class Bunny_Sync {
         check_ajax_referer('bunny_ajax_nonce', 'nonce');
         
         if (!current_user_can('manage_options')) {
-            wp_die(__('Insufficient permissions.', 'bunny-media-offload'));
+            wp_die(esc_html__('Insufficient permissions.', 'bunny-media-offload'));
         }
         
         $attachment_id = intval($_POST['attachment_id']);
@@ -56,7 +56,7 @@ class Bunny_Sync {
         check_ajax_referer('bunny_ajax_nonce', 'nonce');
         
         if (!current_user_can('manage_options')) {
-            wp_die(__('Insufficient permissions.', 'bunny-media-offload'));
+            wp_die(esc_html__('Insufficient permissions.', 'bunny-media-offload'));
         }
         
         $attachment_ids = array_map('intval', $_POST['attachment_ids']);
@@ -77,7 +77,7 @@ class Bunny_Sync {
         check_ajax_referer('bunny_ajax_nonce', 'nonce');
         
         if (!current_user_can('manage_options')) {
-            wp_die(__('Insufficient permissions.', 'bunny-media-offload'));
+            wp_die(esc_html__('Insufficient permissions.', 'bunny-media-offload'));
         }
         
         $results = $this->verify_all_files();

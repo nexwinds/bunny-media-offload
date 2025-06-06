@@ -125,6 +125,7 @@ class Bunny_CLI {
             ORDER BY posts.ID ASC
         ";
         
+        // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Query uses safe table names and placeholders
         $files = $wpdb->get_results($query);
         $total_files = count($files);
         

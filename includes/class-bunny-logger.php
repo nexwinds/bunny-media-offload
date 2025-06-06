@@ -118,6 +118,7 @@ class Bunny_Logger {
         
         $query = "SELECT * FROM {$this->table_name} {$where} ORDER BY date_created DESC LIMIT %d OFFSET %d";
         
+        // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Query is safely constructed with placeholders
         return $wpdb->get_results($wpdb->prepare($query, $params));
     }
     
@@ -138,8 +139,10 @@ class Bunny_Logger {
         $query = "SELECT COUNT(*) FROM {$this->table_name} {$where}";
         
         if (!empty($params)) {
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Query is safely constructed with placeholders
             return $wpdb->get_var($wpdb->prepare($query, $params));
         } else {
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Query uses safe table name only
             return $wpdb->get_var($query);
         }
     }
@@ -149,6 +152,7 @@ class Bunny_Logger {
      */
     public function clear_logs() {
         global $wpdb;
+        // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Using safe table name with wpdb prefix
         return $wpdb->query("TRUNCATE TABLE {$this->table_name}");
     }
     
@@ -165,15 +169,17 @@ class Bunny_Logger {
      */
     private function maybe_clean_old_logs() {
         // Only clean logs occasionally to avoid performance impact
-        if (rand(1, 100) > 5) {
+        if (wp_rand(1, 100) > 5) {
             return;
         }
         
         global $wpdb;
         
+        // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Using safe table name with wpdb prefix
         $count = $wpdb->get_var("SELECT COUNT(*) FROM {$this->table_name}");
         
         if ($count > 1000) {
+            // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Using safe table name with wpdb prefix
             $wpdb->query("
                 DELETE FROM {$this->table_name} 
                 WHERE id NOT IN (

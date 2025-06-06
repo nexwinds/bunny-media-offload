@@ -1124,7 +1124,7 @@ wp bunny optimization-status              # Check queue status</pre>
         check_ajax_referer('bunny_ajax_nonce', 'nonce');
         
         if (!current_user_can('manage_options')) {
-            wp_die(__('Insufficient permissions.', 'bunny-media-offload'));
+            wp_die(esc_html__('Insufficient permissions.', 'bunny-media-offload'));
         }
         
         $bmo = Bunny_Media_Offload::get_instance();
@@ -1144,7 +1144,7 @@ wp bunny optimization-status              # Check queue status</pre>
         check_ajax_referer('bunny_ajax_nonce', 'nonce');
         
         if (!current_user_can('manage_options')) {
-            wp_die(__('Insufficient permissions.', 'bunny-media-offload'));
+            wp_die(esc_html__('Insufficient permissions.', 'bunny-media-offload'));
         }
         
         // Handle settings save
@@ -1158,7 +1158,7 @@ wp bunny optimization-status              # Check queue status</pre>
         check_ajax_referer('bunny_ajax_nonce', 'nonce');
         
         if (!current_user_can('manage_options')) {
-            wp_die(__('Insufficient permissions.', 'bunny-media-offload'));
+            wp_die(esc_html__('Insufficient permissions.', 'bunny-media-offload'));
         }
         
         $stats = $this->stats->get_dashboard_stats();
@@ -1172,7 +1172,7 @@ wp bunny optimization-status              # Check queue status</pre>
         check_ajax_referer('bunny_ajax_nonce', 'nonce');
         
         if (!current_user_can('manage_options')) {
-            wp_die(__('Insufficient permissions.', 'bunny-media-offload'));
+            wp_die(esc_html__('Insufficient permissions.', 'bunny-media-offload'));
         }
         
         $csv_data = $this->logger->export_logs();
@@ -1187,7 +1187,7 @@ wp bunny optimization-status              # Check queue status</pre>
         check_ajax_referer('bunny_ajax_nonce', 'nonce');
         
         if (!current_user_can('manage_options')) {
-            wp_die(__('Insufficient permissions.', 'bunny-media-offload'));
+            wp_die(esc_html__('Insufficient permissions.', 'bunny-media-offload'));
         }
         
         $this->logger->clear_logs();
@@ -1201,7 +1201,7 @@ wp bunny optimization-status              # Check queue status</pre>
         check_ajax_referer('bunny_ajax_nonce', 'nonce');
         
         if (!current_user_can('manage_options')) {
-            wp_die(__('Insufficient permissions.', 'bunny-media-offload'));
+            wp_die(esc_html__('Insufficient permissions.', 'bunny-media-offload'));
         }
         
         $attachment_id = isset($_POST['attachment_id']) ? intval($_POST['attachment_id']) : 0;
@@ -1242,6 +1242,7 @@ wp bunny optimization-status              # Check queue status</pre>
             global $wpdb;
             
             $table_name = $wpdb->prefix . 'bunny_offloaded_files';
+            // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Using safe table name with wpdb prefix
             $bunny_file = $wpdb->get_row($wpdb->prepare(
                 "SELECT * FROM $table_name WHERE attachment_id = %d",
                 $attachment_id
@@ -1262,6 +1263,7 @@ wp bunny optimization-status              # Check queue status</pre>
                     } else {
                         // Check if in optimization queue
                         $queue_table = $wpdb->prefix . 'bunny_optimization_queue';
+                        // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Using safe table name with wpdb prefix
                         $queue_status = $wpdb->get_var($wpdb->prepare(
                             "SELECT status FROM $queue_table WHERE attachment_id = %d ORDER BY date_added DESC LIMIT 1",
                             $attachment_id
