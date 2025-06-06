@@ -53,17 +53,12 @@
             $(document).on('click', '#start-migration', function(e) {
                 e.preventDefault();
                 
-                var fileTypes = [];
-                $('#migration-form input[name="file_types[]"]:checked').each(function() {
-                    fileTypes.push($(this).val());
-                });
-                
-                if (fileTypes.length === 0) {
-                    alert('Please select at least one file type.');
+                // Check if migration button is disabled
+                if ($(this).prop('disabled')) {
                     return;
                 }
                 
-                BunnyAdmin.startMigration(fileTypes);
+                BunnyAdmin.startMigration();
             });
             
             $(document).on('click', '#cancel-migration', function(e) {
@@ -196,7 +191,7 @@
         /**
          * Start migration with enhanced animation
          */
-        startMigration: function(fileTypes) {
+        startMigration: function() {
             var self = this;
             
             $.ajax({
@@ -204,8 +199,7 @@
                 type: 'POST',
                 data: {
                     action: 'bunny_start_migration',
-                    nonce: bunnyAjax.nonce,
-                    file_types: fileTypes
+                    nonce: bunnyAjax.nonce
                 },
                 success: function(response) {
                     if (response.success) {

@@ -523,6 +523,7 @@ class Bunny_Admin {
      */
     public function migration_page() {
         $migration_stats = $this->migration->get_migration_stats();
+        $detailed_stats = $this->migration->get_detailed_migration_stats();
         $max_file_size = $this->settings->get('optimization_max_size', '50kb');
         
         ?>
@@ -557,6 +558,35 @@ class Bunny_Admin {
                 </div>
             </div>
             
+            <div class="bunny-migration-statistics">
+                <h3><?php esc_html_e('Migration Statistics', 'bunny-media-offload'); ?></h3>
+                <div class="bunny-stats-grid">
+                    <div class="bunny-stat-card">
+                        <h4><?php esc_html_e('Total Images to Migrate', 'bunny-media-offload'); ?></h4>
+                        <div class="bunny-stat-number"><?php echo number_format($detailed_stats['total_images_to_migrate']); ?></div>
+                        <div class="bunny-stat-breakdown">
+                            <span><?php echo esc_html(number_format($detailed_stats['avif_total'])); ?> AVIF</span> • 
+                            <span><?php echo esc_html(number_format($detailed_stats['webp_total'])); ?> WebP</span>
+                        </div>
+                    </div>
+                    
+                    <div class="bunny-stat-card">
+                        <h4><?php esc_html_e('Images per Batch', 'bunny-media-offload'); ?></h4>
+                        <div class="bunny-stat-number"><?php echo number_format($detailed_stats['batch_size']); ?></div>
+                        <div class="bunny-stat-description"><?php esc_html_e('Configurable in Settings', 'bunny-media-offload'); ?></div>
+                    </div>
+                    
+                    <div class="bunny-stat-card">
+                        <h4><?php esc_html_e('Remaining to Migrate', 'bunny-media-offload'); ?></h4>
+                        <div class="bunny-stat-number"><?php echo number_format($detailed_stats['total_remaining']); ?></div>
+                        <div class="bunny-stat-breakdown">
+                            <span><?php echo esc_html(number_format($detailed_stats['avif_remaining'])); ?> AVIF</span> • 
+                            <span><?php echo esc_html(number_format($detailed_stats['webp_remaining'])); ?> WebP</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
             <div class="bunny-migration-form">
                 <h3><?php esc_html_e('Start New Migration', 'bunny-media-offload'); ?></h3>
                 
@@ -567,16 +597,8 @@ class Bunny_Admin {
                 <?php endif; ?>
                 
                 <form id="migration-form">
+                    <?php if ($this->wpml && $this->wpml->is_wpml_active()): ?>
                     <table class="form-table">
-                        <tr>
-                            <th scope="row"><?php esc_html_e('File Types', 'bunny-media-offload'); ?></th>
-                            <td>
-                                <label><input type="checkbox" name="file_types[]" value="webp" checked> <?php esc_html_e('WebP Images', 'bunny-media-offload'); ?></label><br>
-                                <label><input type="checkbox" name="file_types[]" value="avif" checked> <?php esc_html_e('AVIF Images', 'bunny-media-offload'); ?></label><br>
-                                <p class="description"><?php esc_html_e('Only modern image formats (WebP and AVIF) are supported for migration.', 'bunny-media-offload'); ?></p>
-                            </td>
-                        </tr>
-                        <?php if ($this->wpml && $this->wpml->is_wpml_active()): ?>
                         <tr>
                             <th scope="row"><?php esc_html_e('Language Scope', 'bunny-media-offload'); ?></th>
                             <td>
@@ -585,11 +607,17 @@ class Bunny_Admin {
                                 <p class="description"><?php esc_html_e('Choose whether to migrate files from the current language only or from all languages.', 'bunny-media-offload'); ?></p>
                             </td>
                         </tr>
-                        <?php endif; ?>
                     </table>
+                    <?php endif; ?>
                     
                     <p class="submit">
-                        <button type="submit" class="button button-primary" id="start-migration"><?php esc_html_e('Start Migration', 'bunny-media-offload'); ?></button>
+                        <button type="submit" class="button button-primary" id="start-migration" <?php echo $detailed_stats['has_files_to_migrate'] ? '' : 'disabled'; ?>>
+                            <?php if ($detailed_stats['has_files_to_migrate']): ?>
+                                <?php esc_html_e('Start Migration', 'bunny-media-offload'); ?>
+                            <?php else: ?>
+                                <?php esc_html_e('No Files to Migrate', 'bunny-media-offload'); ?>
+                            <?php endif; ?>
+                        </button>
                         <button type="button" class="button" id="cancel-migration" style="display: none;"><?php esc_html_e('Cancel Migration', 'bunny-media-offload'); ?></button>
                     </p>
                 </form>

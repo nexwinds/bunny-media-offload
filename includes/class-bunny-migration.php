@@ -39,8 +39,8 @@ class Bunny_Migration {
             wp_die(esc_html__('Insufficient permissions.', 'bunny-media-offload'));
         }
         
-        // Get migration parameters
-        $file_types = isset($_POST['file_types']) ? array_map('sanitize_text_field', wp_unslash($_POST['file_types'])) : array();
+        // Automatically include both AVIF and WebP file types
+        $file_types = array('avif', 'webp');
         $post_types = isset($_POST['post_types']) ? array_map('sanitize_text_field', wp_unslash($_POST['post_types'])) : array();
         
         // Get total files to migrate
@@ -590,6 +590,70 @@ class Bunny_Migration {
         
         // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared,WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Query uses safe table names and conditions, custom migration query, caching not appropriate for real-time stats
         return (int) $wpdb->get_var($query);
+    }
+    
+    /**
+     * Get detailed migration statistics by file type
+     */
+    public function get_detailed_migration_stats() {
+        global $wpdb;
+        
+        $bunny_table = $wpdb->prefix . 'bunny_offloaded_files';
+        
+        // Get counts by file type
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Counting files by type for migration stats, caching not needed for one-time calculation
+        $avif_total = $wpdb->get_var("
+            SELECT COUNT(DISTINCT posts.ID) 
+            FROM {$wpdb->posts} posts
+            WHERE posts.post_type = 'attachment' 
+            AND posts.post_mime_type = 'image/avif'
+        ");
+        
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Counting files by type for migration stats, caching not needed for one-time calculation
+        $webp_total = $wpdb->get_var("
+            SELECT COUNT(DISTINCT posts.ID) 
+            FROM {$wpdb->posts} posts
+            WHERE posts.post_type = 'attachment' 
+            AND posts.post_mime_type = 'image/webp'
+        ");
+        
+        // Get migrated counts by file type
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Counting migrated files by type for migration stats, caching not needed for one-time calculation
+        $avif_migrated = $wpdb->get_var("
+            SELECT COUNT(*) 
+            FROM {$wpdb->prefix}bunny_offloaded_files 
+            WHERE is_synced = 1 
+            AND file_type = 'image/avif'
+        ");
+        
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Counting migrated files by type for migration stats, caching not needed for one-time calculation
+        $webp_migrated = $wpdb->get_var("
+            SELECT COUNT(*) 
+            FROM {$wpdb->prefix}bunny_offloaded_files 
+            WHERE is_synced = 1 
+            AND file_type = 'image/webp'
+        ");
+        
+        $total_supported = (int) $avif_total + (int) $webp_total;
+        $total_migrated = (int) $avif_migrated + (int) $webp_migrated;
+        $total_remaining = max(0, $total_supported - $total_migrated);
+        
+        $batch_size = $this->settings->get('batch_size', 100);
+        
+        return array(
+            'total_images_to_migrate' => $total_supported,
+            'total_migrated' => $total_migrated,
+            'total_remaining' => $total_remaining,
+            'avif_total' => (int) $avif_total,
+            'avif_migrated' => (int) $avif_migrated,
+            'avif_remaining' => max(0, (int) $avif_total - (int) $avif_migrated),
+            'webp_total' => (int) $webp_total,
+            'webp_migrated' => (int) $webp_migrated,
+            'webp_remaining' => max(0, (int) $webp_total - (int) $webp_migrated),
+            'batch_size' => $batch_size,
+            'has_files_to_migrate' => $total_remaining > 0,
+            'migration_percentage' => $total_supported > 0 ? round(($total_migrated / $total_supported) * 100, 2) : 0
+        );
     }
     
     /**
