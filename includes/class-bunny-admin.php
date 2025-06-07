@@ -400,7 +400,7 @@ class Bunny_Admin {
                             <?php else: ?>
                             <input type="text" name="bunny_json_settings[custom_hostname]" value="<?php echo esc_attr($settings['custom_hostname'] ?? ''); ?>" class="regular-text" placeholder="cdn.example.com" />
                             <?php endif; ?>
-                        <p class="description"><?php esc_html_e('Optional: Custom CDN hostname (without https://). Leave blank to use the default Bunny.net CDN URL.', 'bunny-media-offload'); ?></p>
+                                                        <p class="description"><?php esc_html_e('Required: Custom CDN hostname (without https://). This must be configured in wp-config.php as BUNNY_CUSTOM_HOSTNAME.', 'bunny-media-offload'); ?></p>
                         </td>
                     </tr>
                     <tr>
@@ -1109,7 +1109,7 @@ class Bunny_Admin {
                             <pre id="config-basic">// Bunny.net Configuration
 define('BUNNY_API_KEY', 'your-storage-api-key-here');
 define('BUNNY_STORAGE_ZONE', 'your-storage-zone-name');
-define('BUNNY_CUSTOM_HOSTNAME', 'cdn.yoursite.com'); // Optional</pre>
+define('BUNNY_CUSTOM_HOSTNAME', 'cdn.yoursite.com'); // Required</pre>
                         </div>
                     </div>
 
@@ -1139,7 +1139,7 @@ define('BUNNY_CUSTOM_HOSTNAME', 'cdn.yoursite.com'); // Optional</pre>
                                     <tr>
                                         <td><code>BUNNY_CUSTOM_HOSTNAME</code></td>
                                         <td><?php esc_html_e('Custom CDN hostname (without https://)', 'bunny-media-offload'); ?></td>
-                                        <td><?php esc_html_e('Optional', 'bunny-media-offload'); ?></td>
+                                        <td><?php esc_html_e('Required', 'bunny-media-offload'); ?></td>
                                     </tr>
                                 </tbody>
                             </table>

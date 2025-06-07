@@ -186,10 +186,13 @@ class Bunny_Settings {
             }
         }
         
-        if (isset($settings['custom_hostname']) && !$this->is_constant_defined('custom_hostname')) {
+        // Validate custom hostname - now required
+        if (!$this->is_constant_defined('custom_hostname')) {
+            $errors['custom_hostname'] = __('Custom hostname is required and must be defined in wp-config.php as BUNNY_CUSTOM_HOSTNAME.', 'bunny-media-offload');
+        } elseif (isset($settings['custom_hostname'])) {
             if (!empty($settings['custom_hostname'])) {
                 if (!filter_var('https://' . $settings['custom_hostname'], FILTER_VALIDATE_URL)) {
-                    $errors['custom_hostname'] = __('Custom hostname should be defined in wp-config.php as BUNNY_CUSTOM_HOSTNAME.', 'bunny-media-offload');
+                    $errors['custom_hostname'] = __('Custom hostname must be a valid hostname format.', 'bunny-media-offload');
                 }
             }
         }
@@ -306,8 +309,9 @@ class Bunny_Settings {
     public function is_configured() {
         $api_key = $this->get('api_key');
         $storage_zone = $this->get('storage_zone');
+        $custom_hostname = $this->get('custom_hostname');
         
-        return !empty($api_key) && !empty($storage_zone);
+        return !empty($api_key) && !empty($storage_zone) && !empty($custom_hostname);
     }
     
     /**

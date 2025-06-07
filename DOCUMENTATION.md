@@ -56,7 +56,7 @@ Bunny Media Offload is a comprehensive WordPress plugin that seamlessly integrat
 - Active Bunny.net account
 - Edge Storage zone configured
 - API key with storage permissions
-- Optional: Custom hostname configured
+- Required: Custom hostname configured
 
 ---
 
@@ -102,7 +102,7 @@ define('BUNNY_API_KEY', 'your-storage-api-key-here');
 // Required: Your Bunny.net Storage Zone Name
 define('BUNNY_STORAGE_ZONE', 'your-storage-zone-name');
 
-// Optional: Custom hostname for CDN URLs (without https://)
+// Required: Custom hostname for CDN URLs (without https://)
 define('BUNNY_CUSTOM_HOSTNAME', 'cdn.yoursite.com');
 ```
 
@@ -178,7 +178,7 @@ require_once ABSPATH . 'wp-settings.php';
    - Create a new API key with **Storage** permissions
    - Copy the API key securely
 
-4. **Optional - Custom Hostname**:
+4. **Required - Custom Hostname**:
    - Navigate to **Storage > Storage Zones**
    - Click on your storage zone
    - Go to **Custom Hostnames**

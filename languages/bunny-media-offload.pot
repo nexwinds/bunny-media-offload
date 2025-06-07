@@ -127,7 +127,7 @@ msgid "Custom Hostname"
 msgstr ""
 
 #: includes/class-bunny-admin.php:249
-msgid "Optional: Custom CDN hostname (e.g., cdn.example.com)."
+msgid "Required: Custom CDN hostname (e.g., cdn.example.com)."
 msgstr ""
 
 #: includes/class-bunny-admin.php:254

@@ -72,14 +72,14 @@ Add these constants to your `wp-config.php` file:
 ```php
 define('BUNNY_API_KEY', 'your-storage-api-key-here');
 define('BUNNY_STORAGE_ZONE', 'your-storage-zone-name');
-define('BUNNY_CUSTOM_HOSTNAME', 'cdn.yoursite.com'); // Optional
+define('BUNNY_CUSTOM_HOSTNAME', 'cdn.yoursite.com'); // Required
 ```
 
 **Option B: Admin Interface Configuration**
 1. Go to **Bunny CDN > Settings** in WordPress admin
 2. Enter your Bunny.net API key
 3. Enter your storage zone name
-4. (Optional) Set a custom hostname for your CDN URLs
+4. Set a custom hostname for your CDN URLs (Required)
 5. Configure automatic offload settings
 6. Test the connection using the "Test Connection" button
 
@@ -195,7 +195,7 @@ apply_filters('bunny_cdn_url', $url, $attachment_id, $original_url);
 ### Basic Settings
 - **API Key**: Your Bunny.net Storage API key
 - **Storage Zone**: Name of your Bunny.net storage zone
-- **Custom Hostname**: Optional custom domain for CDN URLs
+- **Custom Hostname**: Required custom domain for CDN URLs
 
 ### Behavior Settings
 - **Auto Offload**: Automatically offload new uploads
