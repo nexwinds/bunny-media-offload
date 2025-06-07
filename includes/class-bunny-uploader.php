@@ -90,108 +90,20 @@ class Bunny_Uploader {
     }
     
     /**
-     * Handle file upload
+     * Handle file upload (auto-offload disabled - only optimization handled here)
      */
     public function handle_upload($upload, $context = 'upload') {
-        if (!$this->settings->get('auto_offload')) {
-            return $upload;
-        }
-        
-        if (empty($upload['file']) || !empty($upload['error'])) {
-            return $upload;
-        }
-        
-        $file_path = $upload['file'];
-        $file_type = $upload['type'];
-        
-        // Check if file type is allowed
-        if (!$this->is_file_type_allowed($file_path)) {
-            return $upload;
-        }
-        
-        // Generate remote path
-        $remote_path = $this->generate_remote_path($file_path);
-        
-        // Upload to Bunny.net
-        $bunny_url = $this->api->upload_file($file_path, $remote_path);
-        
-        if (is_wp_error($bunny_url)) {
-            $this->logger->error('Upload failed during handle_upload', array(
-                'file' => $file_path,
-                'error' => $bunny_url->get_error_message()
-            ));
-            return $upload;
-        }
-        
-        // Add versioning if enabled
-        if ($this->settings->get('file_versioning')) {
-            $bunny_url = $this->add_version_to_url($bunny_url);
-        }
-        
-        // Store the Bunny URL for later use
-        $upload['bunny_url'] = $bunny_url;
-        $upload['bunny_remote_path'] = $remote_path;
-        
+        // Auto-offload functionality removed - files must be manually migrated
+        // Only optimization processing happens during upload if enabled
         return $upload;
     }
     
     /**
-     * Handle attachment metadata generation
+     * Handle attachment metadata generation (auto-offload disabled)
      */
     public function handle_metadata($metadata, $attachment_id) {
-        if (!$this->settings->get('auto_offload')) {
-            return $metadata;
-        }
-        
-        $file_path = get_attached_file($attachment_id);
-        if (!$file_path || !file_exists($file_path)) {
-            return $metadata;
-        }
-        
-        // Check if file type is allowed
-        if (!$this->is_file_type_allowed($file_path)) {
-            return $metadata;
-        }
-        
-        // Check if already uploaded (might be from handle_upload)
-        $existing_bunny_file = $this->get_bunny_file_by_attachment($attachment_id);
-        if ($existing_bunny_file) {
-            // Still need to upload thumbnails if they exist
-            $this->upload_thumbnails($metadata, $attachment_id, $file_path);
-            return $metadata;
-        }
-        
-        // Generate remote path for main file
-        $remote_path = $this->generate_remote_path($file_path);
-        
-        // Upload main file to Bunny.net
-        $bunny_url = $this->api->upload_file($file_path, $remote_path);
-        
-        if (is_wp_error($bunny_url)) {
-            $this->logger->error('Upload failed during metadata generation', array(
-                'attachment_id' => $attachment_id,
-                'file' => $file_path,
-                'error' => $bunny_url->get_error_message()
-            ));
-            return $metadata;
-        }
-        
-        // Add versioning if enabled
-        if ($this->settings->get('file_versioning')) {
-            $bunny_url = $this->add_version_to_url($bunny_url);
-        }
-        
-        // Record the offloaded file
-        $this->record_offloaded_file($attachment_id, $bunny_url, $remote_path, $file_path);
-        
-        // Upload thumbnails if they exist
-        $this->upload_thumbnails($metadata, $attachment_id, $file_path);
-        
-        // Delete local file if enabled
-        if ($this->settings->get('delete_local')) {
-            $this->delete_local_file($file_path, $attachment_id, $metadata);
-        }
-        
+        // Auto-offload functionality removed - files must be manually migrated
+        // Only optimization processing happens during upload if enabled
         return $metadata;
     }
     

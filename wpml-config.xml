@@ -7,7 +7,6 @@
                 <key name="api_key" />
                 <key name="storage_zone" />
                 <key name="custom_hostname" />
-                <key name="auto_offload" />
                 <key name="delete_local" />
                 <key name="file_versioning" />
                 <key name="allowed_file_types" />

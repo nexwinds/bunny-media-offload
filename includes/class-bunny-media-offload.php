@@ -325,7 +325,6 @@ class Bunny_Media_Offload {
         }
         
         $default_settings = array(
-            'auto_offload' => true,
             'delete_local' => true,
             'file_versioning' => true,
             'allowed_file_types' => array('webp', 'avif'),

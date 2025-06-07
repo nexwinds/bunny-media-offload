@@ -150,7 +150,6 @@ class Bunny_Settings {
     public function get_default_settings() {
         return array(
             // API credentials will come from wp-config.php constants
-            'auto_offload' => true,
             'delete_local' => true,
             'file_versioning' => true,
             'allowed_file_types' => array('webp', 'avif'),
@@ -199,7 +198,7 @@ class Bunny_Settings {
         
         // Validate boolean settings
         // Note: Unchecked checkboxes are not submitted in forms, so we need to explicitly handle them
-        $boolean_settings = array('auto_offload', 'delete_local', 'file_versioning', 'enable_logs', 'optimization_enabled', 'optimize_on_upload');
+        $boolean_settings = array('delete_local', 'file_versioning', 'enable_logs', 'optimization_enabled', 'optimize_on_upload');
         foreach ($boolean_settings as $setting) {
             if (isset($settings[$setting])) {
                 $validated[$setting] = !empty($settings[$setting]);

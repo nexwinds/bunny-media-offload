@@ -1,5 +1,4 @@
 {
-    "auto_offload": true,
     "delete_local": true,
     "file_versioning": true,
     "allowed_file_types": [

@@ -30,17 +30,24 @@ class Bunny_Migration {
     }
     
     /**
-     * Start migration process
+     * Validate AJAX request (security and permissions)
      */
-    public function ajax_start_migration() {
+    private function validate_ajax_request() {
         check_ajax_referer('bunny_ajax_nonce', 'nonce');
         
         if (!current_user_can('manage_options')) {
             wp_die(esc_html__('Insufficient permissions.', 'bunny-media-offload'));
         }
+    }
+    
+    /**
+     * Start migration process
+     */
+    public function ajax_start_migration() {
+        $this->validate_ajax_request();
         
-        // Automatically include both AVIF and WebP file types
-        $file_types = array('avif', 'webp');
+        // Include SVG, AVIF and WebP file types for migration
+        $file_types = array('svg', 'avif', 'webp');
         $post_types = isset($_POST['post_types']) ? array_map('sanitize_text_field', wp_unslash($_POST['post_types'])) : array();
         
         // Get total files to migrate
@@ -77,11 +84,7 @@ class Bunny_Migration {
      * Process migration batch
      */
     public function ajax_migration_batch() {
-        check_ajax_referer('bunny_ajax_nonce', 'nonce');
-        
-        if (!current_user_can('manage_options')) {
-            wp_die(esc_html__('Insufficient permissions.', 'bunny-media-offload'));
-        }
+        $this->validate_ajax_request();
         
         $migration_id = isset($_POST['migration_id']) ? sanitize_text_field(wp_unslash($_POST['migration_id'])) : '';
         $session = $this->get_migration_session($migration_id);
@@ -141,11 +144,7 @@ class Bunny_Migration {
      * Get migration status
      */
     public function ajax_get_migration_status() {
-        check_ajax_referer('bunny_ajax_nonce', 'nonce');
-        
-        if (!current_user_can('manage_options')) {
-            wp_die(esc_html__('Insufficient permissions.', 'bunny-media-offload'));
-        }
+        $this->validate_ajax_request();
         
         $migration_id = isset($_POST['migration_id']) ? sanitize_text_field(wp_unslash($_POST['migration_id'])) : '';
         $session = $this->get_migration_session($migration_id);
@@ -171,11 +170,7 @@ class Bunny_Migration {
      * Cancel migration
      */
     public function ajax_cancel_migration() {
-        check_ajax_referer('bunny_ajax_nonce', 'nonce');
-        
-        if (!current_user_can('manage_options')) {
-            wp_die(esc_html__('Insufficient permissions.', 'bunny-media-offload'));
-        }
+        $this->validate_ajax_request();
         
         $migration_id = isset($_POST['migration_id']) ? sanitize_text_field(wp_unslash($_POST['migration_id'])) : '';
         
@@ -195,19 +190,9 @@ class Bunny_Migration {
         $where_conditions = array("posts.post_type = 'attachment'");
         $params = array();
         
-        // Filter by file types (only WebP and AVIF supported)
+        // Filter by supported file types (SVG, WebP and AVIF)
         if (!empty($file_types)) {
-            $mime_types = array();
-            foreach ($file_types as $file_type) {
-                switch ($file_type) {
-                    case 'webp':
-                        $mime_types[] = 'image/webp';
-                        break;
-                    case 'avif':
-                        $mime_types[] = 'image/avif';
-                        break;
-                }
-            }
+            $mime_types = $this->get_supported_mime_types($file_types);
             
             if (!empty($mime_types)) {
                 $placeholders = implode(',', array_fill(0, count($mime_types), '%s'));
@@ -248,8 +233,19 @@ class Bunny_Migration {
             $results = $wpdb->get_results($query);
         }
         
+        // Filter results by file size before returning
+        $filtered_results = array();
+        $upload_dir = wp_upload_dir();
+        
+        foreach ($results as $file) {
+            $local_path = $upload_dir['basedir'] . '/' . $file->file_path;
+            if ($this->should_migrate_file($local_path)) {
+                $filtered_results[] = $file;
+            }
+        }
+        
         // Apply WPML filter to results
-        return apply_filters('bunny_migration_attachments', $results, array('file_types' => $file_types));
+        return apply_filters('bunny_migration_attachments', $filtered_results, array('file_types' => $file_types));
     }
     
     /**
@@ -261,19 +257,9 @@ class Bunny_Migration {
         $where_conditions = array("posts.post_type = 'attachment'");
         $params = array();
         
-        // Filter by file types (only WebP and AVIF supported)
+        // Filter by supported file types (SVG, WebP and AVIF)
         if (!empty($file_types)) {
-            $mime_types = array();
-            foreach ($file_types as $file_type) {
-                switch ($file_type) {
-                    case 'webp':
-                        $mime_types[] = 'image/webp';
-                        break;
-                    case 'avif':
-                        $mime_types[] = 'image/avif';
-                        break;
-                }
-            }
+            $mime_types = $this->get_supported_mime_types($file_types);
             
             if (!empty($mime_types)) {
                 $placeholders = implode(',', array_fill(0, count($mime_types), '%s'));
@@ -298,15 +284,9 @@ class Bunny_Migration {
             WHERE $where_clause
         ";
         
-        if (!empty($params)) {
-            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared,WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Query is safely constructed above with placeholders, custom migration query, caching not appropriate for one-time migration
-            $count = $wpdb->get_var($wpdb->prepare($query, ...$params));
-        } else {
-            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared,WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Query contains only safe table names and WHERE clauses, custom migration query, caching not appropriate for one-time migration
-            $count = $wpdb->get_var($query);
-        }
-        
-        return (int) $count;
+        // Get files and filter by size (more accurate than count query)
+        $files = $this->get_files_to_migrate($file_types, $post_types);
+        return count($files);
     }
     
     /**
@@ -373,6 +353,14 @@ class Bunny_Migration {
                 $failed++;
                 // translators: %s is the local file path
                 $errors[] = sprintf(__('Local file not found: %s', 'bunny-media-offload'), $local_path);
+                continue;
+            }
+            
+            // Check file size before processing
+            if (!$this->should_migrate_file($local_path)) {
+                $failed++;
+                // translators: %s is the file title
+                $errors[] = sprintf(__('File %s exceeds size limit', 'bunny-media-offload'), $file->post_title);
                 continue;
             }
             
@@ -617,119 +605,113 @@ class Bunny_Migration {
         update_option('bunny_media_offload_stats', $stats);
     }
     
-    /**
-     * Get count of supported attachments for migration
-     */
-    private function get_supported_attachments_count() {
-        global $wpdb;
-        
-        // Get max file size setting (convert to bytes)
-        $max_size_setting = $this->settings->get('optimization_max_size', '50kb');
-        $max_size_bytes = (int) filter_var($max_size_setting, FILTER_SANITIZE_NUMBER_INT) * 1024;
-        
-        // Count AVIF and WebP images that are below the size limit
-        $query = "
-            SELECT COUNT(DISTINCT posts.ID) 
-            FROM {$wpdb->posts} posts
-            LEFT JOIN {$wpdb->postmeta} meta ON posts.ID = meta.post_id AND meta.meta_key = '_wp_attached_file'
-            WHERE posts.post_type = 'attachment' 
-            AND posts.post_mime_type IN ('image/avif', 'image/webp')
-        ";
-        
-        // If we can check file sizes, add that condition
-        if (function_exists('filesize')) {
-            // We'll do a basic count without file size check for now, as checking actual file sizes would be too expensive
-            // The size check will be done during actual migration
-        }
-        
-        // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared,WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Query uses safe table names and conditions, custom migration query, caching not appropriate for real-time stats
-        return (int) $wpdb->get_var($query);
-    }
+
     
     /**
-     * Get detailed migration statistics by file type
+     * Get comprehensive migration statistics 
      */
-    public function get_detailed_migration_stats() {
+    public function get_migration_stats($detailed = false) {
         global $wpdb;
         
-        $bunny_table = $wpdb->prefix . 'bunny_offloaded_files';
-        
-        // Get counts by file type
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Counting files by type for migration stats, caching not needed for one-time calculation
-        $avif_total = $wpdb->get_var("
-            SELECT COUNT(DISTINCT posts.ID) 
-            FROM {$wpdb->posts} posts
-            WHERE posts.post_type = 'attachment' 
-            AND posts.post_mime_type = 'image/avif'
-        ");
-        
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Counting files by type for migration stats, caching not needed for one-time calculation
-        $webp_total = $wpdb->get_var("
-            SELECT COUNT(DISTINCT posts.ID) 
-            FROM {$wpdb->posts} posts
-            WHERE posts.post_type = 'attachment' 
-            AND posts.post_mime_type = 'image/webp'
-        ");
-        
-        // Get migrated counts by file type
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Counting migrated files by type for migration stats, caching not needed for one-time calculation
-        $avif_migrated = $wpdb->get_var("
-            SELECT COUNT(*) 
-            FROM {$wpdb->prefix}bunny_offloaded_files 
-            WHERE is_synced = 1 
-            AND file_type = 'image/avif'
-        ");
-        
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Counting migrated files by type for migration stats, caching not needed for one-time calculation
-        $webp_migrated = $wpdb->get_var("
-            SELECT COUNT(*) 
-            FROM {$wpdb->prefix}bunny_offloaded_files 
-            WHERE is_synced = 1 
-            AND file_type = 'image/webp'
-        ");
-        
-        $total_supported = (int) $avif_total + (int) $webp_total;
-        $total_migrated = (int) $avif_migrated + (int) $webp_migrated;
-        $total_remaining = max(0, $total_supported - $total_migrated);
-        
-        $batch_size = $this->settings->get('batch_size', 100);
-        
-        return array(
-            'total_images_to_migrate' => $total_supported,
-            'total_migrated' => $total_migrated,
-            'total_remaining' => $total_remaining,
-            'avif_total' => (int) $avif_total,
-            'avif_migrated' => (int) $avif_migrated,
-            'avif_remaining' => max(0, (int) $avif_total - (int) $avif_migrated),
-            'webp_total' => (int) $webp_total,
-            'webp_migrated' => (int) $webp_migrated,
-            'webp_remaining' => max(0, (int) $webp_total - (int) $webp_migrated),
-            'batch_size' => $batch_size,
-            'has_files_to_migrate' => $total_remaining > 0,
-            'migration_percentage' => $total_supported > 0 ? round(($total_migrated / $total_supported) * 100, 2) : 0
-        );
-    }
-    
-    /**
-     * Get migration statistics
-     */
-    public function get_migration_stats() {
-        global $wpdb;
-        
-        $bunny_table = $wpdb->prefix . 'bunny_offloaded_files';
-        
-        // Count supported attachments (AVIF and WebP images) instead of all attachments
-        $total_supported_attachments = $this->get_supported_attachments_count();
+        // Use the existing method to get accurate file counts
+        $file_types = array('svg', 'avif', 'webp');
+        $total_supported_attachments = $this->get_files_to_migrate_count($file_types);
         
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Counting migrated files for migration stats, caching not needed for one-time calculation
         $migrated_files = $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM `{$wpdb->prefix}bunny_offloaded_files` WHERE is_synced = %d", 1));
-        $pending_files = $total_supported_attachments - $migrated_files;
+        $pending_files = max(0, $total_supported_attachments - $migrated_files);
         
-        return array(
+        $batch_size = $this->settings->get('batch_size', 100);
+        $migration_percentage = $total_supported_attachments > 0 ? round(($migrated_files / $total_supported_attachments) * 100, 2) : 0;
+        
+        $base_stats = array(
             'total_attachments' => (int) $total_supported_attachments,
+            'total_images_to_migrate' => (int) $total_supported_attachments,
+            'total_migrated' => (int) $migrated_files,
             'migrated_files' => (int) $migrated_files,
-            'pending_files' => max(0, (int) $pending_files),
-            'migration_percentage' => $total_supported_attachments > 0 ? round(($migrated_files / $total_supported_attachments) * 100, 2) : 0
+            'pending_files' => (int) $pending_files,
+            'total_remaining' => (int) $pending_files,
+            'batch_size' => $batch_size,
+            'has_files_to_migrate' => $pending_files > 0,
+            'migration_percentage' => $migration_percentage
         );
+        
+        if (!$detailed) {
+            return $base_stats;
+        }
+        
+        // Add detailed breakdown by file type for detailed view
+        $detailed_stats = array();
+        foreach ($file_types as $type) {
+            $type_total = $this->get_files_to_migrate_count(array($type));
+            $type_migrated = $this->get_migrated_count_by_type($type);
+            $type_remaining = max(0, $type_total - $type_migrated);
+            
+            $detailed_stats[$type . '_total'] = (int) $type_total;
+            $detailed_stats[$type . '_migrated'] = (int) $type_migrated;
+            $detailed_stats[$type . '_remaining'] = (int) $type_remaining;
+        }
+        
+        return array_merge($base_stats, $detailed_stats);
+    }
+    
+    /**
+     * Get migrated count by file type
+     */
+    private function get_migrated_count_by_type($file_type) {
+        global $wpdb;
+        
+        $mime_types = $this->get_supported_mime_types(array($file_type));
+        if (empty($mime_types)) {
+            return 0;
+        }
+        
+        $mime_type = $mime_types[0];
+        
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Counting migrated files by type for migration stats, caching not needed for one-time calculation
+        return (int) $wpdb->get_var($wpdb->prepare("
+            SELECT COUNT(*) 
+            FROM {$wpdb->prefix}bunny_offloaded_files 
+            WHERE is_synced = 1 AND file_type = %s
+        ", $mime_type));
+    }
+    
+
+    
+    /**
+     * Get supported MIME types for migration
+     */
+    private function get_supported_mime_types($file_types) {
+        $mime_types = array();
+        foreach ($file_types as $file_type) {
+            switch ($file_type) {
+                case 'svg':
+                    $mime_types[] = 'image/svg+xml';
+                    break;
+                case 'webp':
+                    $mime_types[] = 'image/webp';
+                    break;
+                case 'avif':
+                    $mime_types[] = 'image/avif';
+                    break;
+            }
+        }
+        return $mime_types;
+    }
+    
+    /**
+     * Check if file should be migrated based on size
+     */
+    private function should_migrate_file($local_path) {
+        if (!file_exists($local_path)) {
+            return false;
+        }
+        
+        // Get max file size from settings (with fallback)
+        $max_size_setting = $this->settings->get('optimization_max_size', '50kb');
+        $max_size_bytes = (int) filter_var($max_size_setting, FILTER_SANITIZE_NUMBER_INT) * 1024;
+        
+        $file_size = filesize($local_path);
+        return $file_size <= $max_size_bytes;
     }
 } 

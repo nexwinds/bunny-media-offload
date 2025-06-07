@@ -16,15 +16,14 @@ class Bunny_Optimizer {
     const SUPPORTED_FORMATS = array('avif', 'webp');
     
     /**
-     * Size thresholds in bytes
+     * Supported input formats for conversion to AVIF
      */
-    const SIZE_THRESHOLDS = array(
-        '40kb' => 40960,   // 40 KB
-        '45kb' => 46080,   // 45 KB  
-        '50kb' => 51200,   // 50 KB
-        '55kb' => 56320,   // 55 KB
-        '60kb' => 61440    // 60 KB
-    );
+    const CONVERTIBLE_FORMATS = array('jpg', 'jpeg', 'png', 'heic');
+    
+    /**
+     * Modern formats that can be recompressed
+     */
+    const COMPRESSIBLE_FORMATS = array('webp', 'avif');
     
     /**
      * Constructor
@@ -52,8 +51,7 @@ class Bunny_Optimizer {
         add_action('wp_ajax_bunny_optimization_batch', array($this, 'ajax_optimization_batch'));
         add_action('wp_ajax_bunny_cancel_optimization', array($this, 'ajax_cancel_optimization'));
         
-        // Add a test AJAX handler for debugging
-        add_action('wp_ajax_bunny_test_optimization', array($this, 'test_optimization_ajax'));
+
     }
     
     /**
@@ -91,21 +89,43 @@ class Bunny_Optimizer {
      */
     public function optimize_image($file_path, $attachment_id = null) {
         if (!$this->is_image($file_path)) {
-            $this->logger->log('warning', "File is not an image: {$file_path}");
-            return false;
+            $error_msg = "File is not a valid image format: " . basename($file_path);
+            $this->logger->log('warning', $error_msg);
+            return array('error' => $error_msg);
+        }
+        
+        if (!file_exists($file_path)) {
+            $error_msg = "Image file not found: " . basename($file_path);
+            $this->logger->log('error', $error_msg);
+            return array('error' => $error_msg);
         }
         
         $original_size = filesize($file_path);
         $max_size = $this->get_max_file_size();
-        $preferred_format = 'avif'; // Always use AVIF for best compression
+        $target_format = $this->determine_target_format($file_path);
         
         // Check if optimization is needed
         if (!$this->needs_optimization($file_path, $original_size, $max_size)) {
-            $this->logger->log('info', "Image does not need optimization: {$file_path}");
-            return $file_path;
+            $file_info = pathinfo($file_path);
+            $current_format = strtolower($file_info['extension']);
+            $file_size_kb = round($original_size / 1024, 1);
+            
+            $skip_reason = $this->get_skip_reason($current_format, $original_size, $max_size);
+            
+            $this->logger->log('info', "Image skipped - {$skip_reason}: " . basename($file_path));
+            return array(
+                'optimized_path' => $file_path,
+                'original_size' => $original_size,
+                'optimized_size' => $original_size,
+                'optimized_format' => $current_format,
+                'compression_ratio' => 0,
+                'optimization_date' => current_time('mysql'),
+                'skipped' => true,
+                'skip_reason' => $skip_reason
+            );
         }
         
-        $optimization_result = $this->perform_optimization($file_path, $preferred_format, $max_size);
+        $optimization_result = $this->perform_optimization($file_path, $target_format, $max_size);
         
         if ($optimization_result && is_array($optimization_result)) {
             // Update attachment metadata if available
@@ -116,7 +136,7 @@ class Bunny_Optimizer {
             // Log optimization results
             $this->log_optimization_result($file_path, $optimization_result);
             
-            return $optimization_result['optimized_path'];
+            return $optimization_result;
         }
         
         return false;
@@ -124,24 +144,31 @@ class Bunny_Optimizer {
     
     /**
      * Check if image needs optimization
-     * Images need optimization if:
-     * 1. Not in modern format (JPG/PNG to WebP/AVIF)
-     * 2. Exceeds maximum file size (even if already WebP/AVIF)
+     * Optimization criteria:
+     * 1. For JPEG/JPG/PNG/HEIC: Convert to AVIF (only if exceeds max size)
+     * 2. For WEBP/AVIF: Compress if exceeds max size
+     * 3. Other formats: Ignore
      */
     private function needs_optimization($file_path, $file_size, $max_size) {
         $file_info = pathinfo($file_path);
         $current_format = strtolower($file_info['extension']);
         
-        // Always optimize if not in preferred modern format
-        if (!in_array($current_format, self::SUPPORTED_FORMATS)) {
+        // Only process images that exceed the maximum file size
+        if ($file_size <= $max_size) {
+            return false;
+        }
+        
+        // Check if format can be converted to AVIF
+        if (in_array($current_format, self::CONVERTIBLE_FORMATS)) {
             return true;
         }
         
-        // Optimize if file exceeds size threshold (even if already WebP/AVIF)
-        if ($file_size > $max_size) {
+        // Check if modern format needs recompression
+        if (in_array($current_format, self::COMPRESSIBLE_FORMATS)) {
             return true;
         }
         
+        // Ignore other formats
         return false;
     }
     
@@ -193,18 +220,31 @@ class Bunny_Optimizer {
             }
             
         } catch (Exception $e) {
-            $this->logger->log('error', "Optimization failed: " . $e->getMessage(), array(
-                'file' => $file_path
+            $error_msg = "Optimization failed for " . basename($file_path) . ": " . $e->getMessage();
+            $this->logger->log('error', $error_msg, array(
+                'file' => $file_path,
+                'exception' => $e->getMessage()
             ));
+            return array('error' => $error_msg);
         }
         
-        return false;
+        $error_msg = "Failed to optimize " . basename($file_path) . ": Unknown error during processing";
+        $this->logger->log('error', $error_msg);
+        return array('error' => $error_msg);
     }
     
     /**
      * Load image using appropriate method
      */
     private function load_image($file_path) {
+        $file_info = pathinfo($file_path);
+        $extension = strtolower($file_info['extension']);
+        
+        // Handle HEIC files specially
+        if ($extension === 'heic') {
+            return $this->load_heic_image($file_path);
+        }
+        
         $image_info = getimagesize($file_path);
         if (!$image_info) {
             return false;
@@ -222,9 +262,80 @@ class Bunny_Optimizer {
                     return imagecreatefromwebp($file_path);
                 }
                 break;
+            case IMAGETYPE_AVIF:
+                if (function_exists('imagecreatefromavif')) {
+                    return imagecreatefromavif($file_path);
+                }
+                break;
         }
         
         return false;
+    }
+    
+    /**
+     * Load HEIC image (requires ImageMagick or similar)
+     */
+    private function load_heic_image($file_path) {
+        // Try ImageMagick first
+        if (extension_loaded('imagick')) {
+            try {
+                $imagick = new Imagick($file_path);
+                $imagick->setImageFormat('png');
+                
+                // Create GD resource from ImageMagick
+                $temp_png = tempnam(sys_get_temp_dir(), 'heic_convert_');
+                $imagick->writeImage($temp_png);
+                $gd_image = imagecreatefrompng($temp_png);
+                unlink($temp_png);
+                
+                return $gd_image;
+            } catch (Exception $e) {
+                $this->logger->log('warning', "Failed to load HEIC with ImageMagick: " . $e->getMessage());
+            }
+        }
+        
+        // Log that HEIC conversion is not available
+        $this->logger->log('warning', "HEIC format not supported - ImageMagick extension required");
+        return false;
+    }
+    
+    /**
+     * Determine the target format based on current format
+     */
+    private function determine_target_format($file_path) {
+        $file_info = pathinfo($file_path);
+        $current_format = strtolower($file_info['extension']);
+        
+        // Convert JPEG/PNG/HEIC to AVIF
+        if (in_array($current_format, self::CONVERTIBLE_FORMATS)) {
+            return 'avif';
+        }
+        
+        // Keep WEBP/AVIF formats but recompress them
+        if (in_array($current_format, self::COMPRESSIBLE_FORMATS)) {
+            return $current_format;
+        }
+        
+        // Fallback to AVIF for unknown formats
+        return 'avif';
+    }
+    
+    /**
+     * Get skip reason for optimization
+     */
+    private function get_skip_reason($current_format, $file_size, $max_size) {
+        $file_size_kb = round($file_size / 1024, 1);
+        $max_size_kb = round($max_size / 1024, 1);
+        
+        if ($file_size <= $max_size) {
+            return "File size ({$file_size_kb}KB) is under {$max_size_kb}KB threshold";
+        }
+        
+        if (!in_array($current_format, array_merge(self::CONVERTIBLE_FORMATS, self::COMPRESSIBLE_FORMATS))) {
+            return "Unsupported file format: {$current_format}";
+        }
+        
+        return "Image already optimized";
     }
     
     /**
@@ -540,8 +651,22 @@ class Bunny_Optimizer {
     }
     
     private function get_max_file_size() {
-        $threshold = $this->settings->get('optimization_max_size', '50kb');
-        return self::SIZE_THRESHOLDS[$threshold] ?? self::SIZE_THRESHOLDS['50kb'];
+        $size_setting = $this->settings->get('optimization_max_size', '50kb');
+        
+        // Parse size setting (e.g., "50kb", "1mb")
+        if (preg_match('/^(\d+)(kb|mb)$/i', $size_setting, $matches)) {
+            $value = (int) $matches[1];
+            $unit = strtolower($matches[2]);
+            
+            if ($unit === 'kb') {
+                return $value * 1024;
+            } elseif ($unit === 'mb') {
+                return $value * 1024 * 1024;
+            }
+        }
+        
+        // Default to 50KB if setting is invalid
+        return 50 * 1024;
     }
     
     private function update_attachment_optimization_meta($attachment_id, $result) {
@@ -654,153 +779,112 @@ class Bunny_Optimizer {
     }
     
     /**
-     * Get optimization criteria analysis
+     * Get optimization criteria analysis (simplified version)
      */
     public function get_optimization_criteria() {
-        // Try to get cached criteria first
-        $criteria_cache_key = 'bunny_optimization_criteria';
-        $cached_criteria = wp_cache_get($criteria_cache_key, 'bunny_media_offload');
+        $detailed_stats = $this->get_detailed_optimization_stats();
         
-        if ($cached_criteria !== false) {
-            return $cached_criteria;
-        }
-        
-        global $wpdb;
-        
-        $max_size = $this->get_max_file_size();
-        
-        // Get all image attachments
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Caching implemented above
-        $all_images = $wpdb->get_results("
-            SELECT p.ID, p.post_mime_type, m.meta_value as file_path
-            FROM {$wpdb->posts} p
-            LEFT JOIN {$wpdb->postmeta} m ON p.ID = m.post_id AND m.meta_key = '_wp_attached_file'
-            WHERE p.post_type = 'attachment' 
-            AND p.post_mime_type LIKE 'image/%'
-        ");
-        
-        $oversized_count = 0;
-        $format_conversion_count = 0;
-        $already_optimized_count = 0;
-        $total_eligible = 0;
-        
-        $upload_dir = wp_upload_dir();
-        
-        foreach ($all_images as $image) {
-            if (!$image->file_path) continue;
-            
-            $file_path = $upload_dir['basedir'] . '/' . $image->file_path;
-            
-            if (!file_exists($file_path)) continue;
-            
-            $file_size = filesize($file_path);
-            $file_info = pathinfo($file_path);
-            $current_format = strtolower($file_info['extension']);
-            
-            $needs_optimization = false;
-            
-            // Check if oversized (including WebP/AVIF that exceed size limit)
-            if ($file_size > $max_size) {
-                $oversized_count++;
-                $needs_optimization = true;
-            }
-            
-            // Check if needs format conversion (JPG/PNG to WebP/AVIF)
-            if (!in_array($current_format, array('webp', 'avif'))) {
-                $format_conversion_count++;
-                $needs_optimization = true;
-            }
-            
-            // Check if already optimized (WebP/AVIF under size limit)
-            if (in_array($current_format, array('webp', 'avif')) && $file_size <= $max_size) {
-                $already_optimized_count++;
-            }
-            
-            if ($needs_optimization) {
-                $total_eligible++;
-            }
-        }
-        
-        $criteria = array(
-            'total_images' => count($all_images),
-            'total_eligible' => $total_eligible,
-            'oversized_count' => $oversized_count,
-            'format_conversion_count' => $format_conversion_count,
-            'already_optimized_count' => $already_optimized_count,
-            'max_size_threshold' => round($max_size / 1024) . 'KB'
+        return array(
+            'total_images' => $detailed_stats['local']['total_eligible'] + $detailed_stats['cloud']['total_eligible'] + $detailed_stats['already_optimized'],
+            'total_eligible' => $detailed_stats['local']['total_eligible'] + $detailed_stats['cloud']['total_eligible'],
+            'convertible_formats_count' => $detailed_stats['local']['convertible_formats'] + $detailed_stats['cloud']['convertible_formats'],
+            'compressible_formats_count' => $detailed_stats['local']['compressible_formats'] + $detailed_stats['cloud']['compressible_formats'],
+            'already_optimized_count' => $detailed_stats['already_optimized'],
+            'max_size_threshold' => $detailed_stats['max_size_threshold']
         );
-        
-        // Cache for 10 minutes
-        wp_cache_set($criteria_cache_key, $criteria, 'bunny_media_offload', 10 * MINUTE_IN_SECONDS);
-        
-        return $criteria;
     }
     
     /**
      * Handle step-by-step optimization AJAX request
      */
     public function handle_step_optimization() {
-        // Add debugging at the very start
-        error_log('Bunny Optimization: handle_step_optimization called');
+        if (!$this->validate_optimization_request()) {
+            return;
+        }
         
+        $target = $this->get_optimization_target();
+        $images = $this->gather_optimization_images($target);
+        
+        if (empty($images)) {
+            wp_send_json_error('No images found that meet the optimization criteria.');
+            return;
+        }
+        
+        $session_data = $this->create_optimization_session($target, $images);
+        
+        if (!$session_data) {
+            wp_send_json_error('Failed to create optimization session.');
+            return;
+        }
+        
+        wp_send_json_success(array(
+            'session_id' => $session_data['id'],
+            'total_images' => count($images),
+            'message' => sprintf('Starting optimization of %d images...', count($images))
+        ));
+    }
+    
+    /**
+     * Validate optimization request permissions and nonce
+     */
+    private function validate_optimization_request() {
         try {
             check_ajax_referer('bunny_ajax_nonce', 'nonce');
         } catch (Exception $e) {
-            error_log('Bunny Optimization: Nonce check failed - ' . $e->getMessage());
             wp_send_json_error('Security check failed.');
-            return;
+            return false;
         }
         
         if (!current_user_can('manage_options')) {
-            error_log('Bunny Optimization: User lacks manage_options capability');
             wp_send_json_error('Insufficient permissions.');
-            return;
+            return false;
         }
         
-        // Optimization is always available for manual use - no master toggle needed
-        
-        error_log('Bunny Optimization: All checks passed, proceeding with optimization');
-        
+        return true;
+    }
+    
+    /**
+     * Get and validate optimization target from request
+     */
+    private function get_optimization_target() {
+        return isset($_POST['optimization_target']) ? 
+            sanitize_text_field(wp_unslash($_POST['optimization_target'])) : 'local';
+    }
+    
+    /**
+     * Gather images for optimization based on target
+     */
+    private function gather_optimization_images($target) {
         try {
-            $target = isset($_POST['optimization_target']) ? sanitize_text_field(wp_unslash($_POST['optimization_target'])) : 'local';
-            error_log('Bunny Optimization: Target set to: ' . $target);
-            
             // Always apply both optimization criteria (format conversion and recompression)
             $criteria = array('format_conversion', 'recompress_modern');
             
-            // Get images that meet the criteria
             $images = $this->get_images_for_optimization($target, $criteria);
-            error_log('Bunny Optimization: Found ' . count($images) . ' images');
             
-            // Log what we found for debugging
-            if ($this->logger) {
-                $this->logger->log('info', "Found " . count($images) . " images for optimization", array(
-                    'target' => $target,
-                    'criteria' => $criteria,
-                    'image_count' => count($images)
-                ));
-            }
+            $this->logger->log('info', "Found " . count($images) . " images for optimization", array(
+                'target' => $target,
+                'criteria' => $criteria,
+                'image_count' => count($images)
+            ));
             
-            if (empty($images)) {
-                error_log('Bunny Optimization: No images found, sending error response');
-                wp_send_json_error('No images found that meet the optimization criteria.');
-                return;
-            }
+            return $images;
         } catch (Exception $e) {
-            error_log('Bunny Optimization: Exception in image gathering: ' . $e->getMessage());
-            wp_send_json_error('Error occurred while gathering images for optimization: ' . $e->getMessage());
-            return;
+            $this->logger->log('error', 'Exception in image gathering: ' . $e->getMessage());
+            return array();
         }
-        
+    }
+    
+    /**
+     * Create optimization session with transient storage
+     */
+    private function create_optimization_session($target, $images) {
         try {
-            // Start optimization process
             $session_id = 'opt_' . time() . '_' . wp_generate_password(8, false);
-            error_log('Bunny Optimization: Generated session ID: ' . $session_id);
             
             $session_data = array(
                 'id' => $session_id,
                 'target' => $target,
-                'criteria' => $criteria,
+                'criteria' => array('format_conversion', 'recompress_modern'),
                 'total_images' => count($images),
                 'processed' => 0,
                 'successful' => 0,
@@ -811,62 +895,29 @@ class Bunny_Optimizer {
                 'images' => array_slice($images, 0, 100) // Process in chunks
             );
             
-            // Log session creation
-            if ($this->logger) {
-                $this->logger->log('info', "Created optimization session: " . $session_id, array(
-                    'target' => $target,
-                    'total_images' => count($images),
-                    'session_data' => $session_data
-                ));
-            }
-            
-            // Try to set transient and verify it was set
+            // Save session and verify
             $transient_set = set_transient('bunny_optimization_' . $session_id, $session_data, 2 * HOUR_IN_SECONDS);
-            error_log('Bunny Optimization: Transient set result: ' . ($transient_set ? 'true' : 'false'));
-            
-            // Verify the transient was actually saved
             $verification = get_transient('bunny_optimization_' . $session_id);
-            if (!$verification) {
-                error_log('Bunny Optimization: Failed to verify transient');
-                if ($this->logger) {
-                    $this->logger->log('error', "Failed to save optimization session transient: " . $session_id);
-                }
-                wp_send_json_error('Failed to create optimization session.');
-                return;
+            
+            if (!$transient_set || !$verification) {
+                $this->logger->log('error', "Failed to save optimization session transient: " . $session_id);
+                return false;
             }
             
-            if ($this->logger) {
-                $this->logger->log('info', "Optimization session verified and starting", array(
-                    'session_id' => $session_id,
-                    'transient_set' => $transient_set,
-                    'verification_passed' => !empty($verification)
-                ));
-            }
-            
-            error_log('Bunny Optimization: Sending success response with session ID: ' . $session_id);
-            
-            wp_send_json_success(array(
-                'session_id' => $session_id,
-                'total_images' => count($images),
-                'message' => sprintf('Starting optimization of %d images...', count($images))
+            $this->logger->log('info', "Created optimization session: " . $session_id, array(
+                'target' => $target,
+                'total_images' => count($images)
             ));
             
+            return $session_data;
+            
         } catch (Exception $e) {
-            error_log('Bunny Optimization: Exception in session creation: ' . $e->getMessage());
-            wp_send_json_error('Error occurred while creating optimization session: ' . $e->getMessage());
-            return;
+            $this->logger->log('error', 'Exception in session creation: ' . $e->getMessage());
+            return false;
         }
     }
     
-    /**
-     * AJAX handler for getting optimization criteria
-     */
-    public function ajax_get_optimization_criteria() {
-        check_ajax_referer('bunny_ajax_nonce', 'nonce');
-        
-        $criteria = $this->get_optimization_criteria();
-        wp_send_json_success($criteria);
-    }
+
     
     /**
      * Get images for optimization based on target and criteria
@@ -916,24 +967,8 @@ class Bunny_Optimizer {
             $file_info = pathinfo($file_path);
             $current_format = strtolower($file_info['extension']);
             
-            $meets_criteria = false;
-            
-            // Check against selected criteria
-            if (in_array('size_threshold', $criteria) && $file_size > $max_size) {
-                $meets_criteria = true;
-            }
-            
-            if (in_array('format_conversion', $criteria) && !in_array($current_format, array('webp', 'avif'))) {
-                $meets_criteria = true;
-            }
-            
-            if (in_array('recompress_modern', $criteria) && 
-                in_array($current_format, array('webp', 'avif')) && 
-                $file_size > $max_size) {
-                $meets_criteria = true;
-            }
-            
-            if ($meets_criteria) {
+            // Use the same optimization criteria as the main logic
+            if ($this->needs_optimization($file_path, $file_size, $max_size)) {
                 $eligible_images[] = array(
                     'ID' => $image->ID,
                     'file_path' => $file_path,
@@ -992,14 +1027,14 @@ class Bunny_Optimizer {
         // Initialize counters for local and cloud
         $stats = array(
             'local' => array(
-                'jpg_png_to_convert' => 0,
-                'webp_avif_to_recompress' => 0,
+                'convertible_formats' => 0,  // JPEG/PNG/HEIC to AVIF
+                'compressible_formats' => 0, // WEBP/AVIF recompression
                 'total_eligible' => 0,
                 'has_files_to_optimize' => false
             ),
             'cloud' => array(
-                'jpg_png_to_convert' => 0,
-                'webp_avif_to_recompress' => 0,
+                'convertible_formats' => 0,
+                'compressible_formats' => 0,
                 'total_eligible' => 0,
                 'has_files_to_optimize' => false
             ),
@@ -1026,34 +1061,32 @@ class Bunny_Optimizer {
             $file_info = pathinfo($file_path);
             $current_format = strtolower($file_info['extension']);
             
-            $needs_optimization = false;
-            $jpg_png_format = in_array($current_format, array('jpg', 'jpeg', 'png'));
-            $webp_avif_oversized = in_array($current_format, array('webp', 'avif')) && $file_size > $max_size;
-            
-            if ($jpg_png_format || $webp_avif_oversized) {
-                $needs_optimization = true;
+            // Use the same optimization criteria as the main logic
+            if (!$this->needs_optimization($file_path, $file_size, $max_size)) {
+                continue;
             }
             
-            if (!$needs_optimization) continue;
+            $is_convertible = in_array($current_format, self::CONVERTIBLE_FORMATS);
+            $is_compressible = in_array($current_format, self::COMPRESSIBLE_FORMATS);
             
             // Count for local images
             if ($is_local) {
-                if ($jpg_png_format) {
-                    $stats['local']['jpg_png_to_convert']++;
+                if ($is_convertible) {
+                    $stats['local']['convertible_formats']++;
                 }
-                if ($webp_avif_oversized) {
-                    $stats['local']['webp_avif_to_recompress']++;
+                if ($is_compressible) {
+                    $stats['local']['compressible_formats']++;
                 }
                 $stats['local']['total_eligible']++;
             }
             
             // Count for cloud images
             if ($is_cloud) {
-                if ($jpg_png_format) {
-                    $stats['cloud']['jpg_png_to_convert']++;
+                if ($is_convertible) {
+                    $stats['cloud']['convertible_formats']++;
                 }
-                if ($webp_avif_oversized) {
-                    $stats['cloud']['webp_avif_to_recompress']++;
+                if ($is_compressible) {
+                    $stats['cloud']['compressible_formats']++;
                 }
                 $stats['cloud']['total_eligible']++;
             }
@@ -1098,7 +1131,7 @@ class Bunny_Optimizer {
         }
         
         $batch_size = $this->settings->get('optimization_batch_size', 60);
-        $result = $this->process_optimization_batch($session, $batch_size);
+        $result = $this->process_optimization_batch($session, $batch_size, $session_id);
         
         // Update session
         set_transient('bunny_optimization_' . $session_id, array_merge($session, array(
@@ -1106,7 +1139,8 @@ class Bunny_Optimizer {
             'successful' => $result['successful'],
             'failed' => $result['failed'],
             'errors' => array_merge($session['errors'], $result['errors']),
-            'status' => $result['completed'] ? 'completed' : 'running'
+            'status' => $result['completed'] ? 'completed' : 'running',
+            'current_step' => $session['current_step'] ?? null
         )), 2 * HOUR_IN_SECONDS);
         
         $response = array(
@@ -1116,7 +1150,10 @@ class Bunny_Optimizer {
             'total' => $session['total_images'],
             'completed' => $result['completed'],
             'progress' => $session['total_images'] > 0 ? round(($result['processed'] / $session['total_images']) * 100, 2) : 0,
-            'errors' => $result['errors']
+            'errors' => $result['errors'],
+            'current_image' => $result['current_image'],
+            'recent_processed' => $result['recent_processed'],
+            'current_step' => $session['current_step'] ?? null
         );
         
         if ($result['completed']) {
@@ -1165,14 +1202,35 @@ class Bunny_Optimizer {
     /**
      * Process a batch of optimization tasks
      */
-    private function process_optimization_batch($session, $batch_size) {
-        $images_to_process = array_slice($session['images'], $session['processed'], $batch_size);
+    private function process_optimization_batch($session, $batch_size, $session_id = null) {
+        $concurrent_limit = $this->settings->get('optimization_concurrent_limit', 3);
+        $start_index = $session['processed'];
+        $images_to_process = array_slice($session['images'], $start_index, min($batch_size, $concurrent_limit));
         
         $successful = 0;
         $failed = 0;
         $errors = array();
+        $recent_processed = array();
+        $current_image = null;
         
-        foreach ($images_to_process as $image) {
+        // If no images to process, mark as completed
+        if (empty($images_to_process)) {
+            $total_processed = $session['processed'];
+            $completed = $total_processed >= $session['total_images'];
+            
+            return array(
+                'processed' => $total_processed,
+                'successful' => $session['successful'],
+                'failed' => $session['failed'],
+                'errors' => array(),
+                'completed' => true,
+                'current_image' => null,
+                'recent_processed' => array()
+            );
+        }
+        
+        // Process images concurrently (simulate by processing in chunks)
+        foreach ($images_to_process as $index => $image) {
             if (!isset($image['ID'])) {
                 $failed++;
                 $errors[] = __('Invalid image data', 'bunny-media-offload');
@@ -1180,23 +1238,29 @@ class Bunny_Optimizer {
                 continue;
             }
             
-            try {
-                $result = $this->optimize_image_by_id($image['ID']);
-                
-                if ($result) {
-                    $successful++;
-                    $this->logger->log('info', "Successfully optimized image ID " . $image['ID']);
-                } else {
-                    $failed++;
-                    // translators: %d is the attachment ID
-                    $errors[] = sprintf(__('Failed to optimize image ID %d', 'bunny-media-offload'), $image['ID']);
-                    $this->logger->log('warning', "Failed to optimize image ID " . $image['ID']);
-                }
-            } catch (Exception $e) {
-                $failed++;
-                $errors[] = sprintf(__('Error optimizing image ID %d: %s', 'bunny-media-offload'), $image['ID'], $e->getMessage());
-                $this->logger->log('error', "Exception optimizing image ID " . $image['ID'], array('error' => $e->getMessage()));
+            $attachment_id = $image['ID'];
+            
+            // Get image data for UI
+            $image_data = $this->get_image_data_for_ui($attachment_id, $session['target']);
+            
+            // Set current image (first one being processed)
+            if ($index === 0) {
+                $current_image = $image_data;
+                $current_image['status'] = 'processing';
             }
+            
+            $result = $this->process_single_image($attachment_id, $image_data, $session);
+            
+            if ($result['success']) {
+                $successful++;
+                $current_image['status'] = 'completed';
+            } else {
+                $failed++;
+                $current_image['status'] = 'error';
+                $errors[] = sprintf(__('%s: %s', 'bunny-media-offload'), $image_data['name'], $result['error_message']);
+            }
+            
+            $recent_processed[] = $result['ui_data'];
         }
         
         $total_processed = $session['processed'] + count($images_to_process);
@@ -1207,8 +1271,190 @@ class Bunny_Optimizer {
             'successful' => $session['successful'] + $successful,
             'failed' => $session['failed'] + $failed,
             'errors' => $errors,
-            'completed' => $completed
+            'completed' => $completed,
+            'current_image' => $current_image,
+            'recent_processed' => $recent_processed
         );
+    }
+    
+    /**
+     * Process a single image for batch optimization
+     */
+    private function process_single_image($attachment_id, $image_data, $session) {
+        try {
+            // Process image based on target location
+            if ($session['target'] === 'cloud') {
+                $result = $this->process_cloud_image($attachment_id, $image_data, $session['id']);
+            } else {
+                $result = $this->process_local_image($attachment_id, $image_data, $session['id']);
+            }
+            
+            if ($result && !isset($result['error'])) {
+                $this->logger->log('info', "Successfully optimized image ID " . $attachment_id, array(
+                    'result' => $result,
+                    'target' => $session['target']
+                ));
+                
+                return array(
+                    'success' => true,
+                    'ui_data' => array(
+                        'name' => $image_data['name'],
+                        'thumbnail' => $image_data['thumbnail'],
+                        'success' => true,
+                        'action' => $result['action'] ?? ($session['target'] === 'cloud' ? 'Downloaded, optimized & uploaded' : 'Converted to AVIF'),
+                        'size_reduction' => $result['size_reduction'] ?? 0
+                    )
+                );
+            } else {
+                $error_message = isset($result['error']) ? $result['error'] : 'Optimization failed';
+                $this->logger->log('warning', "Failed to optimize image ID " . $attachment_id . ": " . $error_message);
+                
+                return array(
+                    'success' => false,
+                    'error_message' => $error_message,
+                    'ui_data' => array(
+                        'name' => $image_data['name'],
+                        'thumbnail' => $image_data['thumbnail'],
+                        'success' => false,
+                        'action' => $error_message,
+                        'size_reduction' => 0
+                    )
+                );
+            }
+            
+        } catch (Exception $e) {
+            $exception_msg = "Processing exception: " . $e->getMessage();
+            
+            $this->logger->log('error', "Exception optimizing image ID " . $attachment_id . ": " . $e->getMessage(), array(
+                'exception' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
+            ));
+            
+            return array(
+                'success' => false,
+                'error_message' => $exception_msg,
+                'ui_data' => array(
+                    'name' => $image_data['name'],
+                    'thumbnail' => $image_data['thumbnail'],
+                    'success' => false,
+                    'action' => $exception_msg,
+                    'size_reduction' => 0
+                )
+            );
+        }
+    }
+    
+    /**
+     * Get image data for UI display
+     */
+    private function get_image_data_for_ui($attachment_id, $target = 'local') {
+        $file_path = get_attached_file($attachment_id);
+        $file_name = basename($file_path);
+        $post_title = get_the_title($attachment_id);
+        
+        // Get thumbnail URL
+        $thumbnail_url = wp_get_attachment_image_url($attachment_id, 'thumbnail');
+        if (!$thumbnail_url) {
+            // Fallback to medium size or full size
+            $thumbnail_url = wp_get_attachment_image_url($attachment_id, 'medium') ?: wp_get_attachment_url($attachment_id);
+        }
+        
+        // Final fallback to avoid empty thumbnails
+        if (!$thumbnail_url) {
+            $thumbnail_url = includes_url('images/media/default.png');
+        }
+        
+        return array(
+            'name' => $post_title ?: $file_name,
+            'thumbnail' => $thumbnail_url ?: '',
+            'file_path' => $file_path,
+            'file_size' => file_exists($file_path) ? filesize($file_path) : 0,
+            'type' => $target
+        );
+    }
+    
+    /**
+     * Update session with current step information
+     */
+    private function update_session_step($session_id, $step_data) {
+        $session = get_transient('bunny_optimization_' . $session_id);
+        if ($session) {
+            $session['current_step'] = $step_data;
+            set_transient('bunny_optimization_' . $session_id, $session, 2 * HOUR_IN_SECONDS);
+        }
+    }
+    
+
+    
+
+    
+    /**
+     * Download cloud image for local processing
+     */
+    private function download_cloud_image($attachment_id) {
+        // Get the cloud URL
+        $cloud_url = get_post_meta($attachment_id, '_bunny_cdn_url', true);
+        if (!$cloud_url) {
+            return false;
+        }
+        
+        // Create temporary file
+        $temp_dir = wp_upload_dir()['basedir'] . '/bunny-temp/';
+        if (!file_exists($temp_dir)) {
+            wp_mkdir_p($temp_dir);
+        }
+        
+        $temp_file = $temp_dir . 'opt_' . $attachment_id . '_' . time() . '.tmp';
+        
+        // Download file
+        $response = wp_remote_get($cloud_url, array(
+            'timeout' => 60,
+            'stream' => true,
+            'filename' => $temp_file
+        ));
+        
+        if (is_wp_error($response) || wp_remote_retrieve_response_code($response) !== 200) {
+            if (file_exists($temp_file)) {
+                unlink($temp_file);
+            }
+            return false;
+        }
+        
+        return $temp_file;
+    }
+    
+    /**
+     * Upload optimized image back to cloud
+     */
+    private function upload_optimized_to_cloud($local_path, $attachment_id) {
+        if (!$this->api) {
+            return false;
+        }
+        
+        try {
+            // Get original file info
+            $original_file = get_attached_file($attachment_id);
+            $relative_path = str_replace(wp_upload_dir()['basedir'] . '/', '', $original_file);
+            
+            // Upload optimized version
+            $upload_result = $this->api->upload_file($local_path, $relative_path);
+            
+            if ($upload_result) {
+                // Update attachment metadata
+                update_post_meta($attachment_id, '_bunny_last_optimized', current_time('mysql'));
+                update_post_meta($attachment_id, '_bunny_optimized', true);
+                
+                return true;
+            }
+        } catch (Exception $e) {
+            $this->logger->log('error', 'Failed to upload optimized image to cloud', array(
+                'attachment_id' => $attachment_id,
+                'error' => $e->getMessage()
+            ));
+        }
+        
+        return false;
     }
     
     /**
@@ -1221,21 +1467,147 @@ class Bunny_Optimizer {
             return false;
         }
         
-        return $this->optimize_image($file_path, $attachment_id);
+        $result = $this->optimize_image($file_path, $attachment_id);
+        
+        // Ensure we return array data for the UI, not just file path
+        if ($result && !is_array($result)) {
+            // If optimize_image returned just a file path, create a basic result array
+            $original_size = filesize($file_path);
+            $optimized_size = file_exists($result) ? filesize($result) : $original_size;
+            
+            return array(
+                'optimized_path' => $result,
+                'original_size' => $original_size,
+                'optimized_size' => $optimized_size,
+                'optimized_format' => 'avif',
+                'compression_ratio' => $original_size > 0 ? round((($original_size - $optimized_size) / $original_size) * 100, 2) : 0
+            );
+        }
+        
+        return $result;
+    }
+    
+
+    
+    /**
+     * Process cloud image (download, optimize, upload)
+     */
+    private function process_cloud_image($attachment_id, $image_data, $session_id = null) {
+        // Step 1: Download image from cloud
+        if ($session_id) {
+            $this->update_session_step($session_id, array(
+                'attachment_id' => $attachment_id,
+                'step' => 'downloading',
+                'message' => 'Downloading from CDN...'
+            ));
+        }
+        
+        $local_path = $this->download_cloud_image($attachment_id);
+        if (!$local_path) {
+            return array('error' => 'Failed to download from CDN');
+        }
+        
+        // Step 2: Optimize locally
+        if ($session_id) {
+            $this->update_session_step($session_id, array(
+                'attachment_id' => $attachment_id,
+                'step' => 'converting',
+                'message' => 'Converting to AVIF...'
+            ));
+        }
+        
+        $result = $this->optimize_image($local_path, $attachment_id);
+        if (!$result || isset($result['error'])) {
+            // Clean up downloaded file
+            if (file_exists($local_path)) {
+                unlink($local_path);
+            }
+            $error_msg = isset($result['error']) ? $result['error'] : "Unknown optimization error";
+            return array('error' => "Cloud optimization failed: " . $error_msg);
+        }
+        
+        // Step 3: Upload optimized image back to cloud
+        if ($session_id) {
+            $this->update_session_step($session_id, array(
+                'attachment_id' => $attachment_id,
+                'step' => 'uploading',
+                'message' => 'Uploading to CDN...'
+            ));
+        }
+        
+        $upload_result = $this->upload_optimized_to_cloud($local_path, $attachment_id);
+        
+        // Clean up local files
+        if (file_exists($local_path)) {
+            unlink($local_path);
+        }
+        
+        if ($upload_result) {
+            if ($session_id) {
+                $this->update_session_step($session_id, array(
+                    'attachment_id' => $attachment_id,
+                    'step' => 'completed',
+                    'message' => 'Upload completed'
+                ));
+            }
+            
+            return array(
+                'action' => 'Downloaded, optimized & uploaded to CDN',
+                'size_reduction' => $result['compression_ratio'] ?? 0,
+                'original_size' => $result['original_size'] ?? 0,
+                'new_size' => $result['optimized_size'] ?? 0
+            );
+        }
+        
+        return array('error' => 'Failed to upload to CDN');
     }
     
     /**
-     * Test AJAX handler for debugging
+     * Process local image (optimize and replace)
      */
-    public function test_optimization_ajax() {
-        error_log('Bunny Optimization: test_optimization_ajax called');
+    private function process_local_image($attachment_id, $image_data, $session_id = null) {
+        if ($session_id) {
+            $this->update_session_step($session_id, array(
+                'attachment_id' => $attachment_id,
+                'step' => 'converting',
+                'message' => 'Converting to AVIF...'
+            ));
+        }
         
-        check_ajax_referer('bunny_ajax_nonce', 'nonce');
+        $result = $this->optimize_image_by_id($attachment_id);
         
-        wp_send_json_success(array(
-            'message' => 'Optimization AJAX is working!',
-            'timestamp' => time(),
-            'optimize_on_upload' => $this->settings->get('optimize_on_upload', true)
-        ));
+        if ($result && is_array($result) && !isset($result['error'])) {
+            if ($session_id) {
+                $this->update_session_step($session_id, array(
+                    'attachment_id' => $attachment_id,
+                    'step' => 'completed',
+                    'message' => 'Optimization completed'
+                ));
+            }
+            
+            // Calculate size reduction percentage
+            $original_size = $result['original_size'] ?? 0;
+            $optimized_size = $result['optimized_size'] ?? 0;
+            $size_reduction = 0;
+            
+            if ($original_size > 0 && $optimized_size > 0) {
+                $size_reduction = round((($original_size - $optimized_size) / $original_size) * 100, 1);
+            }
+            
+            return array(
+                'action' => 'Converted to ' . strtoupper($result['optimized_format'] ?? 'AVIF'),
+                'size_reduction' => $size_reduction,
+                'original_size' => $original_size,
+                'new_size' => $optimized_size,
+                'compression_ratio' => $result['compression_ratio'] ?? $size_reduction
+            );
+        }
+        
+        // Return error if optimization failed
+        if ($result && isset($result['error'])) {
+            return array('error' => $result['error']);
+        }
+        
+        return array('error' => 'Local optimization failed: Unknown error');
     }
 } 

@@ -660,7 +660,13 @@
         clearLogs: function(e) {
             e.preventDefault();
             
-            if (!confirm('This will permanently delete all logs. Continue?')) {
+            var $button = $(e.target);
+            var logType = $button.data('log-type') || 'all';
+            var confirmMessage = logType === 'all' 
+                ? 'This will permanently delete all logs. Continue?'
+                : 'This will permanently delete all ' + logType + ' logs. Continue?';
+            
+            if (!confirm(confirmMessage)) {
                 return;
             }
             
@@ -669,13 +675,15 @@
                 type: 'POST',
                 data: {
                     action: 'bunny_clear_logs',
-                    nonce: bunnyAjax.nonce
+                    nonce: bunnyAjax.nonce,
+                    log_type: logType
                 },
                 success: function(response) {
                     if (response.success) {
+                        BunnyAdmin.showNotice(response.data.message, 'success');
                         location.reload();
                     } else {
-                        alert('Failed to clear logs.');
+                        alert('Failed to clear logs: ' + (response.data.message || 'Unknown error'));
                     }
                 },
                 error: function() {
@@ -690,12 +698,18 @@
         exportLogs: function(e) {
             e.preventDefault();
             
+            var $button = $(e.target);
+            var logType = $button.data('log-type') || 'all';
+            var logLevel = $button.data('log-level') || '';
+            
             $.ajax({
                 url: bunnyAjax.ajaxurl,
                 type: 'POST',
                 data: {
                     action: 'bunny_export_logs',
-                    nonce: bunnyAjax.nonce
+                    nonce: bunnyAjax.nonce,
+                    log_type: logType,
+                    log_level: logLevel
                 },
                 success: function(response) {
                     if (response.success) {
@@ -704,13 +718,23 @@
                         var url = window.URL.createObjectURL(blob);
                         var a = document.createElement('a');
                         a.href = url;
-                        a.download = 'bunny-logs-' + new Date().toISOString().split('T')[0] + '.csv';
+                        
+                        var filename = 'bunny-logs';
+                        if (logType !== 'all') {
+                            filename += '-' + logType.toLowerCase();
+                        }
+                        if (logLevel) {
+                            filename += '-' + logLevel.toLowerCase();
+                        }
+                        filename += '-' + new Date().toISOString().split('T')[0] + '.csv';
+                        
+                        a.download = filename;
                         document.body.appendChild(a);
                         a.click();
                         document.body.removeChild(a);
                         window.URL.revokeObjectURL(url);
                     } else {
-                        BunnyAdmin.showNotice(response.data.message, 'error');
+                        BunnyAdmin.showNotice(response.data.message || 'Export failed', 'error');
                     }
                 },
                 error: function() {
@@ -770,6 +794,9 @@
                         // Show optimization progress interface
                         self.initOptimizationInterface();
                         
+                        // Initialize speed tracking
+                        self.initOptimizationSpeedTracking();
+                        
                         // Start processing
                         self.processOptimizationBatch(self.optimizationState.sessionId);
                     } else {
@@ -820,6 +847,11 @@
             $('#current-image-processing').show();
             $('#recent-processed').show();
             
+            // Clear any previous processing data
+            $('#processed-images-list').empty();
+            $('#current-image-thumb').attr('src', '').hide();
+            $('#current-image-name').text('Preparing...');
+            
             // Initialize process steps for target type
             var target = this.optimizationState.target;
             if (target === 'cloud') {
@@ -827,11 +859,17 @@
                 $('#cloud-download').show();
                 $('#cloud-process').show();
                 $('#cloud-upload').show();
+                
+                // Reset cloud process steps
+                $('#cloud-download, #cloud-process, #cloud-upload').removeClass('active completed error');
             } else {
                 $('#local-process').show();
                 $('#cloud-download').hide();
                 $('#cloud-process').hide();
                 $('#cloud-upload').hide();
+                
+                // Reset local process steps
+                $('#local-process').removeClass('active completed error');
             }
         },
         
@@ -869,9 +907,17 @@
                             ' (' + data.successful + ' successful, ' + data.failed + ' failed)'
                         );
                         
+                        // Update speed statistics
+                        self.updateOptimizationSpeed(data.processed, data.total);
+                        
                         // Update current image being processed
                         if (data.current_image) {
                             self.updateCurrentImage(data.current_image);
+                        }
+                        
+                        // Update current step information
+                        if (data.current_step) {
+                            self.updateCurrentStep(data.current_step);
                         }
                         
                         // Add recently processed images
@@ -914,16 +960,22 @@
          * Update current image being processed
          */
         updateCurrentImage: function(imageData) {
-            $('#current-image-thumb').attr('src', imageData.thumbnail);
-            $('#current-image-name').text(imageData.name);
-            
-            // Update process steps based on current status
-            var target = this.optimizationState.target;
-            
-            if (target === 'cloud') {
-                this.updateCloudProcessSteps(imageData.status);
+            if (imageData && imageData.thumbnail && imageData.name) {
+                $('#current-image-thumb').attr('src', imageData.thumbnail).show();
+                $('#current-image-name').text(imageData.name);
+                
+                // Update process steps based on current status
+                var target = this.optimizationState.target;
+                
+                if (target === 'cloud') {
+                    this.updateCloudProcessSteps(imageData.status);
+                } else {
+                    this.updateLocalProcessSteps(imageData.status);
+                }
             } else {
-                this.updateLocalProcessSteps(imageData.status);
+                // Hide current image section if no data
+                $('#current-image-thumb').hide();
+                $('#current-image-name').text('Processing...');
             }
         },
         
@@ -955,6 +1007,41 @@
                     $('#local-process').addClass('error');
                     $('#local-process-text').text('Error');
                     break;
+            }
+        },
+        
+        /**
+         * Update current step information
+         */
+        updateCurrentStep: function(stepData) {
+            if (!stepData) return;
+            
+            var target = this.optimizationState.target;
+            
+            if (target === 'cloud') {
+                this.updateCloudProcessSteps(stepData.step);
+            } else {
+                this.updateLocalProcessSteps(stepData.step);
+            }
+            
+            // Update step message if available
+            if (stepData.message) {
+                if (target === 'cloud') {
+                    switch(stepData.step) {
+                        case 'downloading':
+                            $('#download-process-text').text(stepData.message);
+                            break;
+                        case 'converting':
+                        case 'processing':
+                            $('#cloud-process-text').text(stepData.message);
+                            break;
+                        case 'uploading':
+                            $('#upload-process-text').text(stepData.message);
+                            break;
+                    }
+                } else {
+                    $('#local-process-text').text(stepData.message);
+                }
             }
         },
         
@@ -1023,9 +1110,14 @@
                 var resultText = image.success ? 'Optimized successfully' : 'Optimization failed';
                 var actionText = image.action || 'Converted to AVIF';
                 
+                // Add size reduction info if available
+                if (image.success && image.size_reduction && image.size_reduction > 0) {
+                    resultText += ' (-' + image.size_reduction + '%)';
+                }
+                
                 var $item = $('<div class="bunny-processed-item ' + resultClass + '">' +
                     '<div class="bunny-processed-thumb">' +
-                        '<img src="' + image.thumbnail + '" alt="' + image.name + '" />' +
+                        '<img src="' + image.thumbnail + '" alt="' + image.name + '" onerror="this.style.display=\'none\'" />' +
                     '</div>' +
                     '<div class="bunny-processed-info">' +
                         '<div class="bunny-processed-name">' + image.name + '</div>' +
@@ -1235,12 +1327,88 @@
                     }
                 }
             });
+        },
+        
+        /**
+         * Initialize optimization speed tracking
+         */
+        initOptimizationSpeedTracking: function() {
+            this.optimizationState.startTime = Date.now();
+            this.optimizationState.lastUpdate = Date.now();
+            this.optimizationState.lastProcessed = 0;
+            
+            // Add speed display if not exists
+            if ($('#optimization-speed').length === 0) {
+                var speedHtml = '<div class="bunny-optimization-stats">';
+                speedHtml += '<div class="bunny-stat-item"><span class="label">Speed:</span> <span id="optimization-speed">0 files/min</span></div>';
+                speedHtml += '<div class="bunny-stat-item"><span class="label">Time Elapsed:</span> <span id="optimization-time">00:00</span></div>';
+                speedHtml += '</div>';
+                
+                $('#optimization-progress').append(speedHtml);
+            }
+        },
+        
+        /**
+         * Update optimization speed statistics
+         */
+        updateOptimizationSpeed: function(processed, total) {
+            if (!this.optimizationState.startTime) return;
+            
+            var now = Date.now();
+            var elapsed = (now - this.optimizationState.startTime) / 1000; // in seconds
+            var elapsedMinutes = elapsed / 60;
+            
+            // Calculate overall speed
+            var overallSpeed = elapsedMinutes > 0 ? Math.round(processed / elapsedMinutes) : 0;
+            
+            // Calculate recent speed (last 30 seconds)
+            var timeSinceLastUpdate = (now - this.optimizationState.lastUpdate) / 1000;
+            var recentProcessed = processed - this.optimizationState.lastProcessed;
+            var recentSpeed = 0;
+            
+            if (timeSinceLastUpdate >= 30) { // Update recent speed every 30 seconds
+                recentSpeed = timeSinceLastUpdate > 0 ? Math.round((recentProcessed / timeSinceLastUpdate) * 60) : 0;
+                this.optimizationState.lastUpdate = now;
+                this.optimizationState.lastProcessed = processed;
+            }
+            
+            // Display speed (use recent speed if available, otherwise overall speed)
+            var displaySpeed = recentSpeed > 0 ? recentSpeed : overallSpeed;
+            $('#optimization-speed').text(displaySpeed + ' files/min');
+            
+            // Format and display elapsed time
+            var minutes = Math.floor(elapsed / 60);
+            var seconds = Math.floor(elapsed % 60);
+            var timeStr = String(minutes).padStart(2, '0') + ':' + String(seconds).padStart(2, '0');
+            $('#optimization-time').text(timeStr);
+        },
+        
+        /**
+         * Show optimization criteria message
+         */
+        showOptimizationCriteria: function() {
+            var criteriaHtml = '<div class="bunny-optimization-criteria notice notice-info inline">';
+            criteriaHtml += '<p><strong>Optimization Criteria:</strong> Only images in supported formats (JPEG, PNG, GIF, WebP, AVIF) ';
+            criteriaHtml += 'with file size <strong>exceeding 45KB</strong> will be optimized. ';
+            criteriaHtml += 'Images below this threshold or in unsupported formats will be ignored.</p>';
+            criteriaHtml += '</div>';
+            
+            // Remove existing criteria message
+            $('.bunny-optimization-criteria').remove();
+            
+            // Add criteria message before optimization actions
+            $('.bunny-optimization-actions').before(criteriaHtml);
         }
     };
     
     // Initialize when document is ready
     $(document).ready(function() {
         BunnyAdmin.init();
+        
+        // Show optimization criteria on optimization page
+        if ($('.bunny-optimization-actions').length > 0) {
+            BunnyAdmin.showOptimizationCriteria();
+        }
         
         // Update dashboard stats every 30 seconds
         setInterval(BunnyAdmin.updateDashboardStats, 30000);

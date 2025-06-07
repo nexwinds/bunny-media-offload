@@ -25,9 +25,9 @@ Bunny Media Offload is a comprehensive WordPress plugin that seamlessly integrat
 
 ### Key Features
 
-- **Automatic Media Offloading**: Upload new media directly to Bunny.net Edge Storage
-- **Bulk Migration**: Migrate existing media libraries with progress tracking
-- **Image Optimization**: Convert to modern formats (AVIF/WebP) with intelligent compression
+- **Automatic Media Offloading**: Optimize and Upload new media directly to Bunny.net Edge Storage
+- **Bulk Migration**: Migrate existing media libraries with animated progress tracking
+- **Image Optimization**: Convert to modern formats AVIF with intelligent compression
 - **Global CDN Delivery**: Serve media from 114+ global edge locations
 - **WPML Compatible**: Full multilingual support with shared CDN URLs
 - **WooCommerce**: Seamless product image handling with High-Performance Order Storage support
@@ -109,27 +109,6 @@ define('BUNNY_CUSTOM_HOSTNAME', 'cdn.yoursite.com');
 ### JSON Configuration File
 
 All other settings are automatically managed in `/wp-content/bunny-config.json`. This file is created automatically with defaults when the plugin is first activated.
-
-**Example JSON configuration:**
-```json
-{
-    "auto_offload": true,
-    "delete_local": true,
-    "file_versioning": true,
-    "allowed_file_types": ["webp", "avif"],
-    "allowed_post_types": ["attachment", "product"],
-    "batch_size": 100,
-    "enable_logs": true,
-    "log_level": "info",
-    "optimization_enabled": false,
-    "optimize_on_upload": true,
-    "optimization_format": "avif",
-    "optimization_max_size": "50kb",
-    "optimization_batch_size": 60,
-    "migration_concurrent_limit": 4,
-    "optimization_concurrent_limit": 3
-}
-```
 
 ### Example Complete wp-config.php Section
 
@@ -269,7 +248,7 @@ Before starting a bulk migration:
 
 #### Via Admin Interface
 1. Navigate to **Bunny CDN > Migration**
-2. Select file types to migrate:
+2. Supported file types to migrate:
    - **WebP Images**: Modern image format with excellent compression
    - **AVIF Images**: Next-generation image format with superior compression
    

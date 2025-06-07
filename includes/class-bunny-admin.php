@@ -111,7 +111,7 @@ class Bunny_Admin {
             __('Logs', 'bunny-media-offload'),
             __('Logs', 'bunny-media-offload'),
             'manage_options',
-            'bunny-media-offload-logs',
+            'bunny-media-logs',
             array($this, 'logs_page')
         );
         
@@ -425,25 +425,30 @@ class Bunny_Admin {
     private function render_general_settings($settings) {        
         ?>
         <div class="bunny-settings-section">
-            <h3><?php esc_html_e('Upload Behavior', 'bunny-media-offload'); ?></h3>
+            <h3><?php esc_html_e('Media Management Information', 'bunny-media-offload'); ?></h3>
+            
+            <div class="bunny-info-box">
+                <h4><?php esc_html_e('🚀 Automated Optimization on Upload', 'bunny-media-offload'); ?></h4>
+                <p><?php esc_html_e('This plugin automatically optimizes your images during upload when "Optimize on Upload" is enabled in the Image Optimization section below. Images are converted to AVIF format for maximum compression and performance.', 'bunny-media-offload'); ?></p>
+            </div>
+            
+            <div class="bunny-info-box">
+                <h4><?php esc_html_e('📁 Manual Migration & Offload', 'bunny-media-offload'); ?></h4>
+                <p><?php esc_html_e('Media offloading to Bunny.net CDN is handled manually through the dedicated Migration page. This gives you full control over which files are offloaded and when.', 'bunny-media-offload'); ?></p>
+                <p>
+                    <a href="<?php echo esc_url(admin_url('admin.php?page=bunny-media-offload-migration')); ?>" class="button button-primary">
+                        <?php esc_html_e('Go to Migration Page', 'bunny-media-offload'); ?>
+                    </a>
+                </p>
+            </div>
             
             <table class="form-table">
                 <tr>
-                    <th scope="row"><?php esc_html_e('Auto Offload', 'bunny-media-offload'); ?></th>
-                        <td>
-                            <label>
-                            <input type="checkbox" name="bunny_json_settings[auto_offload]" value="1" <?php checked($settings['auto_offload'] ?? false); ?> />
-                            <?php esc_html_e('Automatically offload new uploads to Bunny.net', 'bunny-media-offload'); ?>
-                            </label>
-                        <p class="description"><?php esc_html_e('When enabled, newly uploaded media files will be automatically transferred to Bunny.net CDN.', 'bunny-media-offload'); ?></p>
-                        </td>
-                    </tr>
-                    <tr>
                     <th scope="row"><?php esc_html_e('Delete Local Files', 'bunny-media-offload'); ?></th>
                         <td>
                             <label>
                             <input type="checkbox" name="bunny_json_settings[delete_local]" value="1" <?php checked($settings['delete_local'] ?? true); ?> />
-                            <?php esc_html_e('Delete local files after successful upload to save server space', 'bunny-media-offload'); ?>
+                            <?php esc_html_e('Delete local files after successful migration to save server space', 'bunny-media-offload'); ?>
                             </label>
                         <div class="bunny-info-box warning">
                             <p><strong><?php esc_html_e('⚠️ Important:', 'bunny-media-offload'); ?></strong> <?php esc_html_e('When local files are deleted, they are also permanently removed from the cloud if you later disable this plugin. Only disable this option if you plan to use the Sync & Recovery features to maintain local copies.', 'bunny-media-offload'); ?></p>
@@ -644,7 +649,7 @@ class Bunny_Admin {
      */
     public function migration_page() {
         $migration_stats = $this->migration->get_migration_stats();
-        $detailed_stats = $this->migration->get_detailed_migration_stats();
+        $detailed_stats = $this->migration->get_migration_stats(true);
         $max_file_size = $this->settings->get('optimization_max_size', '50kb');
         
         ?>
@@ -1056,23 +1061,75 @@ class Bunny_Admin {
      * Logs page
      */
     public function logs_page() {
-        $logs = $this->logger->get_logs(50);
+        // Get filter parameters
+        $log_type = isset($_GET['log_type']) ? sanitize_text_field($_GET['log_type']) : 'all';
+        $log_level = isset($_GET['log_level']) ? sanitize_text_field($_GET['log_level']) : '';
+        $limit = 100;
+        
+        // Get logs based on filters
+        $logs = $this->get_filtered_logs($log_type, $log_level, $limit);
         $error_stats = $this->stats->get_error_stats();
+        $optimization_stats = $this->get_optimization_log_stats();
         
         ?>
         <div class="wrap">
             <h1><?php esc_html_e('Activity Logs', 'bunny-media-offload'); ?></h1>
             
+            <!-- Log Filters -->
+            <div class="bunny-logs-filters">
+                <form method="get" action="">
+                    <input type="hidden" name="page" value="bunny-media-logs" />
+                    
+                    <div class="bunny-filter-group">
+                        <label for="log_type"><?php esc_html_e('Log Type:', 'bunny-media-offload'); ?></label>
+                        <select name="log_type" id="log_type">
+                            <option value="all" <?php selected($log_type, 'all'); ?>><?php esc_html_e('All Logs', 'bunny-media-offload'); ?></option>
+                            <option value="offload" <?php selected($log_type, 'offload'); ?>><?php esc_html_e('Media Offload', 'bunny-media-offload'); ?></option>
+                            <option value="optimization" <?php selected($log_type, 'optimization'); ?>><?php esc_html_e('Image Optimization', 'bunny-media-offload'); ?></option>
+                        </select>
+                    </div>
+                    
+                    <div class="bunny-filter-group">
+                        <label for="log_level"><?php esc_html_e('Log Level:', 'bunny-media-offload'); ?></label>
+                        <select name="log_level" id="log_level">
+                            <option value="" <?php selected($log_level, ''); ?>><?php esc_html_e('All Levels', 'bunny-media-offload'); ?></option>
+                            <option value="info" <?php selected($log_level, 'info'); ?>><?php esc_html_e('Info', 'bunny-media-offload'); ?></option>
+                            <option value="warning" <?php selected($log_level, 'warning'); ?>><?php esc_html_e('Warning', 'bunny-media-offload'); ?></option>
+                            <option value="error" <?php selected($log_level, 'error'); ?>><?php esc_html_e('Error', 'bunny-media-offload'); ?></option>
+                        </select>
+                    </div>
+                    
+                    <div class="bunny-filter-group">
+                        <button type="submit" class="button button-primary"><?php esc_html_e('Filter', 'bunny-media-offload'); ?></button>
+                        <a href="<?php echo esc_url(admin_url('admin.php?page=bunny-media-logs')); ?>" class="button"><?php esc_html_e('Reset', 'bunny-media-offload'); ?></a>
+                    </div>
+                </form>
+            </div>
+            
             <div class="bunny-logs-header">
                 <div class="bunny-log-stats">
-                                         <span class="bunny-log-stat bunny-log-error"><?php esc_html_e('Errors:', 'bunny-media-offload'); ?> <?php echo esc_html($error_stats['error_counts']['error']); ?></span>
-                     <span class="bunny-log-stat bunny-log-warning"><?php esc_html_e('Warnings:', 'bunny-media-offload'); ?> <?php echo esc_html($error_stats['error_counts']['warning']); ?></span>
-                     <span class="bunny-log-stat bunny-log-info"><?php esc_html_e('Info:', 'bunny-media-offload'); ?> <?php echo esc_html($error_stats['error_counts']['info']); ?></span>
+                    <?php if ($log_type === 'all' || $log_type === 'offload'): ?>
+                        <div class="bunny-log-stat-group">
+                            <h4><?php esc_html_e('Media Offload', 'bunny-media-offload'); ?></h4>
+                            <span class="bunny-log-stat bunny-log-error"><?php esc_html_e('Errors:', 'bunny-media-offload'); ?> <?php echo esc_html($error_stats['error_counts']['error']); ?></span>
+                            <span class="bunny-log-stat bunny-log-warning"><?php esc_html_e('Warnings:', 'bunny-media-offload'); ?> <?php echo esc_html($error_stats['error_counts']['warning']); ?></span>
+                            <span class="bunny-log-stat bunny-log-info"><?php esc_html_e('Info:', 'bunny-media-offload'); ?> <?php echo esc_html($error_stats['error_counts']['info']); ?></span>
+                        </div>
+                    <?php endif; ?>
+                    
+                    <?php if ($log_type === 'all' || $log_type === 'optimization'): ?>
+                        <div class="bunny-log-stat-group">
+                            <h4><?php esc_html_e('Image Optimization', 'bunny-media-offload'); ?></h4>
+                            <span class="bunny-log-stat bunny-log-error"><?php esc_html_e('Errors:', 'bunny-media-offload'); ?> <?php echo esc_html($optimization_stats['error']); ?></span>
+                            <span class="bunny-log-stat bunny-log-warning"><?php esc_html_e('Warnings:', 'bunny-media-offload'); ?> <?php echo esc_html($optimization_stats['warning']); ?></span>
+                            <span class="bunny-log-stat bunny-log-info"><?php esc_html_e('Info:', 'bunny-media-offload'); ?> <?php echo esc_html($optimization_stats['info']); ?></span>
+                        </div>
+                    <?php endif; ?>
                 </div>
                 
                 <div class="bunny-log-actions">
-                    <button type="button" class="button" id="export-logs"><?php esc_html_e('Export Logs', 'bunny-media-offload'); ?></button>
-                    <button type="button" class="button" id="clear-logs"><?php esc_html_e('Clear Logs', 'bunny-media-offload'); ?></button>
+                    <button type="button" class="button" id="export-logs" data-log-type="<?php echo esc_attr($log_type); ?>" data-log-level="<?php echo esc_attr($log_level); ?>"><?php esc_html_e('Export Filtered Logs', 'bunny-media-offload'); ?></button>
+                    <button type="button" class="button" id="clear-logs" data-log-type="<?php echo esc_attr($log_type); ?>"><?php esc_html_e('Clear Filtered Logs', 'bunny-media-offload'); ?></button>
                 </div>
             </div>
             
@@ -1081,6 +1138,7 @@ class Bunny_Admin {
                     <thead>
                         <tr>
                             <th><?php esc_html_e('Time', 'bunny-media-offload'); ?></th>
+                            <th><?php esc_html_e('Type', 'bunny-media-offload'); ?></th>
                             <th><?php esc_html_e('Level', 'bunny-media-offload'); ?></th>
                             <th><?php esc_html_e('Message', 'bunny-media-offload'); ?></th>
                         </tr>
@@ -1088,20 +1146,34 @@ class Bunny_Admin {
                     <tbody>
                         <?php if (!empty($logs)): ?>
                             <?php foreach ($logs as $log): ?>
-                                <tr class="bunny-log-<?php echo esc_attr($log->log_level); ?>">
+                                <?php 
+                                $log_category = $this->determine_log_category($log->message);
+                                ?>
+                                <tr class="bunny-log-<?php echo esc_attr($log->log_level); ?> bunny-log-type-<?php echo esc_attr($log_category); ?>">
                                     <td><?php echo esc_html(Bunny_Utils::format_date($log->date_created)); ?></td>
+                                    <td>
+                                        <span class="bunny-log-type bunny-log-type-<?php echo esc_attr($log_category); ?>">
+                                            <?php echo esc_html($this->get_log_type_label($log_category)); ?>
+                                        </span>
+                                    </td>
                                     <td><span class="bunny-log-level bunny-log-level-<?php echo esc_attr($log->log_level); ?>"><?php echo esc_html(ucfirst($log->log_level)); ?></span></td>
                                     <td><?php echo esc_html($log->message); ?></td>
                                 </tr>
                             <?php endforeach; ?>
                         <?php else: ?>
                             <tr>
-                                <td colspan="3"><?php esc_html_e('No logs found.', 'bunny-media-offload'); ?></td>
+                                <td colspan="4"><?php esc_html_e('No logs found matching the selected filters.', 'bunny-media-offload'); ?></td>
                             </tr>
                         <?php endif; ?>
                     </tbody>
                 </table>
             </div>
+            
+            <?php if (count($logs) >= $limit): ?>
+                <div class="bunny-logs-pagination">
+                    <p><?php esc_html_e('Showing the most recent 100 entries. Use filters to narrow down results or export for complete logs.', 'bunny-media-offload'); ?></p>
+                </div>
+            <?php endif; ?>
         </div>
         <?php
     }
@@ -1568,7 +1640,10 @@ wp bunny logs --export                    # Export logs to CSV</pre>
             wp_die(esc_html__('Insufficient permissions.', 'bunny-media-offload'));
         }
         
-        $csv_data = $this->logger->export_logs();
+        $log_type = isset($_POST['log_type']) ? sanitize_text_field($_POST['log_type']) : 'all';
+        $log_level = isset($_POST['log_level']) ? sanitize_text_field($_POST['log_level']) : '';
+        
+        $csv_data = $this->export_filtered_logs($log_type, $log_level);
         
         wp_send_json_success(array('csv_data' => $csv_data));
     }
@@ -1583,8 +1658,11 @@ wp bunny logs --export                    # Export logs to CSV</pre>
             wp_die(esc_html__('Insufficient permissions.', 'bunny-media-offload'));
         }
         
-        $this->logger->clear_logs();
-        wp_send_json_success(array('message' => esc_html__('Logs cleared successfully.', 'bunny-media-offload')));
+        $log_type = isset($_POST['log_type']) ? sanitize_text_field($_POST['log_type']) : 'all';
+        
+        $result = $this->clear_filtered_logs($log_type);
+        
+        wp_send_json_success(array('message' => $result['message']));
     }
     
     /**
@@ -1743,5 +1821,210 @@ wp bunny logs --export                    # Export logs to CSV</pre>
                 $query->set('post_type', 'attachment');
             }
         }
+    }
+    
+    /**
+     * Get filtered logs based on type and level
+     */
+    private function get_filtered_logs($log_type, $log_level, $limit) {
+        $logs = $this->logger->get_logs($limit, 0, $log_level);
+        
+        if ($log_type === 'all') {
+            return $logs;
+        }
+        
+        // Filter logs by type based on message content
+        $filtered_logs = array();
+        foreach ($logs as $log) {
+            $category = $this->determine_log_category($log->message);
+            if ($log_type === $category) {
+                $filtered_logs[] = $log;
+            }
+        }
+        
+        return $filtered_logs;
+    }
+    
+    /**
+     * Determine log category based on message content
+     */
+    private function determine_log_category($message) {
+        // Optimization-related keywords
+        $optimization_keywords = array(
+            'optimization', 'optimize', 'optimized', 'converting', 'avif', 'webp', 
+            'compression', 'compress', 'format conversion', 'image quality',
+            'size reduction', 'batch optimization', 'optimization session'
+        );
+        
+        // Offload-related keywords
+        $offload_keywords = array(
+            'upload', 'download', 'migration', 'offload', 'bunny.net', 'cdn',
+            'storage zone', 'sync', 'transfer', 'file deleted', 'file uploaded'
+        );
+        
+        $message_lower = strtolower($message);
+        
+        // Check for optimization keywords first (more specific)
+        foreach ($optimization_keywords as $keyword) {
+            if (strpos($message_lower, $keyword) !== false) {
+                return 'optimization';
+            }
+        }
+        
+        // Check for offload keywords
+        foreach ($offload_keywords as $keyword) {
+            if (strpos($message_lower, $keyword) !== false) {
+                return 'offload';
+            }
+        }
+        
+        // Default to offload for unmatched logs (legacy behavior)
+        return 'offload';
+    }
+    
+    /**
+     * Get log type label
+     */
+    private function get_log_type_label($category) {
+        switch ($category) {
+            case 'optimization':
+                return __('Optimization', 'bunny-media-offload');
+            case 'offload':
+                return __('Offload', 'bunny-media-offload');
+            default:
+                return __('General', 'bunny-media-offload');
+        }
+    }
+    
+    /**
+     * Get optimization log statistics
+     */
+    private function get_optimization_log_stats() {
+        global $wpdb;
+        
+        $cache_key = 'bunny_optimization_log_stats';
+        $cached_stats = wp_cache_get($cache_key, 'bunny_media_offload');
+        
+        if ($cached_stats !== false) {
+            return $cached_stats;
+        }
+        
+        // Get optimization-related log counts by level
+        $optimization_keywords = array(
+            'optimization', 'optimize', 'optimized', 'converting', 'avif', 'webp', 
+            'compression', 'compress', 'format conversion', 'image quality',
+            'size reduction', 'batch optimization', 'optimization session'
+        );
+        
+        $keyword_conditions = array();
+        foreach ($optimization_keywords as $keyword) {
+            $keyword_conditions[] = "message LIKE '%" . esc_sql($keyword) . "%'";
+        }
+        $where_clause = '(' . implode(' OR ', $keyword_conditions) . ')';
+        
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Custom table query with caching implemented
+        $counts = $wpdb->get_results("
+            SELECT log_level, COUNT(*) as count
+            FROM {$wpdb->prefix}bunny_logs 
+            WHERE {$where_clause}
+            AND date_created >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+            GROUP BY log_level
+        ");
+        
+        $stats = array(
+            'error' => 0,
+            'warning' => 0,
+            'info' => 0,
+            'debug' => 0
+        );
+        
+        foreach ($counts as $count) {
+            $stats[$count->log_level] = (int) $count->count;
+        }
+        
+        // Cache for 3 minutes
+        wp_cache_set($cache_key, $stats, 'bunny_media_offload', 180);
+        
+        return $stats;
+    }
+    
+    /**
+     * Export filtered logs as CSV
+     */
+    private function export_filtered_logs($log_type, $log_level) {
+        $logs = $this->get_filtered_logs($log_type, $log_level, 10000); // Get up to 10k logs for export
+        
+        if (empty($logs)) {
+            return '';
+        }
+        
+        $csv_data = "Date,Type,Level,Message\n";
+        
+        foreach ($logs as $log) {
+            $category = $this->determine_log_category($log->message);
+            $type_label = $this->get_log_type_label($category);
+            
+            $csv_data .= sprintf(
+                '"%s","%s","%s","%s"' . "\n",
+                esc_html(Bunny_Utils::format_date($log->date_created)),
+                esc_html($type_label),
+                esc_html(ucfirst($log->log_level)),
+                str_replace('"', '""', $log->message) // Escape quotes for CSV
+            );
+        }
+        
+        return $csv_data;
+    }
+    
+    /**
+     * Clear filtered logs
+     */
+    private function clear_filtered_logs($log_type) {
+        global $wpdb;
+        
+        if ($log_type === 'all') {
+            $this->logger->clear_logs();
+            return array('message' => __('All logs cleared successfully.', 'bunny-media-offload'));
+        }
+        
+        // Get all logs and filter them
+        $all_logs = $this->logger->get_logs(10000); // Get large number for processing
+        $ids_to_delete = array();
+        
+        foreach ($all_logs as $log) {
+            $category = $this->determine_log_category($log->message);
+            if ($log_type === $category) {
+                $ids_to_delete[] = $log->id;
+            }
+        }
+        
+        if (empty($ids_to_delete)) {
+            $type_label = $this->get_log_type_label($log_type);
+            return array('message' => sprintf(__('No %s logs found to clear.', 'bunny-media-offload'), strtolower($type_label)));
+        }
+        
+        // Delete the filtered logs
+        $placeholders = implode(',', array_fill(0, count($ids_to_delete), '%d'));
+        $query = "DELETE FROM {$wpdb->prefix}bunny_logs WHERE id IN ($placeholders)";
+        
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Deleting filtered logs
+        $deleted_count = $wpdb->query($wpdb->prepare($query, $ids_to_delete));
+        
+        // Clear relevant caches
+        wp_cache_delete('bunny_error_stats', 'bunny_media_offload');
+        wp_cache_delete('bunny_optimization_log_stats', 'bunny_media_offload');
+        
+        $type_label = $this->get_log_type_label($log_type);
+        
+        return array('message' => sprintf(
+            _n(
+                '%d %s log cleared successfully.',
+                '%d %s logs cleared successfully.',
+                $deleted_count,
+                'bunny-media-offload'
+            ),
+            $deleted_count,
+            strtolower($type_label)
+        ));
     }
 } 
