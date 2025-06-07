@@ -47,22 +47,10 @@ class Bunny_Optimizer {
         // Hook into upload process if optimization on upload is enabled
         add_filter('bunny_before_upload', array($this, 'optimize_on_upload'), 10, 2);
         
-        // AJAX handlers
-        add_action('wp_ajax_bunny_optimize_bulk', array($this, 'handle_bulk_optimization'));
-        add_action('wp_ajax_bunny_optimization_status', array($this, 'get_optimization_status'));
-        add_action('wp_ajax_bunny_process_optimization_queue', array($this, 'process_optimization_queue'));
+        // AJAX handlers for manual optimization
         add_action('wp_ajax_bunny_start_step_optimization', array($this, 'handle_step_optimization'));
-        add_action('wp_ajax_bunny_get_optimization_criteria', array($this, 'ajax_get_optimization_criteria'));
         add_action('wp_ajax_bunny_optimization_batch', array($this, 'ajax_optimization_batch'));
         add_action('wp_ajax_bunny_cancel_optimization', array($this, 'ajax_cancel_optimization'));
-        
-        // Scheduled optimization processing
-        add_action('bunny_process_optimization_queue', array($this, 'process_optimization_queue'));
-        
-        // Schedule queue processing if not already scheduled
-        if (!wp_next_scheduled('bunny_process_optimization_queue')) {
-            wp_schedule_event(time(), 'bunny_optimization_interval', 'bunny_process_optimization_queue');
-        }
     }
     
     /**
@@ -110,7 +98,7 @@ class Bunny_Optimizer {
         
         $original_size = filesize($file_path);
         $max_size = $this->get_max_file_size();
-        $preferred_format = $this->settings->get('optimization_format', 'avif');
+        $preferred_format = 'avif'; // Always use AVIF for best compression
         
         // Check if optimization is needed
         if (!$this->needs_optimization($file_path, $original_size, $max_size)) {
@@ -759,6 +747,8 @@ class Bunny_Optimizer {
             wp_die(esc_html__('Insufficient permissions.', 'bunny-media-offload'));
         }
         
+
+        
         $target = isset($_POST['optimization_target']) ? sanitize_text_field(wp_unslash($_POST['optimization_target'])) : 'local';
         
         // Always apply both optimization criteria (format conversion and recompression)
@@ -999,6 +989,7 @@ class Bunny_Optimizer {
             }
         }
         
+        // Show as optimizable if there are files to optimize
         $stats['local']['has_files_to_optimize'] = $stats['local']['total_eligible'] > 0;
         $stats['cloud']['has_files_to_optimize'] = $stats['cloud']['total_eligible'] > 0;
         

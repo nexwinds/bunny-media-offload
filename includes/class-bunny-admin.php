@@ -460,63 +460,36 @@ class Bunny_Admin {
     private function render_optimization_settings($settings) {
         ?>
         <div class="bunny-settings-section">
-            <h3><?php esc_html_e('Optimization Features', 'bunny-media-offload'); ?></h3>
+            <h3><?php esc_html_e('Image Optimization', 'bunny-media-offload'); ?></h3>
             
             <div class="bunny-info-box">
-                <p><?php esc_html_e('Image optimization converts your images to modern formats (AVIF/WebP) and compresses them to reduce file sizes and improve loading speeds.', 'bunny-media-offload'); ?></p>
+                <p><?php esc_html_e('Image optimization converts your images to AVIF format and compresses them to reduce file sizes and improve loading speeds. Optimization can be done on upload or manually from the Optimization page.', 'bunny-media-offload'); ?></p>
             </div>
-            
-                <table class="form-table">
-                    <tr>
-                    <th scope="row"><?php esc_html_e('Enable Optimization', 'bunny-media-offload'); ?></th>
-                        <td>
-                            <label>
-                                <input type="checkbox" name="bunny_json_settings[optimization_enabled]" value="1" <?php checked($settings['optimization_enabled'] ?? false); ?> />
-                            <?php esc_html_e('Enable automatic image optimization', 'bunny-media-offload'); ?>
-                            </label>
-                        <p class="description"><?php esc_html_e('Convert images to modern formats (AVIF/WebP) and compress to reduce file sizes by up to 80%.', 'bunny-media-offload'); ?></p>
-                        </td>
-                    </tr>
-                    <tr>
-                    <th scope="row"><?php esc_html_e('Optimize on Upload', 'bunny-media-offload'); ?></th>
-                        <td>
-                            <label>
-                                <input type="checkbox" name="bunny_json_settings[optimize_on_upload]" value="1" <?php checked($settings['optimize_on_upload'] ?? true); ?> />
-                            <?php esc_html_e('Optimize images automatically during upload', 'bunny-media-offload'); ?>
-                            </label>
-                        <p class="description"><?php esc_html_e('New uploads will be optimized automatically. Existing images can be optimized using the Optimization page.', 'bunny-media-offload'); ?></p>
-                        </td>
-                    </tr>
-            </table>
-        </div>
-        
-        <div class="bunny-settings-section">
-            <h3><?php esc_html_e('Optimization Parameters', 'bunny-media-offload'); ?></h3>
             
             <table class="form-table">
                 <tr>
-                    <th scope="row"><?php esc_html_e('Preferred Format', 'bunny-media-offload'); ?></th>
-                        <td>
-                            <select name="bunny_json_settings[optimization_format]">
-                                <option value="avif" <?php selected($settings['optimization_format'] ?? 'avif', 'avif'); ?>>AVIF (best compression)</option>
-                                <option value="webp" <?php selected($settings['optimization_format'] ?? 'avif', 'webp'); ?>>WebP (better compatibility)</option>
-                            </select>
-                        <p class="description"><?php esc_html_e('AVIF offers superior compression (~50% smaller than WebP) but WebP has wider browser support. Modern browsers support both formats.', 'bunny-media-offload'); ?></p>
-                        </td>
-                    </tr>
-                    <tr>
+                    <th scope="row"><?php esc_html_e('Optimize on Upload', 'bunny-media-offload'); ?></th>
+                    <td>
+                        <label>
+                            <input type="checkbox" name="bunny_json_settings[optimize_on_upload]" value="1" <?php checked($settings['optimize_on_upload'] ?? false); ?> />
+                            <?php esc_html_e('Automatically optimize images when they are uploaded', 'bunny-media-offload'); ?>
+                        </label>
+                        <p class="description"><?php esc_html_e('New uploads will be converted to AVIF format immediately. Disable this to only optimize manually via the Optimization page.', 'bunny-media-offload'); ?></p>
+                    </td>
+                </tr>
+                <tr>
                     <th scope="row"><?php esc_html_e('Maximum File Size', 'bunny-media-offload'); ?></th>
-                        <td>
-                            <select name="bunny_json_settings[optimization_max_size]">
-                                <option value="40kb" <?php selected($settings['optimization_max_size'] ?? '50kb', '40kb'); ?>>40 KB</option>
-                                <option value="45kb" <?php selected($settings['optimization_max_size'] ?? '50kb', '45kb'); ?>>45 KB</option>
+                    <td>
+                        <select name="bunny_json_settings[optimization_max_size]">
+                            <option value="40kb" <?php selected($settings['optimization_max_size'] ?? '50kb', '40kb'); ?>>40 KB</option>
+                            <option value="45kb" <?php selected($settings['optimization_max_size'] ?? '50kb', '45kb'); ?>>45 KB</option>
                             <option value="50kb" <?php selected($settings['optimization_max_size'] ?? '50kb', '50kb'); ?>>50 KB (recommended)</option>
-                                <option value="55kb" <?php selected($settings['optimization_max_size'] ?? '50kb', '55kb'); ?>>55 KB</option>
-                                <option value="60kb" <?php selected($settings['optimization_max_size'] ?? '50kb', '60kb'); ?>>60 KB</option>
-                            </select>
-                        <p class="description"><?php esc_html_e('Images larger than this threshold will be recompressed. WebP/AVIF files above this size will be optimized further.', 'bunny-media-offload'); ?></p>
-                        </td>
-                    </tr>
+                            <option value="55kb" <?php selected($settings['optimization_max_size'] ?? '50kb', '55kb'); ?>>55 KB</option>
+                            <option value="60kb" <?php selected($settings['optimization_max_size'] ?? '50kb', '60kb'); ?>>60 KB</option>
+                        </select>
+                        <p class="description"><?php esc_html_e('Images larger than this threshold will be recompressed to AVIF format. Smaller files are usually already well optimized.', 'bunny-media-offload'); ?></p>
+                    </td>
+                </tr>
             </table>
         </div>
         <?php
@@ -921,114 +894,45 @@ class Bunny_Admin {
                 <?php endif; ?>
                 </div>
             
-            <div class="bunny-optimization-cards">
-                <h3><?php esc_html_e('Choose Optimization Target', 'bunny-media-offload'); ?></h3>
-                <p class="bunny-optimization-description"><?php esc_html_e('Click on the optimization target you want to process. Only targets with images that need optimization are clickable.', 'bunny-media-offload'); ?></p>
+            <div class="bunny-optimization-form">
+                <h3><?php esc_html_e('Start Image Optimization', 'bunny-media-offload'); ?></h3>
+                <p><?php esc_html_e('Select which images you want to optimize. All images will be converted to AVIF format for best compression.', 'bunny-media-offload'); ?></p>
                 
-                <div class="bunny-optimization-targets">
-                    <!-- Local Images Card -->
-                    <div class="bunny-optimization-card <?php echo $detailed_stats['local']['has_files_to_optimize'] ? 'clickable' : 'disabled'; ?>" 
-                         data-target="local" 
-                         data-enabled="<?php echo $detailed_stats['local']['has_files_to_optimize'] ? '1' : '0'; ?>">
-                        <div class="bunny-card-header">
-                            <div class="bunny-card-icon">💻</div>
-                            <h4><?php esc_html_e('Local Images', 'bunny-media-offload'); ?></h4>
-                            <p><?php esc_html_e('Optimize images stored on your server', 'bunny-media-offload'); ?></p>
-            </div>
-            
-                        <div class="bunny-card-stats">
-                            <div class="bunny-main-stat">
-                                <span class="bunny-stat-number"><?php echo number_format($detailed_stats['local']['total_eligible']); ?></span>
-                                <span class="bunny-stat-label"><?php esc_html_e('Images to Optimize', 'bunny-media-offload'); ?></span>
-            </div>
-            
-                            <?php if ($detailed_stats['local']['total_eligible'] > 0): ?>
-                                <div class="bunny-breakdown">
-                                    <?php if ($detailed_stats['local']['jpg_png_to_convert'] > 0): ?>
-                                        <div class="bunny-breakdown-item">
-                                            <span class="bunny-breakdown-number"><?php echo number_format($detailed_stats['local']['jpg_png_to_convert']); ?></span>
-                                            <span class="bunny-breakdown-label"><?php esc_html_e('JPG/PNG to convert', 'bunny-media-offload'); ?></span>
-                </div>
+                <form id="optimization-form">
+                    <table class="form-table">
+                        <tr>
+                            <th scope="row"><?php esc_html_e('Optimization Target', 'bunny-media-offload'); ?></th>
+                            <td>
+                                <label>
+                                    <input type="radio" name="optimization_target" value="local" <?php echo $detailed_stats['local']['has_files_to_optimize'] ? '' : 'disabled'; ?> checked />
+                                    <?php esc_html_e('Local Images', 'bunny-media-offload'); ?>
+                                    <span class="description">(<?php echo number_format($detailed_stats['local']['total_eligible']); ?> images)</span>
+                                </label><br>
+                                <label>
+                                    <input type="radio" name="optimization_target" value="cloud" <?php echo $detailed_stats['cloud']['has_files_to_optimize'] ? '' : 'disabled'; ?> />
+                                    <?php esc_html_e('Cloud Images', 'bunny-media-offload'); ?>
+                                    <span class="description">(<?php echo number_format($detailed_stats['cloud']['total_eligible']); ?> images)</span>
+                                </label>
+                                <p class="description">
+                                    <?php esc_html_e('Local: Images stored on your server. Cloud: Images stored on Bunny.net CDN.', 'bunny-media-offload'); ?>
+                                    <?php if ($detailed_stats['batch_size']): ?>
+                                        <?php echo sprintf(esc_html__('Processing %d images per batch.', 'bunny-media-offload'), $detailed_stats['batch_size']); ?>
                                     <?php endif; ?>
-                                    <?php if ($detailed_stats['local']['webp_avif_to_recompress'] > 0): ?>
-                                        <div class="bunny-breakdown-item">
-                                            <span class="bunny-breakdown-number"><?php echo number_format($detailed_stats['local']['webp_avif_to_recompress']); ?></span>
-                                            <span class="bunny-breakdown-label"><?php esc_html_e('WebP/AVIF to recompress', 'bunny-media-offload'); ?></span>
-            </div>
-                                    <?php endif; ?>
-                            </div>
-                            <?php else: ?>
-                                <div class="bunny-no-images">
-                                    <span><?php esc_html_e('All local images are already optimized', 'bunny-media-offload'); ?></span>
-                                </div>
-                            <?php endif; ?>
-                        </div>
-                        
-                        <?php if ($detailed_stats['local']['has_files_to_optimize']): ?>
-                            <div class="bunny-card-action">
-                                <span class="bunny-click-hint"><?php esc_html_e('Click to Start Optimization', 'bunny-media-offload'); ?></span>
-                            </div>
-                        <?php endif; ?>
-                        </div>
-                        
-                    <!-- Cloud Images Card -->
-                    <div class="bunny-optimization-card <?php echo $detailed_stats['cloud']['has_files_to_optimize'] ? 'clickable' : 'disabled'; ?>" 
-                         data-target="cloud" 
-                         data-enabled="<?php echo $detailed_stats['cloud']['has_files_to_optimize'] ? '1' : '0'; ?>">
-                        <div class="bunny-card-header">
-                            <div class="bunny-card-icon">☁️</div>
-                            <h4><?php esc_html_e('Cloud Images', 'bunny-media-offload'); ?></h4>
-                            <p><?php esc_html_e('Optimize images stored on Bunny.net CDN', 'bunny-media-offload'); ?></p>
-                            </div>
-                        
-                        <div class="bunny-card-stats">
-                            <div class="bunny-main-stat">
-                                <span class="bunny-stat-number"><?php echo number_format($detailed_stats['cloud']['total_eligible']); ?></span>
-                                <span class="bunny-stat-label"><?php esc_html_e('Images to Optimize', 'bunny-media-offload'); ?></span>
-                        </div>
-                        
-                            <?php if ($detailed_stats['cloud']['total_eligible'] > 0): ?>
-                                <div class="bunny-breakdown">
-                                    <?php if ($detailed_stats['cloud']['jpg_png_to_convert'] > 0): ?>
-                                        <div class="bunny-breakdown-item">
-                                            <span class="bunny-breakdown-number"><?php echo number_format($detailed_stats['cloud']['jpg_png_to_convert']); ?></span>
-                                            <span class="bunny-breakdown-label"><?php esc_html_e('JPG/PNG to convert', 'bunny-media-offload'); ?></span>
-                            </div>
-                                    <?php endif; ?>
-                                    <?php if ($detailed_stats['cloud']['webp_avif_to_recompress'] > 0): ?>
-                                        <div class="bunny-breakdown-item">
-                                            <span class="bunny-breakdown-number"><?php echo number_format($detailed_stats['cloud']['webp_avif_to_recompress']); ?></span>
-                                            <span class="bunny-breakdown-label"><?php esc_html_e('WebP/AVIF to recompress', 'bunny-media-offload'); ?></span>
-                        </div>
-                                    <?php endif; ?>
-                            </div>
-                            <?php else: ?>
-                                <div class="bunny-no-images">
-                                    <span><?php esc_html_e('All cloud images are already optimized', 'bunny-media-offload'); ?></span>
-                        </div>
-                            <?php endif; ?>
-                    </div>
+                                </p>
+                            </td>
+                        </tr>
+                    </table>
                     
-                        <?php if ($detailed_stats['cloud']['has_files_to_optimize']): ?>
-                            <div class="bunny-card-action">
-                                <span class="bunny-click-hint"><?php esc_html_e('Click to Start Optimization', 'bunny-media-offload'); ?></span>
-                    </div>
-                        <?php endif; ?>
-                        </div>
-                        </div>
-                
-                <div class="bunny-optimization-info">
-                    <div class="bunny-batch-info">
-                        <span class="bunny-batch-label"><?php esc_html_e('Batch Size:', 'bunny-media-offload'); ?></span>
-                        <span class="bunny-batch-value"><?php echo number_format($detailed_stats['batch_size']); ?> <?php esc_html_e('images per batch', 'bunny-media-offload'); ?></span>
-                        <span class="bunny-batch-note"><?php esc_html_e('(configurable in Settings)', 'bunny-media-offload'); ?></span>
-                        </div>
-                        </div>
-                
-                <!-- Hidden Cancel Button -->
-                <div class="bunny-optimization-controls bunny-controls-hidden">
-                    <button type="button" class="button button-secondary" id="cancel-optimization"><?php esc_html_e('Cancel Optimization', 'bunny-media-offload'); ?></button>
-                </div>
+                    <p class="submit">
+                        <button type="submit" class="button button-primary" id="start-optimization" 
+                                <?php echo ($detailed_stats['local']['has_files_to_optimize'] || $detailed_stats['cloud']['has_files_to_optimize']) ? '' : 'disabled'; ?>>
+                            <?php esc_html_e('Start Optimization', 'bunny-media-offload'); ?>
+                        </button>
+                        <button type="button" class="button button-secondary bunny-button-hidden" id="cancel-optimization">
+                            <?php esc_html_e('Cancel Optimization', 'bunny-media-offload'); ?>
+                        </button>
+                    </p>
+                </form>
             </div>
             
             <div id="optimization-progress" class="bunny-status-hidden">

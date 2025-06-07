@@ -448,4 +448,9 @@
         flex-direction: column;
         gap: 4px;
     }
+}
+
+/* Utility Classes */
+.bunny-button-hidden {
+    display: none !important;
 } 

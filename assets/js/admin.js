@@ -103,18 +103,17 @@
          * Initialize optimization functionality
          */
         initOptimization: function() {
-            $(document).on('click', '.bunny-optimization-card.clickable', function(e) {
+            $(document).on('submit', '#optimization-form', function(e) {
                 e.preventDefault();
                 
-                var target = $(this).data('target');
-                var enabled = $(this).data('enabled');
+                var target = $('input[name="optimization_target"]:checked').val();
                 
-                console.log('Optimization card clicked:', target, enabled);
+                console.log('Optimization form submitted:', target);
                 
-                if (enabled === '1') {
+                if (target) {
                     BunnyAdmin.startStepOptimization(target);
                 } else {
-                    console.log('Card not enabled for optimization');
+                    alert('Please select an optimization target.');
                 }
             });
             
@@ -753,9 +752,10 @@
          */
         initOptimizationInterface: function() {
             $('#optimization-progress').show();
-            $('.bunny-optimization-targets').hide();
+            $('.bunny-optimization-form').hide();
             $('.bunny-optimization-info').hide();
-            $('.bunny-optimization-controls').show();
+            $('#start-optimization').hide();
+            $('#cancel-optimization').show();
             
             // Initialize progress bar
             $('#optimization-progress-bar').css('width', '0%');
@@ -836,9 +836,10 @@
         handleOptimizationError: function(message) {
             this.optimizationState.active = false;
             $('#optimization-status-text').text('Error: ' + message);
-            $('.bunny-optimization-targets').show();
+            $('.bunny-optimization-form').show();
             $('.bunny-optimization-info').show();
-            $('.bunny-optimization-controls').hide();
+            $('#start-optimization').show();
+            $('#cancel-optimization').hide();
             $('#optimization-progress').hide();
             alert('Optimization failed: ' + message);
         },
@@ -854,9 +855,10 @@
                 alert('Optimization completed successfully!');
             }
             
-            $('.bunny-optimization-targets').show();
+            $('.bunny-optimization-form').show();
             $('.bunny-optimization-info').show();
-            $('.bunny-optimization-controls').hide();
+            $('#start-optimization').show();
+            $('#cancel-optimization').hide();
             $('#optimization-progress').hide();
             
             // Refresh the page to update statistics
@@ -886,9 +888,10 @@
                 });
                 
                 $('#optimization-status-text').text('Optimization cancelled.');
-                $('.bunny-optimization-targets').show();
+                $('.bunny-optimization-form').show();
                 $('.bunny-optimization-info').show();
-                $('.bunny-optimization-controls').hide();
+                $('#start-optimization').show();
+                $('#cancel-optimization').hide();
                 $('#optimization-progress').hide();
             }
         },

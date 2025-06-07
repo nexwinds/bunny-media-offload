@@ -124,6 +124,20 @@ class Bunny_Media_Offload {
                 BMO_PLUGIN_VERSION
             );
             
+            wp_enqueue_style(
+                'bunny-media-offload-pages',
+                BMO_PLUGIN_URL . 'assets/css/pages.css',
+                array(),
+                BMO_PLUGIN_VERSION
+            );
+            
+            wp_enqueue_style(
+                'bunny-media-offload-core',
+                BMO_PLUGIN_URL . 'assets/css/core.css',
+                array(),
+                BMO_PLUGIN_VERSION
+            );
+            
             wp_localize_script('bunny-media-offload-admin', 'bunnyAjax', array(
                 'ajaxurl' => admin_url('admin-ajax.php'),
                 'nonce' => wp_create_nonce('bunny_ajax_nonce'),
