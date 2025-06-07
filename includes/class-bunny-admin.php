@@ -129,53 +129,31 @@ class Bunny_Admin {
      * Register settings
      */
     public function register_settings() {
-        register_setting('bunny_media_offload_settings', 'bunny_media_offload_settings', array(
+        register_setting('bunny_json_settings', 'bunny_json_settings', array(
             'sanitize_callback' => array($this, 'sanitize_settings')
         ));
     }
     
     /**
-     * Sanitize settings
+     * Sanitize settings and save to JSON file
      */
     public function sanitize_settings($input) {
-        $sanitized = array();
+        // Use the settings class validation method
+        $validation_result = $this->settings->validate($input);
         
-        if (isset($input['api_key'])) {
-            $sanitized['api_key'] = sanitize_text_field($input['api_key']);
+        if (!empty($validation_result['errors'])) {
+            foreach ($validation_result['errors'] as $field => $error) {
+                add_settings_error('bunny_json_settings', $field, $error);
+            }
         }
         
-        if (isset($input['storage_zone'])) {
-            $sanitized['storage_zone'] = sanitize_text_field($input['storage_zone']);
+        // Update settings using the settings class (which saves to JSON)
+        if (!empty($validation_result['validated'])) {
+            $this->settings->update($validation_result['validated']);
         }
         
-        if (isset($input['custom_hostname'])) {
-            $sanitized['custom_hostname'] = sanitize_text_field($input['custom_hostname']);
-        }
-        
-        $sanitized['auto_offload'] = isset($input['auto_offload']) ? (bool) $input['auto_offload'] : false;
-        $sanitized['delete_local'] = isset($input['delete_local']) ? (bool) $input['delete_local'] : false;
-        $sanitized['file_versioning'] = isset($input['file_versioning']) ? (bool) $input['file_versioning'] : false;
-        
-        if (isset($input['batch_size'])) {
-            $sanitized['batch_size'] = max(1, min(200, absint($input['batch_size'])));
-        }
-        
-        if (isset($input['log_level'])) {
-            $allowed_levels = array('debug', 'info', 'warning', 'error');
-            $sanitized['log_level'] = in_array($input['log_level'], $allowed_levels, true) ? $input['log_level'] : 'info';
-        }
-        
-        $sanitized['enable_logs'] = isset($input['enable_logs']) ? (bool) $input['enable_logs'] : false;
-        
-        if (isset($input['allowed_file_types']) && is_array($input['allowed_file_types'])) {
-            $sanitized['allowed_file_types'] = array_map('sanitize_text_field', $input['allowed_file_types']);
-        }
-        
-        if (isset($input['allowed_post_types']) && is_array($input['allowed_post_types'])) {
-            $sanitized['allowed_post_types'] = array_map('sanitize_text_field', $input['allowed_post_types']);
-        }
-        
-        return $sanitized;
+        // Return the current settings for WordPress (but they're not used for storage)
+        return $this->settings->get_all();
     }
     
     /**
@@ -327,7 +305,7 @@ class Bunny_Admin {
 
             <div class="bunny-settings-content">
             <form method="post" action="options.php">
-                <?php settings_fields('bunny_media_offload_settings'); ?>
+                <?php settings_fields('bunny_json_settings'); ?>
                     
                     <?php
                     switch ($active_tab) {
@@ -389,7 +367,7 @@ class Bunny_Admin {
                                 <input type="text" value="<?php echo esc_attr($masked_key); ?>" class="regular-text bunny-readonly-field" readonly />
                             <span class="bunny-config-source"><?php esc_html_e('Configured in wp-config.php', 'bunny-media-offload'); ?></span>
                             <?php else: ?>
-                            <input type="password" name="bunny_media_offload_settings[api_key]" value="<?php echo esc_attr($settings['api_key'] ?? ''); ?>" class="regular-text" autocomplete="new-password" />
+                            <input type="password" name="bunny_json_settings[api_key]" value="<?php echo esc_attr($settings['api_key'] ?? ''); ?>" class="regular-text" autocomplete="new-password" />
                             <?php endif; ?>
                         <p class="description"><?php esc_html_e('Your Bunny.net Storage API key. Find this in your Bunny.net dashboard under Storage > FTP & API Access.', 'bunny-media-offload'); ?></p>
                         </td>
@@ -401,7 +379,7 @@ class Bunny_Admin {
                             <input type="text" value="<?php echo esc_attr($this->settings->get('storage_zone')); ?>" class="regular-text bunny-readonly-field" readonly />
                             <span class="bunny-config-source"><?php esc_html_e('Configured in wp-config.php', 'bunny-media-offload'); ?></span>
                             <?php else: ?>
-                                <input type="text" name="bunny_media_offload_settings[storage_zone]" value="<?php echo esc_attr($settings['storage_zone'] ?? ''); ?>" class="regular-text" />
+                                <input type="text" name="bunny_json_settings[storage_zone]" value="<?php echo esc_attr($settings['storage_zone'] ?? ''); ?>" class="regular-text" />
                             <?php endif; ?>
                         <p class="description"><?php esc_html_e('Your Bunny.net Storage Zone name. This is the name you gave your storage zone when creating it.', 'bunny-media-offload'); ?></p>
                         </td>
@@ -420,7 +398,7 @@ class Bunny_Admin {
                                 <input type="text" value="<?php echo esc_attr($this->settings->get('custom_hostname')); ?>" class="regular-text bunny-readonly-field" readonly />
                             <span class="bunny-config-source"><?php esc_html_e('Configured in wp-config.php', 'bunny-media-offload'); ?></span>
                             <?php else: ?>
-                            <input type="text" name="bunny_media_offload_settings[custom_hostname]" value="<?php echo esc_attr($settings['custom_hostname'] ?? ''); ?>" class="regular-text" placeholder="cdn.example.com" />
+                            <input type="text" name="bunny_json_settings[custom_hostname]" value="<?php echo esc_attr($settings['custom_hostname'] ?? ''); ?>" class="regular-text" placeholder="cdn.example.com" />
                             <?php endif; ?>
                         <p class="description"><?php esc_html_e('Optional: Custom CDN hostname (without https://). Leave blank to use the default Bunny.net CDN URL.', 'bunny-media-offload'); ?></p>
                         </td>
@@ -429,7 +407,7 @@ class Bunny_Admin {
                     <th scope="row"><?php esc_html_e('File Versioning', 'bunny-media-offload'); ?></th>
                         <td>
                             <label>
-                            <input type="checkbox" name="bunny_media_offload_settings[file_versioning]" value="1" <?php checked($settings['file_versioning'] ?? false); ?> />
+                            <input type="checkbox" name="bunny_json_settings[file_versioning]" value="1" <?php checked($settings['file_versioning'] ?? false); ?> />
                             <?php esc_html_e('Add version parameter to URLs for cache busting', 'bunny-media-offload'); ?>
                             </label>
                         <p class="description"><?php esc_html_e('Adds a version parameter to media URLs to help with browser cache invalidation when files are updated.', 'bunny-media-offload'); ?></p>
@@ -453,7 +431,7 @@ class Bunny_Admin {
                     <th scope="row"><?php esc_html_e('Auto Offload', 'bunny-media-offload'); ?></th>
                         <td>
                             <label>
-                            <input type="checkbox" name="bunny_media_offload_settings[auto_offload]" value="1" <?php checked($settings['auto_offload'] ?? false); ?> />
+                            <input type="checkbox" name="bunny_json_settings[auto_offload]" value="1" <?php checked($settings['auto_offload'] ?? false); ?> />
                             <?php esc_html_e('Automatically offload new uploads to Bunny.net', 'bunny-media-offload'); ?>
                             </label>
                         <p class="description"><?php esc_html_e('When enabled, newly uploaded media files will be automatically transferred to Bunny.net CDN.', 'bunny-media-offload'); ?></p>
@@ -463,7 +441,7 @@ class Bunny_Admin {
                     <th scope="row"><?php esc_html_e('Delete Local Files', 'bunny-media-offload'); ?></th>
                         <td>
                             <label>
-                            <input type="checkbox" name="bunny_media_offload_settings[delete_local]" value="1" <?php checked($settings['delete_local'] ?? true); ?> />
+                            <input type="checkbox" name="bunny_json_settings[delete_local]" value="1" <?php checked($settings['delete_local'] ?? true); ?> />
                             <?php esc_html_e('Delete local files after successful upload to save server space', 'bunny-media-offload'); ?>
                             </label>
                         <div class="bunny-info-box warning">
@@ -493,7 +471,7 @@ class Bunny_Admin {
                     <th scope="row"><?php esc_html_e('Enable Optimization', 'bunny-media-offload'); ?></th>
                         <td>
                             <label>
-                                <input type="checkbox" name="bunny_media_offload_settings[optimization_enabled]" value="1" <?php checked($settings['optimization_enabled'] ?? false); ?> />
+                                <input type="checkbox" name="bunny_json_settings[optimization_enabled]" value="1" <?php checked($settings['optimization_enabled'] ?? false); ?> />
                             <?php esc_html_e('Enable automatic image optimization', 'bunny-media-offload'); ?>
                             </label>
                         <p class="description"><?php esc_html_e('Convert images to modern formats (AVIF/WebP) and compress to reduce file sizes by up to 80%.', 'bunny-media-offload'); ?></p>
@@ -503,7 +481,7 @@ class Bunny_Admin {
                     <th scope="row"><?php esc_html_e('Optimize on Upload', 'bunny-media-offload'); ?></th>
                         <td>
                             <label>
-                                <input type="checkbox" name="bunny_media_offload_settings[optimize_on_upload]" value="1" <?php checked($settings['optimize_on_upload'] ?? true); ?> />
+                                <input type="checkbox" name="bunny_json_settings[optimize_on_upload]" value="1" <?php checked($settings['optimize_on_upload'] ?? true); ?> />
                             <?php esc_html_e('Optimize images automatically during upload', 'bunny-media-offload'); ?>
                             </label>
                         <p class="description"><?php esc_html_e('New uploads will be optimized automatically. Existing images can be optimized using the Optimization page.', 'bunny-media-offload'); ?></p>
@@ -519,7 +497,7 @@ class Bunny_Admin {
                 <tr>
                     <th scope="row"><?php esc_html_e('Preferred Format', 'bunny-media-offload'); ?></th>
                         <td>
-                            <select name="bunny_media_offload_settings[optimization_format]">
+                            <select name="bunny_json_settings[optimization_format]">
                                 <option value="avif" <?php selected($settings['optimization_format'] ?? 'avif', 'avif'); ?>>AVIF (best compression)</option>
                                 <option value="webp" <?php selected($settings['optimization_format'] ?? 'avif', 'webp'); ?>>WebP (better compatibility)</option>
                             </select>
@@ -529,7 +507,7 @@ class Bunny_Admin {
                     <tr>
                     <th scope="row"><?php esc_html_e('Maximum File Size', 'bunny-media-offload'); ?></th>
                         <td>
-                            <select name="bunny_media_offload_settings[optimization_max_size]">
+                            <select name="bunny_json_settings[optimization_max_size]">
                                 <option value="40kb" <?php selected($settings['optimization_max_size'] ?? '50kb', '40kb'); ?>>40 KB</option>
                                 <option value="45kb" <?php selected($settings['optimization_max_size'] ?? '50kb', '45kb'); ?>>45 KB</option>
                             <option value="50kb" <?php selected($settings['optimization_max_size'] ?? '50kb', '50kb'); ?>>50 KB (recommended)</option>
@@ -564,7 +542,7 @@ class Bunny_Admin {
                             <input type="text" value="<?php echo esc_attr($this->settings->get('batch_size')); ?>" class="small-text bunny-readonly-field" readonly />
                             <span class="bunny-config-source"><?php esc_html_e('Configured in wp-config.php', 'bunny-media-offload'); ?></span>
                         <?php else: ?>
-                            <select name="bunny_media_offload_settings[batch_size]">
+                            <select name="bunny_json_settings[batch_size]">
                                 <option value="50" <?php selected($settings['batch_size'] ?? 100, 50); ?>>50</option>
                                 <option value="100" <?php selected($settings['batch_size'] ?? 100, 100); ?>>100 (recommended)</option>
                                 <option value="150" <?php selected($settings['batch_size'] ?? 100, 150); ?>>150</option>
@@ -577,7 +555,7 @@ class Bunny_Admin {
                 <tr>
                     <th scope="row"><?php esc_html_e('Migration Concurrent Limit', 'bunny-media-offload'); ?></th>
                     <td>
-                        <select name="bunny_media_offload_settings[migration_concurrent_limit]">
+                        <select name="bunny_json_settings[migration_concurrent_limit]">
                             <option value="2" <?php selected($settings['migration_concurrent_limit'] ?? 4, 2); ?>>2 (safe)</option>
                             <option value="4" <?php selected($settings['migration_concurrent_limit'] ?? 4, 4); ?>>4 (recommended)</option>
                             <option value="8" <?php selected($settings['migration_concurrent_limit'] ?? 4, 8); ?>>8 (fast)</option>
@@ -595,7 +573,7 @@ class Bunny_Admin {
                 <tr>
                     <th scope="row"><?php esc_html_e('Optimization Batch Size', 'bunny-media-offload'); ?></th>
                         <td>
-                            <select name="bunny_media_offload_settings[optimization_batch_size]">
+                            <select name="bunny_json_settings[optimization_batch_size]">
                                 <option value="30" <?php selected($settings['optimization_batch_size'] ?? 60, 30); ?>>30</option>
                             <option value="60" <?php selected($settings['optimization_batch_size'] ?? 60, 60); ?>>60 (recommended)</option>
                                 <option value="90" <?php selected($settings['optimization_batch_size'] ?? 60, 90); ?>>90</option>
@@ -607,7 +585,7 @@ class Bunny_Admin {
                     <tr>
                     <th scope="row"><?php esc_html_e('Optimization Concurrent Limit', 'bunny-media-offload'); ?></th>
                         <td>
-                            <select name="bunny_media_offload_settings[optimization_concurrent_limit]">
+                            <select name="bunny_json_settings[optimization_concurrent_limit]">
                             <option value="2" <?php selected($settings['optimization_concurrent_limit'] ?? 3, 2); ?>>2 (safe)</option>
                             <option value="3" <?php selected($settings['optimization_concurrent_limit'] ?? 3, 3); ?>>3 (recommended)</option>
                             <option value="5" <?php selected($settings['optimization_concurrent_limit'] ?? 3, 5); ?>>5 (fast)</option>
@@ -634,6 +612,7 @@ class Bunny_Admin {
      */
     private function display_config_status() {
         $constants_status = $this->settings->get_constants_status();
+        $config_file_info = $this->settings->get_config_file_info();
         $has_constants = false;
         
         foreach ($constants_status as $status) {
@@ -643,26 +622,47 @@ class Bunny_Admin {
             }
         }
         
-        if ($has_constants) {
-            ?>
-            <div class="notice notice-info">
-                <h3><?php esc_html_e('Configuration Status', 'bunny-media-offload'); ?></h3>
-                <p><?php esc_html_e('Some settings are configured in wp-config.php and are shown in read-only format below.', 'bunny-media-offload'); ?></p>
+        ?>
+        <div class="notice notice-info">
+            <h3><?php esc_html_e('Configuration System Status', 'bunny-media-offload'); ?></h3>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 10px;">
+                <div>
+                    <h4><?php esc_html_e('wp-config.php Constants', 'bunny-media-offload'); ?></h4>
+                    <?php if ($has_constants): ?>
+                        <p><span style="color: #28a745;">✓</span> <?php esc_html_e('API credentials configured in wp-config.php', 'bunny-media-offload'); ?></p>
+                        <p class="description"><?php esc_html_e('Settings shown below in read-only format for security.', 'bunny-media-offload'); ?></p>
+                    <?php else: ?>
+                        <p><span style="color: #ffc107;">⚠</span> <?php esc_html_e('API credentials not in wp-config.php', 'bunny-media-offload'); ?></p>
+                        <p class="description">
+                            <?php esc_html_e('For enhanced security, consider adding credentials to wp-config.php.', 'bunny-media-offload'); ?>
+                            <a href="<?php echo esc_url(admin_url('admin.php?page=bunny-media-offload-documentation')); ?>" target="_blank">
+                                <?php esc_html_e('View Guide', 'bunny-media-offload'); ?>
+                            </a>
+                        </p>
+                    <?php endif; ?>
+                </div>
+                <div>
+                    <h4><?php esc_html_e('JSON Configuration File', 'bunny-media-offload'); ?></h4>
+                    <?php if ($config_file_info): ?>
+                        <p><span style="color: #28a745;">✓</span> <?php esc_html_e('Configuration file active', 'bunny-media-offload'); ?></p>
+                        <p class="description">
+                            <?php 
+                            printf(
+                                // translators: %1$s is the file path, %2$s is the file size
+                                esc_html__('File: %1$s (%2$s)', 'bunny-media-offload'),
+                                '<code>' . esc_html(basename($config_file_info['path'])) . '</code>',
+                                esc_html(size_format($config_file_info['size']))
+                            ); 
+                            ?>
+                        </p>
+                    <?php else: ?>
+                        <p><span style="color: #dc3545;">✗</span> <?php esc_html_e('Configuration file missing', 'bunny-media-offload'); ?></p>
+                        <p class="description"><?php esc_html_e('File will be created automatically when settings are saved.', 'bunny-media-offload'); ?></p>
+                    <?php endif; ?>
+                </div>
             </div>
-            <?php
-        } else {
-            ?>
-            <div class="notice notice-warning">
-                <p>
-                    <strong><?php esc_html_e('Security Recommendation:', 'bunny-media-offload'); ?></strong>
-                    <?php esc_html_e('For enhanced security, consider configuring your Bunny.net credentials in wp-config.php instead of storing them in the database.', 'bunny-media-offload'); ?>
-                    <a href="<?php echo esc_url(admin_url('admin.php?page=bunny-media-offload-documentation')); ?>" target="_blank">
-                        <?php esc_html_e('View Configuration Guide', 'bunny-media-offload'); ?>
-                    </a>
-                </p>
-            </div>
-            <?php
-        }
+        </div>
+        <?php
     }
     
     /**

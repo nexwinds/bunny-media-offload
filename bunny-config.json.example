@@ -1,0 +1,23 @@
+{
+    "auto_offload": true,
+    "delete_local": true,
+    "file_versioning": true,
+    "allowed_file_types": [
+        "webp",
+        "avif"
+    ],
+    "allowed_post_types": [
+        "attachment",
+        "product"
+    ],
+    "batch_size": 100,
+    "enable_logs": true,
+    "log_level": "info",
+    "optimization_enabled": false,
+    "optimize_on_upload": true,
+    "optimization_format": "avif",
+    "optimization_max_size": "50kb",
+    "optimization_batch_size": 60,
+    "migration_concurrent_limit": 4,
+    "optimization_concurrent_limit": 3
+} 

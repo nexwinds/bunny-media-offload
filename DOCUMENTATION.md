@@ -30,7 +30,7 @@ Bunny Media Offload is a comprehensive WordPress plugin that seamlessly integrat
 - **Image Optimization**: Convert to modern formats (AVIF/WebP) with intelligent compression
 - **Global CDN Delivery**: Serve media from 114+ global edge locations
 - **WPML Compatible**: Full multilingual support with shared CDN URLs
-- **WooCommerce & HPOS Integration**: Seamless product image handling with High-Performance Order Storage support
+- **WooCommerce**: Seamless product image handling with High-Performance Order Storage support
 - **CLI Support**: Comprehensive WP-CLI commands for automation
 - **Security First**: wp-config.php configuration support for sensitive data
 
@@ -81,18 +81,20 @@ wp plugin install bunny-media-offload --activate
 
 ---
 
-## Security Configuration
+## Configuration System
 
-For enhanced security and portability, configure your Bunny.net credentials in `wp-config.php` instead of storing them in the database.
+The plugin uses a hybrid configuration system:
+- **API credentials** are stored in `wp-config.php` for security
+- **All other settings** are stored in a JSON configuration file for portability and performance
 
-### Adding Constants to wp-config.php
+### wp-config.php Constants (Required)
 
-Add the following constants to your `wp-config.php` file, **before** the `/* That's all, stop editing! */` line:
+Add **only these three constants** to your `wp-config.php` file, **before** the `/* That's all, stop editing! */` line:
 
 ```php
 <?php
 // Bunny.net Edge Storage Configuration
-// Only API credentials should be stored in wp-config.php for security
+// Only these three constants should be defined in wp-config.php
 
 // Required: Your Bunny.net Storage API Key
 define('BUNNY_API_KEY', 'your-storage-api-key-here');
@@ -102,46 +104,60 @@ define('BUNNY_STORAGE_ZONE', 'your-storage-zone-name');
 
 // Optional: Custom hostname for CDN URLs (without https://)
 define('BUNNY_CUSTOM_HOSTNAME', 'cdn.yoursite.com');
+```
 
-// Note: All other settings (auto-offload, optimization, batch sizes, etc.)
-// should be configured through the WordPress admin interface for better
-// flexibility and easier management.
+### JSON Configuration File
+
+All other settings are automatically managed in `/wp-content/bunny-config.json`. This file is created automatically with defaults when the plugin is first activated.
+
+**Example JSON configuration:**
+```json
+{
+    "auto_offload": true,
+    "delete_local": true,
+    "file_versioning": true,
+    "allowed_file_types": ["webp", "avif"],
+    "allowed_post_types": ["attachment", "product"],
+    "batch_size": 100,
+    "enable_logs": true,
+    "log_level": "info",
+    "optimization_enabled": false,
+    "optimize_on_upload": true,
+    "optimization_format": "avif",
+    "optimization_max_size": "50kb",
+    "optimization_batch_size": 60,
+    "migration_concurrent_limit": 4,
+    "optimization_concurrent_limit": 3
+}
 ```
 
 ### Example Complete wp-config.php Section
 
 ```php
 <?php
-/**
- * The base configuration for WordPress
- */
-
-// ** Database settings ** //
-define('DB_NAME', 'your_database');
-define('DB_USER', 'your_username');
-define('DB_PASSWORD', 'your_password');
-define('DB_HOST', 'localhost');
 
 // ** Bunny.net Configuration ** //
 define('BUNNY_API_KEY', 'b8f2c4d5-1234-5678-9abc-def123456789');
 define('BUNNY_STORAGE_ZONE', 'mysite-storage');
 define('BUNNY_CUSTOM_HOSTNAME', 'cdn.mysite.com');
 
-// ** Security keys ** //
-define('AUTH_KEY', 'your-auth-key');
-// ... other security keys
 
 /* That's all, stop editing! Happy publishing. */
 require_once ABSPATH . 'wp-settings.php';
 ```
 
-### Benefits of wp-config.php Configuration
+### Benefits of This Configuration System
 
-1. **Enhanced Security**: Credentials not stored in database
-2. **Environment Portability**: Easy deployment across staging/production
-3. **Version Control Safe**: Exclude wp-config.php from git commits
-4. **Centralized Configuration**: All environment-specific settings in one place
+1. **Enhanced Security**: API credentials stored in `wp-config.php`, not in database or JSON file
+2. **Environment Portability**: 
+   - Credentials in `wp-config.php` for environment-specific settings
+   - Configuration in JSON file for consistent application settings
+3. **Version Control Safe**: 
+   - Exclude `wp-config.php` from commits (credentials)
+   - Include `bunny-config.json` in version control (shared settings)
+4. **Performance**: JSON file loads faster than database queries
 5. **Backup Safety**: Settings preserved during database restores
+6. **Easy Management**: Modify JSON file directly or use admin interface
 
 ---
 

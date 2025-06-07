@@ -113,7 +113,8 @@ class Bunny_Migration {
             'total' => $session['total_files'],
             'completed' => $result['completed'],
             'progress' => Bunny_Utils::get_progress_percentage($result['processed'], $session['total_files']),
-            'errors' => $result['errors']
+            'errors' => $result['errors'],
+            'current_files' => isset($result['current_files']) ? $result['current_files'] : array()
         );
         
         if ($result['completed']) {
@@ -219,6 +220,9 @@ class Bunny_Migration {
         $bunny_table = $wpdb->prefix . 'bunny_offloaded_files';
         $where_conditions[] = "posts.ID NOT IN (SELECT attachment_id FROM $bunny_table WHERE is_synced = 1)";
         
+        // Only include files that have file paths (valid files)
+        $where_conditions[] = "meta.meta_value IS NOT NULL AND meta.meta_value != ''";
+        
         $where_clause = implode(' AND ', $where_conditions);
         
         $limit_clause = '';
@@ -252,8 +256,57 @@ class Bunny_Migration {
      * Get count of files to migrate
      */
     private function get_files_to_migrate_count($file_types = array(), $post_types = array()) {
-        $files = $this->get_files_to_migrate($file_types, $post_types);
-        return count($files);
+        global $wpdb;
+        
+        $where_conditions = array("posts.post_type = 'attachment'");
+        $params = array();
+        
+        // Filter by file types (only WebP and AVIF supported)
+        if (!empty($file_types)) {
+            $mime_types = array();
+            foreach ($file_types as $file_type) {
+                switch ($file_type) {
+                    case 'webp':
+                        $mime_types[] = 'image/webp';
+                        break;
+                    case 'avif':
+                        $mime_types[] = 'image/avif';
+                        break;
+                }
+            }
+            
+            if (!empty($mime_types)) {
+                $placeholders = implode(',', array_fill(0, count($mime_types), '%s'));
+                $where_conditions[] = "posts.post_mime_type IN ($placeholders)";
+                $params = array_merge($params, $mime_types);
+            }
+        }
+        
+        // Exclude already migrated files
+        $bunny_table = $wpdb->prefix . 'bunny_offloaded_files';
+        $where_conditions[] = "posts.ID NOT IN (SELECT attachment_id FROM $bunny_table WHERE is_synced = 1)";
+        
+        // Only count files that have file paths (valid files)
+        $where_conditions[] = "meta.meta_value IS NOT NULL AND meta.meta_value != ''";
+        
+        $where_clause = implode(' AND ', $where_conditions);
+        
+        $query = "
+            SELECT COUNT(DISTINCT posts.ID)
+            FROM {$wpdb->posts} posts
+            LEFT JOIN {$wpdb->postmeta} meta ON posts.ID = meta.post_id AND meta.meta_key = '_wp_attached_file'
+            WHERE $where_clause
+        ";
+        
+        if (!empty($params)) {
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared,WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Query is safely constructed above with placeholders, custom migration query, caching not appropriate for one-time migration
+            $count = $wpdb->get_var($wpdb->prepare($query, ...$params));
+        } else {
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared,WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Query contains only safe table names and WHERE clauses, custom migration query, caching not appropriate for one-time migration
+            $count = $wpdb->get_var($query);
+        }
+        
+        return (int) $count;
     }
     
     /**
@@ -292,7 +345,8 @@ class Bunny_Migration {
             'successful' => $session['successful'] + $successful,
             'failed' => $session['failed'] + $failed,
             'errors' => $errors,
-            'completed' => $completed
+            'completed' => $completed,
+            'current_files' => array_slice($files, 0, $concurrent_limit) // Include current batch files for display
         );
     }
     

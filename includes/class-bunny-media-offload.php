@@ -180,8 +180,13 @@ class Bunny_Media_Offload {
      */
     public static function uninstall() {
         // Remove plugin options
-        delete_option('bunny_media_offload_settings');
         delete_option('bunny_media_offload_stats');
+        
+        // Remove JSON configuration file
+        $config_file = WP_CONTENT_DIR . '/bunny-config.json';
+        if (file_exists($config_file)) {
+            wp_delete_file($config_file);
+        }
         
         // Drop plugin tables
         self::drop_tables();
@@ -281,21 +286,8 @@ class Bunny_Media_Offload {
      * Set default plugin options
      */
     private static function set_default_options() {
-        $default_settings = array(
-            'api_key' => '',
-            'storage_zone' => '',
-            'custom_hostname' => '',
-            'auto_offload' => true,
-            'delete_local' => true,
-            'file_versioning' => true,
-            'allowed_file_types' => array('jpg', 'jpeg', 'png', 'gif', 'pdf', 'mp4', 'webp'),
-            'allowed_post_types' => array('attachment', 'product'),
-            'batch_size' => 90,
-            'enable_logs' => true,
-            'log_level' => 'info'
-        );
-        
-        add_option('bunny_media_offload_settings', $default_settings);
+        // Create default JSON configuration file
+        self::create_default_json_config();
         
         $default_stats = array(
             'total_files_offloaded' => 0,
@@ -305,5 +297,48 @@ class Bunny_Media_Offload {
         );
         
         add_option('bunny_media_offload_stats', $default_stats);
+    }
+    
+    /**
+     * Create default JSON configuration file
+     */
+    private static function create_default_json_config() {
+        $config_file_path = WP_CONTENT_DIR . '/bunny-config.json';
+        
+        // Only create if it doesn't exist
+        if (file_exists($config_file_path)) {
+            return;
+        }
+        
+        $default_settings = array(
+            'auto_offload' => true,
+            'delete_local' => true,
+            'file_versioning' => true,
+            'allowed_file_types' => array('webp', 'avif'),
+            'allowed_post_types' => array('attachment', 'product'),
+            'batch_size' => 100,
+            'enable_logs' => true,
+            'log_level' => 'info',
+            'optimization_enabled' => false,
+            'optimize_on_upload' => true,
+            'optimization_format' => 'avif',
+            'optimization_max_size' => '50kb',
+            'optimization_batch_size' => 60,
+            'migration_concurrent_limit' => 4,
+            'optimization_concurrent_limit' => 3
+        );
+        
+        // Ensure directory exists
+        $config_dir = dirname($config_file_path);
+        if (!is_dir($config_dir)) {
+            wp_mkdir_p($config_dir);
+        }
+        
+        // Save to JSON file with pretty printing
+        $json_content = json_encode($default_settings, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+        
+        if ($json_content !== false) {
+            file_put_contents($config_file_path, $json_content);
+        }
     }
 } 

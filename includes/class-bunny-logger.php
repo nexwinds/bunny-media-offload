@@ -51,14 +51,19 @@ class Bunny_Logger {
      * Log message to database
      */
     public function log($level, $message, $context = array()) {
+        // Initialize settings instance if not already available
+        static $settings_instance = null;
+        if ($settings_instance === null) {
+            $settings_instance = new Bunny_Settings();
+        }
+        
         // Check if logging is enabled
-        $settings = get_option('bunny_media_offload_settings', array());
-        if (empty($settings['enable_logs'])) {
+        if (!$settings_instance->get('enable_logs', true)) {
             return;
         }
         
         // Check log level
-        $allowed_levels = $this->get_allowed_levels($settings['log_level'] ?? 'info');
+        $allowed_levels = $this->get_allowed_levels($settings_instance->get('log_level', 'info'));
         if (!in_array($level, $allowed_levels)) {
             return;
         }

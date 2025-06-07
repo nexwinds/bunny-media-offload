@@ -66,12 +66,24 @@ A comprehensive WordPress plugin that integrates with Bunny.net Edge Storage (SS
 4. Note your storage zone name and API key
 
 #### 2. Plugin Configuration
+
+**Option A: wp-config.php Configuration (Recommended)**
+Add these constants to your `wp-config.php` file:
+```php
+define('BUNNY_API_KEY', 'your-storage-api-key-here');
+define('BUNNY_STORAGE_ZONE', 'your-storage-zone-name');
+define('BUNNY_CUSTOM_HOSTNAME', 'cdn.yoursite.com'); // Optional
+```
+
+**Option B: Admin Interface Configuration**
 1. Go to **Bunny CDN > Settings** in WordPress admin
 2. Enter your Bunny.net API key
 3. Enter your storage zone name
 4. (Optional) Set a custom hostname for your CDN URLs
 5. Configure automatic offload settings
 6. Test the connection using the "Test Connection" button
+
+**Note**: All other settings are managed in a JSON configuration file for better performance and portability.
 
 #### 3. Migration (Optional)
 1. Go to **Bunny CDN > Migration**

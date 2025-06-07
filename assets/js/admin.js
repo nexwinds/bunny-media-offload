@@ -270,7 +270,7 @@
                 return;
             }
             
-            // Animate processors as "working"
+            // Start animation before processing
             this.animateProcessors();
             
             $.ajax({
@@ -296,11 +296,18 @@
                         // Update stats
                         self.updateMigrationStats();
                         
-                        // Update status text
+                        // Update status text with actual numbers processed
+                        // Use the original total from the backend, but if completed, show processed/processed
+                        var displayTotal = data.completed ? data.processed : data.total;
                         $('#migration-status-text').text(
-                            'Processed: ' + data.processed + '/' + data.total + 
+                            'Migration Progress Processed: ' + data.processed + '/' + displayTotal + 
                             ' (' + data.successful + ' successful, ' + data.failed + ' failed)'
                         );
+                        
+                        // Update processors with real file information
+                        if (data.current_files && data.current_files.length > 0) {
+                            self.updateProcessorsWithRealFiles(data.current_files);
+                        }
                         
                         // Handle errors
                         if (data.errors && data.errors.length > 0) {
@@ -311,15 +318,19 @@
                             // Continue processing with delay to show animation
                             setTimeout(function() {
                                 self.processMigrationBatch(migrationId);
-                            }, 1500); // Increased delay to show concurrent processing
+                            }, 1500);
                         } else {
+                            // Stop animation and complete migration
+                            self.stopProcessorAnimation();
                             self.completeMigration(data.completed);
                         }
                     } else {
+                        self.stopProcessorAnimation();
                         self.handleMigrationError(response.data.message);
                     }
                 },
                 error: function() {
+                    self.stopProcessorAnimation();
                     self.handleMigrationError('Migration batch failed.');
                 }
             });
@@ -350,8 +361,11 @@
          */
         simulateProcessorWork: function(processorId, delay) {
             var processor = $('#processor-' + processorId);
+            var self = this;
             
-            setTimeout(function() {
+            processor.data('animation-timeout', setTimeout(function() {
+                if (!self.migrationState.active) return; // Don't start if migration stopped
+                
                 processor.find('.status-text').text('Processing...');
                 processor.find('.file-name').text('Uploading file ' + processorId + '...');
                 
@@ -359,15 +373,57 @@
                 var progressBar = processor.find('.bunny-processor-bar');
                 progressBar.css('width', '0%');
                 
-                progressBar.animate({
+                var animationInterval = progressBar.animate({
                     width: '100%'
                 }, 1200, function() {
+                    if (!self.migrationState.active) return; // Don't complete if migration stopped
+                    
                     // Mark as completed
                     processor.removeClass('processing').addClass('completed');
                     processor.find('.status-text').text('Completed');
                     processor.find('.file-name').text('Upload successful');
                 });
-            }, delay);
+                
+                processor.data('animation-interval', animationInterval);
+            }, delay));
+        },
+
+        /**
+         * Stop processor animation
+         */
+        stopProcessorAnimation: function() {
+            var self = this;
+            
+            // Clear all timeouts and stop animations
+            $('.bunny-processor').each(function() {
+                var processor = $(this);
+                var timeout = processor.data('animation-timeout');
+                var interval = processor.data('animation-interval');
+                
+                if (timeout) {
+                    clearTimeout(timeout);
+                    processor.removeData('animation-timeout');
+                }
+                
+                if (interval) {
+                    processor.find('.bunny-processor-bar').stop(true, false);
+                    processor.removeData('animation-interval');
+                }
+            });
+        },
+
+        /**
+         * Update processors with real file information
+         */
+        updateProcessorsWithRealFiles: function(currentFiles) {
+            for (var i = 0; i < currentFiles.length && i < this.migrationState.concurrentLimit; i++) {
+                var file = currentFiles[i];
+                var processor = $('#processor-' + (i + 1));
+                
+                if (processor.length > 0) {
+                    processor.find('.file-name').text('Uploading: ' + (file.post_title || file.file_path || 'Unknown file'));
+                }
+            }
         },
         
         /**
@@ -410,10 +466,16 @@
          * Complete migration
          */
         completeMigration: function(completed) {
+            // Stop all animations first
+            this.stopProcessorAnimation();
+            
             if (completed) {
                 $('.bunny-processor').removeClass('processing').addClass('completed');
                 $('.bunny-processor .status-text').text('Migration Complete');
                 $('.bunny-processor .file-name').text('All files processed');
+                
+                // Ensure progress bars are at 100%
+                $('.bunny-processor .bunny-processor-bar').stop(true, true).css('width', '100%');
                 
                 setTimeout(function() {
                     alert('Migration completed successfully!');
@@ -432,6 +494,9 @@
             }
             
             var self = this;
+            
+            // Stop animations immediately
+            self.stopProcessorAnimation();
             
             $.ajax({
                 url: bunnyAjax.ajaxurl,
@@ -458,6 +523,9 @@
          * Reset migration interface
          */
         resetMigrationInterface: function() {
+            // Stop all animations first
+            this.stopProcessorAnimation();
+            
             this.migrationState.active = false;
             this.migrationState.sessionId = null;
             
