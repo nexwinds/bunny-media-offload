@@ -198,10 +198,14 @@ class Bunny_Settings {
         }
         
         // Validate boolean settings
+        // Note: Unchecked checkboxes are not submitted in forms, so we need to explicitly handle them
         $boolean_settings = array('auto_offload', 'delete_local', 'file_versioning', 'enable_logs', 'optimization_enabled', 'optimize_on_upload');
         foreach ($boolean_settings as $setting) {
             if (isset($settings[$setting])) {
                 $validated[$setting] = !empty($settings[$setting]);
+            } else {
+                // Checkbox was not submitted, meaning it was unchecked
+                $validated[$setting] = false;
             }
         }
         

@@ -863,8 +863,6 @@ select[name*="batch_size"] {
     cursor: not-allowed;
 }
 
-
-
 .bunny-config-benefits {
     background: #f9f9f9;
     padding: 15px;
@@ -1074,5 +1072,560 @@ select[name*="batch_size"] {
     .bunny-step-number {
         margin-right: 0;
         margin-bottom: 10px;
+    }
+}
+
+/* Optimization Target Buttons */
+.bunny-optimization-targets {
+    margin: 20px 0;
+}
+
+.bunny-optimization-targets h4 {
+    margin-bottom: 15px;
+    font-size: 16px;
+    color: #1d2327;
+}
+
+.bunny-target-buttons {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin-bottom: 15px;
+}
+
+.bunny-target-button {
+    display: flex;
+    align-items: center;
+    padding: 20px;
+    background: #fff;
+    border: 2px solid #ddd;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    text-align: left;
+}
+
+.bunny-target-button:hover {
+    border-color: #0073aa;
+    box-shadow: 0 2px 8px rgba(0, 115, 170, 0.1);
+}
+
+.bunny-target-button.active {
+    border-color: #0073aa;
+    background: #f7fbfe;
+    box-shadow: 0 2px 8px rgba(0, 115, 170, 0.15);
+}
+
+.bunny-target-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    background: #f8f9fa;
+}
+
+.bunny-target-button:disabled:hover {
+    border-color: #ddd;
+    box-shadow: none;
+}
+
+.bunny-target-icon {
+    margin-right: 15px;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #f1f5f9;
+    border-radius: 50%;
+    transition: all 0.3s ease;
+}
+
+.bunny-target-button.active .bunny-target-icon {
+    background: #0073aa;
+    color: #fff;
+}
+
+.bunny-target-icon .dashicons {
+    font-size: 20px;
+    width: 20px;
+    height: 20px;
+}
+
+.bunny-target-content h5 {
+    margin: 0 0 5px 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: #1d2327;
+}
+
+.bunny-target-count {
+    display: block;
+    font-size: 14px;
+    font-weight: 600;
+    color: #0073aa;
+    margin-bottom: 5px;
+}
+
+.bunny-target-content small {
+    color: #646970;
+    font-size: 12px;
+}
+
+/* Real-time Optimization Progress */
+.bunny-current-image {
+    margin: 20px 0;
+    padding: 20px;
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+}
+
+.bunny-current-image h4 {
+    margin: 0 0 15px 0;
+    font-size: 16px;
+    color: #1d2327;
+}
+
+.bunny-image-card {
+    display: flex;
+    align-items: flex-start;
+    gap: 20px;
+}
+
+.bunny-image-thumbnail {
+    position: relative;
+    width: 80px;
+    height: 80px;
+    border-radius: 6px;
+    overflow: hidden;
+    flex-shrink: 0;
+}
+
+.bunny-image-thumbnail img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.bunny-image-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.bunny-image-details {
+    flex: 1;
+}
+
+.bunny-image-details h5 {
+    margin: 0 0 15px 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: #1d2327;
+}
+
+.bunny-image-status {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.bunny-process-step {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    background: #f8f9fa;
+    border-radius: 6px;
+    transition: all 0.3s ease;
+}
+
+.bunny-process-step.active {
+    background: #e7f3ff;
+    border-left: 3px solid #0073aa;
+}
+
+.bunny-process-step.completed {
+    background: #e8f5e8;
+    border-left: 3px solid #00a32a;
+}
+
+.bunny-process-step.error {
+    background: #ffeaea;
+    border-left: 3px solid #d63638;
+}
+
+.bunny-step-icon {
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.bunny-step-icon .dashicons {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+}
+
+.bunny-process-step.active .bunny-step-icon {
+    color: #0073aa;
+}
+
+.bunny-process-step.completed .bunny-step-icon {
+    color: #00a32a;
+}
+
+.bunny-process-step.error .bunny-step-icon {
+    color: #d63638;
+}
+
+.bunny-step-text {
+    font-size: 14px;
+    font-weight: 500;
+    color: #1d2327;
+}
+
+.bunny-step-spinner {
+    margin-left: auto;
+}
+
+/* Progress Bar Enhancements */
+.bunny-progress-bar {
+    position: relative;
+    background: #f1f1f1;
+    border-radius: 4px;
+    height: 20px;
+    overflow: hidden;
+    margin-bottom: 15px;
+}
+
+.bunny-progress-text {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 12px;
+    font-weight: 600;
+    color: #1d2327;
+    z-index: 2;
+}
+
+.bunny-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #0073aa, #00a0d2);
+    border-radius: 4px;
+    transition: width 0.3s ease;
+    position: relative;
+}
+
+.bunny-progress-fill::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(
+        45deg,
+        rgba(255, 255, 255, 0.2) 25%,
+        transparent 25%,
+        transparent 50%,
+        rgba(255, 255, 255, 0.2) 50%,
+        rgba(255, 255, 255, 0.2) 75%,
+        transparent 75%,
+        transparent
+    );
+    background-size: 30px 30px;
+    animation: bunny-progress-stripes 1s linear infinite;
+}
+
+/* Recently Processed Images */
+.bunny-recent-processed {
+    margin: 20px 0;
+    padding: 20px;
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+}
+
+.bunny-recent-processed h4 {
+    margin: 0 0 15px 0;
+    font-size: 16px;
+    color: #1d2327;
+}
+
+.bunny-processed-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.bunny-processed-item {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    padding: 10px;
+    background: #f8f9fa;
+    border-radius: 6px;
+    transition: all 0.3s ease;
+    animation: bunny-slide-in 0.3s ease;
+}
+
+.bunny-processed-item.success {
+    border-left: 3px solid #00a32a;
+}
+
+.bunny-processed-item.error {
+    border-left: 3px solid #d63638;
+}
+
+.bunny-processed-thumb {
+    width: 40px;
+    height: 40px;
+    border-radius: 4px;
+    overflow: hidden;
+    flex-shrink: 0;
+}
+
+.bunny-processed-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.bunny-processed-info {
+    flex: 1;
+}
+
+.bunny-processed-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: #1d2327;
+    margin-bottom: 2px;
+}
+
+.bunny-processed-action {
+    font-size: 12px;
+    color: #646970;
+}
+
+.bunny-processed-result {
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.bunny-processed-result.success {
+    color: #00a32a;
+}
+
+.bunny-processed-result.error {
+    color: #d63638;
+}
+
+/* Spinners */
+.bunny-spinner {
+    width: 20px;
+    height: 20px;
+    border: 2px solid #f3f3f3;
+    border-top: 2px solid #0073aa;
+    border-radius: 50%;
+    animation: bunny-spin 1s linear infinite;
+}
+
+.bunny-spinner-small {
+    width: 16px;
+    height: 16px;
+    border: 2px solid #f3f3f3;
+    border-top: 2px solid #0073aa;
+    border-radius: 50%;
+    animation: bunny-spin 1s linear infinite;
+}
+
+/* Animations */
+@keyframes bunny-slide-in {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes bunny-pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.5;
+    }
+}
+
+/* Enhanced Button Styles */
+#start-optimization,
+#cancel-optimization {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+#start-optimization .dashicons,
+#cancel-optimization .dashicons {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+}
+
+/* Responsive Design for New Elements */
+@media (max-width: 768px) {
+    .bunny-target-buttons {
+        grid-template-columns: 1fr;
+        gap: 15px;
+    }
+    
+    .bunny-target-button {
+        padding: 15px;
+    }
+    
+    .bunny-target-icon {
+        width: 35px;
+        height: 35px;
+        margin-right: 12px;
+    }
+    
+    .bunny-image-card {
+        flex-direction: column;
+        gap: 15px;
+    }
+    
+    .bunny-image-thumbnail {
+        align-self: center;
+    }
+    
+    .bunny-image-status {
+        gap: 8px;
+    }
+    
+    .bunny-process-step {
+        padding: 6px 10px;
+    }
+    
+    .bunny-processed-item {
+        gap: 10px;
+        padding: 8px;
+    }
+    
+    .bunny-processed-thumb {
+        width: 35px;
+        height: 35px;
+    }
+}
+
+/* Optimization Action Cards - Matching Stat Card Style */
+.bunny-optimization-actions {
+    margin: 20px 0;
+}
+
+.bunny-action-buttons {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin: 20px 0;
+}
+
+.bunny-action-card {
+    background: #fff;
+    border: 1px solid #ccd0d4;
+    border-radius: 4px;
+    padding: 20px;
+    text-align: center;
+    transition: all 0.3s ease;
+}
+
+.bunny-action-card:hover {
+    border-color: #0073aa;
+    box-shadow: 0 1px 3px rgba(0, 115, 170, 0.1);
+}
+
+.bunny-action-card h4 {
+    margin: 0 0 10px 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: #1d2327;
+}
+
+.bunny-action-count {
+    display: block;
+    font-size: 32px;
+    font-weight: 700;
+    line-height: 1.2;
+    color: #0073aa;
+    margin: 10px 0;
+}
+
+.bunny-action-description {
+    font-size: 12px;
+    color: #646970;
+    margin-bottom: 20px;
+    line-height: 1.4;
+}
+
+.bunny-optimize-button {
+    width: 100%;
+    justify-content: center;
+    font-weight: 600;
+    padding: 10px 16px;
+    height: auto;
+    border-radius: 3px;
+    display: inline-flex;
+    align-items: center;
+}
+
+.bunny-optimize-button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.bunny-optimize-button .dashicons {
+    margin-right: 6px;
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+}
+
+.bunny-cancel-section {
+    text-align: center;
+    margin-top: 30px;
+    padding-top: 20px;
+    border-top: 1px solid #e2e8f0;
+}
+
+/* Responsive Design for Action Cards */
+@media (max-width: 768px) {
+    .bunny-action-buttons {
+        grid-template-columns: 1fr;
+        gap: 15px;
+    }
+    
+    .bunny-action-card {
+        padding: 15px;
+    }
+    
+    .bunny-action-count {
+        font-size: 28px;
+    }
+    
+    .bunny-optimize-button {
+        padding: 8px 12px;
     }
 } 

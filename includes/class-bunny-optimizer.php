@@ -51,16 +51,15 @@ class Bunny_Optimizer {
         add_action('wp_ajax_bunny_start_step_optimization', array($this, 'handle_step_optimization'));
         add_action('wp_ajax_bunny_optimization_batch', array($this, 'ajax_optimization_batch'));
         add_action('wp_ajax_bunny_cancel_optimization', array($this, 'ajax_cancel_optimization'));
+        
+        // Add a test AJAX handler for debugging
+        add_action('wp_ajax_bunny_test_optimization', array($this, 'test_optimization_ajax'));
     }
     
     /**
      * Optimize image during upload process
      */
     public function optimize_on_upload($file_path, $attachment_id) {
-        if (!$this->settings->get('optimization_enabled', false)) {
-            return $file_path;
-        }
-        
         if (!$this->settings->get('optimize_on_upload', true)) {
             return $file_path;
         }
@@ -741,51 +740,122 @@ class Bunny_Optimizer {
      * Handle step-by-step optimization AJAX request
      */
     public function handle_step_optimization() {
-        check_ajax_referer('bunny_ajax_nonce', 'nonce');
+        // Add debugging at the very start
+        error_log('Bunny Optimization: handle_step_optimization called');
+        
+        try {
+            check_ajax_referer('bunny_ajax_nonce', 'nonce');
+        } catch (Exception $e) {
+            error_log('Bunny Optimization: Nonce check failed - ' . $e->getMessage());
+            wp_send_json_error('Security check failed.');
+            return;
+        }
         
         if (!current_user_can('manage_options')) {
-            wp_die(esc_html__('Insufficient permissions.', 'bunny-media-offload'));
+            error_log('Bunny Optimization: User lacks manage_options capability');
+            wp_send_json_error('Insufficient permissions.');
+            return;
         }
         
-
+        // Optimization is always available for manual use - no master toggle needed
         
-        $target = isset($_POST['optimization_target']) ? sanitize_text_field(wp_unslash($_POST['optimization_target'])) : 'local';
+        error_log('Bunny Optimization: All checks passed, proceeding with optimization');
         
-        // Always apply both optimization criteria (format conversion and recompression)
-        $criteria = array('format_conversion', 'recompress_modern');
-        
-        // Get images that meet the criteria
-        $images = $this->get_images_for_optimization($target, $criteria);
-        
-        if (empty($images)) {
-            wp_send_json_error(__('No images found that meet the optimization criteria.', 'bunny-media-offload'));
+        try {
+            $target = isset($_POST['optimization_target']) ? sanitize_text_field(wp_unslash($_POST['optimization_target'])) : 'local';
+            error_log('Bunny Optimization: Target set to: ' . $target);
+            
+            // Always apply both optimization criteria (format conversion and recompression)
+            $criteria = array('format_conversion', 'recompress_modern');
+            
+            // Get images that meet the criteria
+            $images = $this->get_images_for_optimization($target, $criteria);
+            error_log('Bunny Optimization: Found ' . count($images) . ' images');
+            
+            // Log what we found for debugging
+            if ($this->logger) {
+                $this->logger->log('info', "Found " . count($images) . " images for optimization", array(
+                    'target' => $target,
+                    'criteria' => $criteria,
+                    'image_count' => count($images)
+                ));
+            }
+            
+            if (empty($images)) {
+                error_log('Bunny Optimization: No images found, sending error response');
+                wp_send_json_error('No images found that meet the optimization criteria.');
+                return;
+            }
+        } catch (Exception $e) {
+            error_log('Bunny Optimization: Exception in image gathering: ' . $e->getMessage());
+            wp_send_json_error('Error occurred while gathering images for optimization: ' . $e->getMessage());
+            return;
         }
         
-        // Start optimization process
-        $session_id = 'opt_' . time() . '_' . wp_generate_password(8, false);
-        
-        $session_data = array(
-            'id' => $session_id,
-            'target' => $target,
-            'criteria' => $criteria,
-            'total_images' => count($images),
-            'processed' => 0,
-            'successful' => 0,
-            'failed' => 0,
-            'status' => 'running',
-            'start_time' => time(),
-            'errors' => array(),
-            'images' => array_slice($images, 0, 100) // Process in chunks
-        );
-        
-        set_transient('bunny_optimization_' . $session_id, $session_data, 2 * HOUR_IN_SECONDS);
-        
-        wp_send_json_success(array(
-            'session_id' => $session_id,
-            'total_images' => count($images),
-            // translators: %d is the number of images to be optimized
-            'message' => sprintf(__('Starting optimization of %d images...', 'bunny-media-offload'), count($images))
-        ));
+        try {
+            // Start optimization process
+            $session_id = 'opt_' . time() . '_' . wp_generate_password(8, false);
+            error_log('Bunny Optimization: Generated session ID: ' . $session_id);
+            
+            $session_data = array(
+                'id' => $session_id,
+                'target' => $target,
+                'criteria' => $criteria,
+                'total_images' => count($images),
+                'processed' => 0,
+                'successful' => 0,
+                'failed' => 0,
+                'status' => 'running',
+                'start_time' => time(),
+                'errors' => array(),
+                'images' => array_slice($images, 0, 100) // Process in chunks
+            );
+            
+            // Log session creation
+            if ($this->logger) {
+                $this->logger->log('info', "Created optimization session: " . $session_id, array(
+                    'target' => $target,
+                    'total_images' => count($images),
+                    'session_data' => $session_data
+                ));
+            }
+            
+            // Try to set transient and verify it was set
+            $transient_set = set_transient('bunny_optimization_' . $session_id, $session_data, 2 * HOUR_IN_SECONDS);
+            error_log('Bunny Optimization: Transient set result: ' . ($transient_set ? 'true' : 'false'));
+            
+            // Verify the transient was actually saved
+            $verification = get_transient('bunny_optimization_' . $session_id);
+            if (!$verification) {
+                error_log('Bunny Optimization: Failed to verify transient');
+                if ($this->logger) {
+                    $this->logger->log('error', "Failed to save optimization session transient: " . $session_id);
+                }
+                wp_send_json_error('Failed to create optimization session.');
+                return;
+            }
+            
+            if ($this->logger) {
+                $this->logger->log('info', "Optimization session verified and starting", array(
+                    'session_id' => $session_id,
+                    'transient_set' => $transient_set,
+                    'verification_passed' => !empty($verification)
+                ));
+            }
+            
+            error_log('Bunny Optimization: Sending success response with session ID: ' . $session_id);
+            
+            wp_send_json_success(array(
+                'session_id' => $session_id,
+                'total_images' => count($images),
+                'message' => sprintf('Starting optimization of %d images...', count($images))
+            ));
+            
+        } catch (Exception $e) {
+            error_log('Bunny Optimization: Exception in session creation: ' . $e->getMessage());
+            wp_send_json_error('Error occurred while creating optimization session: ' . $e->getMessage());
+            return;
+        }
     }
     
     /**
@@ -865,7 +935,7 @@ class Bunny_Optimizer {
             
             if ($meets_criteria) {
                 $eligible_images[] = array(
-                    'id' => $image->ID,
+                    'ID' => $image->ID,
                     'file_path' => $file_path,
                     'file_size' => $file_size,
                     'current_format' => $current_format,
@@ -1012,7 +1082,14 @@ class Bunny_Optimizer {
         $session_id = isset($_POST['session_id']) ? sanitize_text_field(wp_unslash($_POST['session_id'])) : '';
         $session = get_transient('bunny_optimization_' . $session_id);
         
+        // Log session retrieval attempt
+        $this->logger->log('info', "Attempting to retrieve session: " . $session_id, array(
+            'session_found' => !empty($session),
+            'session_data' => $session
+        ));
+        
         if (!$session) {
+            $this->logger->log('error', "Optimization session not found: " . $session_id);
             wp_send_json_error(array('message' => __('Optimization session not found.', 'bunny-media-offload')));
         }
         
@@ -1099,17 +1176,26 @@ class Bunny_Optimizer {
             if (!isset($image['ID'])) {
                 $failed++;
                 $errors[] = __('Invalid image data', 'bunny-media-offload');
+                $this->logger->log('error', 'Invalid image data in batch processing', array('image' => $image));
                 continue;
             }
             
-            $result = $this->optimize_image_by_id($image['ID']);
-            
-            if ($result) {
-                $successful++;
-            } else {
+            try {
+                $result = $this->optimize_image_by_id($image['ID']);
+                
+                if ($result) {
+                    $successful++;
+                    $this->logger->log('info', "Successfully optimized image ID " . $image['ID']);
+                } else {
+                    $failed++;
+                    // translators: %d is the attachment ID
+                    $errors[] = sprintf(__('Failed to optimize image ID %d', 'bunny-media-offload'), $image['ID']);
+                    $this->logger->log('warning', "Failed to optimize image ID " . $image['ID']);
+                }
+            } catch (Exception $e) {
                 $failed++;
-                // translators: %d is the attachment ID
-                $errors[] = sprintf(__('Failed to optimize image ID %d', 'bunny-media-offload'), $image['ID']);
+                $errors[] = sprintf(__('Error optimizing image ID %d: %s', 'bunny-media-offload'), $image['ID'], $e->getMessage());
+                $this->logger->log('error', "Exception optimizing image ID " . $image['ID'], array('error' => $e->getMessage()));
             }
         }
         
@@ -1136,5 +1222,20 @@ class Bunny_Optimizer {
         }
         
         return $this->optimize_image($file_path, $attachment_id);
+    }
+    
+    /**
+     * Test AJAX handler for debugging
+     */
+    public function test_optimization_ajax() {
+        error_log('Bunny Optimization: test_optimization_ajax called');
+        
+        check_ajax_referer('bunny_ajax_nonce', 'nonce');
+        
+        wp_send_json_success(array(
+            'message' => 'Optimization AJAX is working!',
+            'timestamp' => time(),
+            'optimize_on_upload' => $this->settings->get('optimize_on_upload', true)
+        ));
     }
 } 

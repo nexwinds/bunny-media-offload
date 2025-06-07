@@ -103,17 +103,34 @@
          * Initialize optimization functionality
          */
         initOptimization: function() {
-            $(document).on('submit', '#optimization-form', function(e) {
+            // Log initial state
+            console.log('Initializing optimization functionality');
+            console.log('Available optimization buttons:', $('.bunny-optimize-button').length);
+            
+            // Handle direct optimization button clicks
+            $(document).on('click', '.bunny-optimize-button', function(e) {
                 e.preventDefault();
                 
-                var target = $('input[name="optimization_target"]:checked').val();
+                console.log('Optimization button clicked, checking state...');
+                console.log('Button disabled:', $(this).prop('disabled'));
+                console.log('Button element:', this);
                 
-                console.log('Optimization form submitted:', target);
+                if ($(this).prop('disabled')) {
+                    console.log('Button is disabled, returning early');
+                    return;
+                }
+                
+                var target = $(this).data('target');
+                
+                console.log('Direct optimization button clicked:', target);
+                console.log('AJAX URL:', bunnyAjax.ajaxurl);
+                console.log('AJAX Nonce:', bunnyAjax.nonce);
                 
                 if (target) {
                     BunnyAdmin.startStepOptimization(target);
                 } else {
-                    alert('Please select an optimization target.');
+                    console.error('No target found on button');
+                    alert('Invalid optimization target.');
                 }
             });
             
@@ -719,13 +736,33 @@
                     optimization_target: target
                 },
                 success: function(response) {
-                    console.log('Step optimization response:', response);
+                    console.log('=== OPTIMIZATION RESPONSE DEBUG ===');
+                    console.log('Full response:', response);
+                    console.log('Response type:', typeof response);
+                    console.log('Response success property:', response.success);
+                    console.log('Response data:', response.data);
+                    console.log('Response data type:', typeof response.data);
+                    
+                    // Try to stringify the response for better visibility
+                    try {
+                        console.log('Response JSON:', JSON.stringify(response, null, 2));
+                    } catch (e) {
+                        console.log('Could not stringify response:', e);
+                    }
+                    console.log('=== END DEBUG ===');
                     
                     if (response.success) {
+                        if (!response.data.session_id) {
+                            console.error('No session ID in response:', response.data);
+                            alert('Failed to start optimization: No session ID received.');
+                            return;
+                        }
+                        
                         self.optimizationState = {
                             active: true,
                             sessionId: response.data.session_id,
-                            totalImages: response.data.total_images
+                            totalImages: response.data.total_images,
+                            target: target
                         };
                         
                         console.log('Optimization state set:', self.optimizationState);
@@ -736,13 +773,32 @@
                         // Start processing
                         self.processOptimizationBatch(self.optimizationState.sessionId);
                     } else {
-                        console.error('Optimization failed:', response.data.message);
-                        alert('Failed to start optimization: ' + response.data.message);
+                        console.error('Optimization failed:', response);
+                        var message = 'Unknown error occurred';
+                        
+                        if (response.data) {
+                            if (typeof response.data === 'string') {
+                                message = response.data;
+                            } else if (response.data.message) {
+                                message = response.data.message;
+                            } else {
+                                message = 'Server returned error without message';
+                            }
+                        } else {
+                            message = 'Server returned error without data';
+                        }
+                        
+                        alert('Failed to start optimization: ' + message);
                     }
                 },
                 error: function(xhr, status, error) {
-                    console.error('AJAX error:', xhr, status, error);
-                    alert('Failed to start optimization.');
+                    console.error('AJAX error details:', {
+                        xhr: xhr,
+                        status: status,
+                        error: error,
+                        responseText: xhr.responseText
+                    });
+                    alert('Failed to start optimization: AJAX error');
                 }
             });
         },
@@ -752,14 +808,31 @@
          */
         initOptimizationInterface: function() {
             $('#optimization-progress').show();
-            $('.bunny-optimization-form').hide();
-            $('.bunny-optimization-info').hide();
-            $('#start-optimization').hide();
-            $('#cancel-optimization').show();
+            $('.bunny-optimization-actions').hide();
+            $('.bunny-cancel-section').show();
             
             // Initialize progress bar
             $('#optimization-progress-bar').css('width', '0%');
+            $('#optimization-progress-text').text('0%');
             $('#optimization-status-text').text('Starting optimization...');
+            
+            // Show current image processing section
+            $('#current-image-processing').show();
+            $('#recent-processed').show();
+            
+            // Initialize process steps for target type
+            var target = this.optimizationState.target;
+            if (target === 'cloud') {
+                $('#local-process').hide();
+                $('#cloud-download').show();
+                $('#cloud-process').show();
+                $('#cloud-upload').show();
+            } else {
+                $('#local-process').show();
+                $('#cloud-download').hide();
+                $('#cloud-process').hide();
+                $('#cloud-upload').hide();
+            }
         },
         
         /**
@@ -781,17 +854,30 @@
                     session_id: sessionId
                 },
                 success: function(response) {
+                    console.log('Batch processing response:', response);
+                    
                     if (response.success) {
                         var data = response.data;
                         
                         // Update progress bar
                         $('#optimization-progress-bar').css('width', data.progress + '%');
+                        $('#optimization-progress-text').text(Math.round(data.progress) + '%');
                         
                         // Update status text
                         $('#optimization-status-text').text(
                             'Processed: ' + data.processed + '/' + data.total + 
                             ' (' + data.successful + ' successful, ' + data.failed + ' failed)'
                         );
+                        
+                        // Update current image being processed
+                        if (data.current_image) {
+                            self.updateCurrentImage(data.current_image);
+                        }
+                        
+                        // Add recently processed images
+                        if (data.recent_processed && data.recent_processed.length > 0) {
+                            self.addRecentlyProcessed(data.recent_processed);
+                        }
                         
                         // Handle errors
                         if (data.errors && data.errors.length > 0) {
@@ -807,12 +893,152 @@
                             self.completeOptimization(data.completed);
                         }
                     } else {
-                        self.handleOptimizationError(response.data.message);
+                        console.error('Batch processing failed:', response);
+                        var message = response.data && response.data.message ? response.data.message : 'Unknown batch error';
+                        self.handleOptimizationError(message);
                     }
                 },
-                error: function() {
-                    self.handleOptimizationError('Optimization batch failed.');
+                error: function(xhr, status, error) {
+                    console.error('Batch processing AJAX error:', {
+                        xhr: xhr,
+                        status: status,
+                        error: error,
+                        responseText: xhr.responseText
+                    });
+                    self.handleOptimizationError('Optimization batch failed due to network error.');
                 }
+            });
+        },
+        
+        /**
+         * Update current image being processed
+         */
+        updateCurrentImage: function(imageData) {
+            $('#current-image-thumb').attr('src', imageData.thumbnail);
+            $('#current-image-name').text(imageData.name);
+            
+            // Update process steps based on current status
+            var target = this.optimizationState.target;
+            
+            if (target === 'cloud') {
+                this.updateCloudProcessSteps(imageData.status);
+            } else {
+                this.updateLocalProcessSteps(imageData.status);
+            }
+        },
+        
+        /**
+         * Update local process steps
+         */
+        updateLocalProcessSteps: function(status) {
+            // Reset all steps
+            $('#local-process').removeClass('active completed error');
+            
+            switch(status) {
+                case 'processing':
+                    $('#local-process').addClass('active');
+                    $('#local-process-text').text('Processing...');
+                    break;
+                case 'converting':
+                    $('#local-process').addClass('active');
+                    $('#local-process-text').text('Converting to AVIF...');
+                    break;
+                case 'compressing':
+                    $('#local-process').addClass('active');
+                    $('#local-process-text').text('Compressing...');
+                    break;
+                case 'completed':
+                    $('#local-process').addClass('completed');
+                    $('#local-process-text').text('Completed');
+                    break;
+                case 'error':
+                    $('#local-process').addClass('error');
+                    $('#local-process-text').text('Error');
+                    break;
+            }
+        },
+        
+        /**
+         * Update cloud process steps
+         */
+        updateCloudProcessSteps: function(status) {
+            // Reset all steps
+            $('#cloud-download, #cloud-process, #cloud-upload').removeClass('active completed error');
+            
+            switch(status) {
+                case 'downloading':
+                    $('#cloud-download').addClass('active');
+                    $('#download-process-text').text('Downloading...');
+                    break;
+                case 'processing':
+                case 'converting':
+                    $('#cloud-download').addClass('completed');
+                    $('#cloud-process').addClass('active');
+                    $('#download-process-text').text('Downloaded');
+                    if (status === 'converting') {
+                        $('#cloud-process-text').text('Converting to AVIF...');
+                    } else {
+                        $('#cloud-process-text').text('Processing...');
+                    }
+                    break;
+                case 'compressing':
+                    $('#cloud-download').addClass('completed');
+                    $('#cloud-process').addClass('active');
+                    $('#download-process-text').text('Downloaded');
+                    $('#cloud-process-text').text('Compressing...');
+                    break;
+                case 'uploading':
+                    $('#cloud-download').addClass('completed');
+                    $('#cloud-process').addClass('completed');
+                    $('#cloud-upload').addClass('active');
+                    $('#download-process-text').text('Downloaded');
+                    $('#cloud-process-text').text('Optimized');
+                    $('#upload-process-text').text('Uploading...');
+                    break;
+                case 'completed':
+                    $('#cloud-download').addClass('completed');
+                    $('#cloud-process').addClass('completed');
+                    $('#cloud-upload').addClass('completed');
+                    $('#download-process-text').text('Downloaded');
+                    $('#cloud-process-text').text('Optimized');
+                    $('#upload-process-text').text('Uploaded');
+                    break;
+                case 'error':
+                    $('#cloud-download, #cloud-process, #cloud-upload').addClass('error');
+                    $('#download-process-text').text('Error');
+                    $('#cloud-process-text').text('Error');
+                    $('#upload-process-text').text('Error');
+                    break;
+            }
+        },
+        
+        /**
+         * Add recently processed images
+         */
+        addRecentlyProcessed: function(recentImages) {
+            var $list = $('#processed-images-list');
+            
+            recentImages.forEach(function(image) {
+                var resultClass = image.success ? 'success' : 'error';
+                var resultText = image.success ? 'Optimized successfully' : 'Optimization failed';
+                var actionText = image.action || 'Converted to AVIF';
+                
+                var $item = $('<div class="bunny-processed-item ' + resultClass + '">' +
+                    '<div class="bunny-processed-thumb">' +
+                        '<img src="' + image.thumbnail + '" alt="' + image.name + '" />' +
+                    '</div>' +
+                    '<div class="bunny-processed-info">' +
+                        '<div class="bunny-processed-name">' + image.name + '</div>' +
+                        '<div class="bunny-processed-action">' + actionText + '</div>' +
+                    '</div>' +
+                    '<div class="bunny-processed-result ' + resultClass + '">' + resultText + '</div>' +
+                '</div>');
+                
+                // Add to top of list
+                $list.prepend($item);
+                
+                // Keep only last 5 items
+                $list.children().slice(5).remove();
             });
         },
         
@@ -836,11 +1062,11 @@
         handleOptimizationError: function(message) {
             this.optimizationState.active = false;
             $('#optimization-status-text').text('Error: ' + message);
-            $('.bunny-optimization-form').show();
-            $('.bunny-optimization-info').show();
-            $('#start-optimization').show();
-            $('#cancel-optimization').hide();
+            $('.bunny-optimization-actions').show();
+            $('.bunny-cancel-section').hide();
             $('#optimization-progress').hide();
+            $('#current-image-processing').hide();
+            $('#recent-processed').hide();
             alert('Optimization failed: ' + message);
         },
         
@@ -855,11 +1081,11 @@
                 alert('Optimization completed successfully!');
             }
             
-            $('.bunny-optimization-form').show();
-            $('.bunny-optimization-info').show();
-            $('#start-optimization').show();
-            $('#cancel-optimization').hide();
+            $('.bunny-optimization-actions').show();
+            $('.bunny-cancel-section').hide();
             $('#optimization-progress').hide();
+            $('#current-image-processing').hide();
+            $('#recent-processed').hide();
             
             // Refresh the page to update statistics
             setTimeout(function() {
@@ -888,11 +1114,11 @@
                 });
                 
                 $('#optimization-status-text').text('Optimization cancelled.');
-                $('.bunny-optimization-form').show();
-                $('.bunny-optimization-info').show();
-                $('#start-optimization').show();
-                $('#cancel-optimization').hide();
+                $('.bunny-optimization-actions').show();
+                $('.bunny-cancel-section').hide();
                 $('#optimization-progress').hide();
+                $('#current-image-processing').hide();
+                $('#recent-processed').hide();
             }
         },
         
@@ -1018,6 +1244,61 @@
         
         // Update dashboard stats every 30 seconds
         setInterval(BunnyAdmin.updateDashboardStats, 30000);
+        
+        // Make BunnyAdmin available globally for debugging
+        window.BunnyAdmin = BunnyAdmin;
+        
+        // Add a debug helper function
+        window.debugOptimization = function(target) {
+            target = target || 'local';
+            console.log('Debug: Testing optimization for target:', target);
+            BunnyAdmin.startStepOptimization(target);
+        };
+        
+        // Add AJAX connectivity test
+        window.testAjax = function() {
+            console.log('Testing AJAX connectivity...');
+            $.ajax({
+                url: bunnyAjax.ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'bunny_test_connection',
+                    nonce: bunnyAjax.nonce
+                },
+                success: function(response) {
+                    console.log('AJAX test response:', response);
+                },
+                error: function(xhr, status, error) {
+                    console.error('AJAX test failed:', xhr, status, error);
+                }
+            });
+        };
+        
+        // Add optimization-specific AJAX test
+        window.testOptimizationAjax = function() {
+            console.log('Testing optimization AJAX...');
+            $.ajax({
+                url: bunnyAjax.ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'bunny_test_optimization',
+                    nonce: bunnyAjax.nonce
+                },
+                success: function(response) {
+                    console.log('Optimization AJAX test response:', response);
+                    if (response.success) {
+                        console.log('✅ Optimization AJAX is working!');
+                        console.log('Settings enabled:', response.data.settings_enabled);
+                    } else {
+                        console.log('❌ Optimization AJAX failed:', response.data);
+                    }
+                },
+                error: function(xhr, status, error) {
+                    console.error('Optimization AJAX test failed:', xhr, status, error);
+                    console.log('Response text:', xhr.responseText);
+                }
+            });
+        };
     });
     
 })(jQuery); 

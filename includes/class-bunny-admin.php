@@ -822,9 +822,21 @@ class Bunny_Admin {
             return;
         }
         
+        // Manual optimization is always available when users visit this page
+        
         // Debug: Check if we can get stats
         try {
             $detailed_stats = $this->optimizer->get_detailed_optimization_stats();
+            
+            // Debug: Log the stats we got
+            if ($this->logger) {
+                $this->logger->log('info', 'Optimization page detailed stats', array(
+                    'stats' => $detailed_stats,
+                    'is_array' => is_array($detailed_stats),
+                    'has_optimizer' => !empty($this->optimizer)
+                ));
+            }
+            
             if (!$detailed_stats || !is_array($detailed_stats)) {
                 $detailed_stats = array(
                     'local' => array(
@@ -875,84 +887,167 @@ class Bunny_Admin {
         <div class="wrap">
             <h1><?php esc_html_e('Image Optimization', 'bunny-media-offload'); ?></h1>
             
-            <div class="bunny-optimization-info">
-                <div class="notice notice-info">
-                    <h3><?php esc_html_e('Optimization Criteria', 'bunny-media-offload'); ?></h3>
-                    <p><?php esc_html_e('The following optimization criteria will always be applied:', 'bunny-media-offload'); ?></p>
-                    <ul class="bunny-list-indent">
-                        <li><strong><?php esc_html_e('Convert JPG/PNG to modern formats:', 'bunny-media-offload'); ?></strong> <?php esc_html_e('Legacy format images will be converted to WebP or AVIF for better compression.', 'bunny-media-offload'); ?></li>
-                        <li><strong><?php esc_html_e('Recompress existing WebP/AVIF if oversized:', 'bunny-media-offload'); ?></strong> <?php 
-                            // translators: %s is the maximum file size setting
-                            printf(esc_html__('Modern format images larger than %s will be recompressed.', 'bunny-media-offload'), esc_html($max_file_size)); 
-                        ?></li>
-                    </ul>
-                    </div>
-                    
-                <?php if (WP_DEBUG): ?>
-                <div class="notice notice-warning">
-                    <p><strong>Debug Info:</strong></p>
-                    <p>Local eligible: <?php echo esc_html($detailed_stats['local']['total_eligible']); ?></p>
-                    <p>Cloud eligible: <?php echo esc_html($detailed_stats['cloud']['total_eligible']); ?></p>
-                    <p>Batch size: <?php echo esc_html($detailed_stats['batch_size']); ?></p>
-                    <p>Max size: <?php echo esc_html($detailed_stats['max_size_threshold']); ?></p>
-                    </div>
-                <?php endif; ?>
-                </div>
+
             
-            <div class="bunny-optimization-form">
-                <h3><?php esc_html_e('Start Image Optimization', 'bunny-media-offload'); ?></h3>
-                <p><?php esc_html_e('Select which images you want to optimize. All images will be converted to AVIF format for best compression.', 'bunny-media-offload'); ?></p>
+            <!-- Optimization Statistics -->
+            <div class="bunny-stats-grid">
+                <div class="bunny-stat-card">
+                    <h3><?php esc_html_e('Local Images Eligible', 'bunny-media-offload'); ?></h3>
+                    <div class="bunny-stat-number"><?php echo number_format($detailed_stats['local']['total_eligible']); ?></div>
+                    <div class="bunny-stat-breakdown">
+                        <small><?php echo number_format($detailed_stats['local']['jpg_png_to_convert']); ?> JPG/PNG • <?php echo number_format($detailed_stats['local']['webp_avif_to_recompress']); ?> WebP/AVIF</small>
+                    </div>
+                </div>
                 
-                <form id="optimization-form">
-                    <table class="form-table">
-                        <tr>
-                            <th scope="row"><?php esc_html_e('Optimization Target', 'bunny-media-offload'); ?></th>
-                            <td>
-                                <label>
-                                    <input type="radio" name="optimization_target" value="local" <?php echo $detailed_stats['local']['has_files_to_optimize'] ? '' : 'disabled'; ?> checked />
-                                    <?php esc_html_e('Local Images', 'bunny-media-offload'); ?>
-                                    <span class="description">(<?php echo number_format($detailed_stats['local']['total_eligible']); ?> images)</span>
-                                </label><br>
-                                <label>
-                                    <input type="radio" name="optimization_target" value="cloud" <?php echo $detailed_stats['cloud']['has_files_to_optimize'] ? '' : 'disabled'; ?> />
-                                    <?php esc_html_e('Cloud Images', 'bunny-media-offload'); ?>
-                                    <span class="description">(<?php echo number_format($detailed_stats['cloud']['total_eligible']); ?> images)</span>
-                                </label>
-                                <p class="description">
-                                    <?php esc_html_e('Local: Images stored on your server. Cloud: Images stored on Bunny.net CDN.', 'bunny-media-offload'); ?>
-                                    <?php if ($detailed_stats['batch_size']): ?>
-                                        <?php 
-                                        // translators: %d is the number of images processed per batch
-                                        echo sprintf(esc_html__('Processing %d images per batch.', 'bunny-media-offload'), esc_html($detailed_stats['batch_size'])); ?>
-                                    <?php endif; ?>
-                                </p>
-                            </td>
-                        </tr>
-                    </table>
+                <div class="bunny-stat-card">
+                    <h3><?php esc_html_e('Cloud Images Eligible', 'bunny-media-offload'); ?></h3>
+                    <div class="bunny-stat-number"><?php echo number_format($detailed_stats['cloud']['total_eligible']); ?></div>
+                    <div class="bunny-stat-breakdown">
+                        <small><?php echo number_format($detailed_stats['cloud']['jpg_png_to_convert']); ?> JPG/PNG • <?php echo number_format($detailed_stats['cloud']['webp_avif_to_recompress']); ?> WebP/AVIF</small>
+                    </div>
+                </div>
+                
+                <div class="bunny-stat-card">
+                    <h3><?php esc_html_e('Already Optimized', 'bunny-media-offload'); ?></h3>
+                    <div class="bunny-stat-number"><?php echo number_format($detailed_stats['already_optimized']); ?></div>
+                    <div class="bunny-stat-description">
+                        <small><?php esc_html_e('Images already in optimal format', 'bunny-media-offload'); ?></small>
+                    </div>
+                </div>
+                
+                <div class="bunny-stat-card">
+                    <h3><?php esc_html_e('Images Migrated', 'bunny-media-offload'); ?></h3>
+                    <div class="bunny-stat-number"><?php echo number_format($this->stats->get_dashboard_stats()['total_files']); ?></div>
+                    <div class="bunny-stat-description">
+                        <small><?php esc_html_e('Images successfully migrated to CDN', 'bunny-media-offload'); ?></small>
+                    </div>
+                </div>
+            </div>
+            
+
+            
+            <div class="bunny-optimization-actions">
+                <h3><?php esc_html_e('Start Image Optimization', 'bunny-media-offload'); ?></h3>
+                <p><?php esc_html_e('Choose which images you want to optimize. All images will be converted to AVIF format for best compression.', 'bunny-media-offload'); ?></p>
+                
+                <!-- Direct Optimization Action Buttons -->
+                <div class="bunny-optimization-targets">
+                    <div class="bunny-action-buttons">
+                        <div class="bunny-action-card">
+                            <h4><?php esc_html_e('Local Images', 'bunny-media-offload'); ?></h4>
+                            <div class="bunny-action-count"><?php echo number_format($detailed_stats['local']['total_eligible']); ?></div>
+                            <div class="bunny-action-description"><?php esc_html_e('Images stored on your server', 'bunny-media-offload'); ?></div>
+                            <button type="button" class="button button-primary bunny-optimize-button" data-target="local" 
+                                    <?php echo $detailed_stats['local']['has_files_to_optimize'] ? '' : 'disabled'; ?>>
+                                <span class="dashicons dashicons-controls-play"></span>
+                                <?php esc_html_e('Optimize Local Images', 'bunny-media-offload'); ?>
+                            </button>
+                        </div>
+                        
+                        <div class="bunny-action-card">
+                            <h4><?php esc_html_e('Cloud Images', 'bunny-media-offload'); ?></h4>
+                            <div class="bunny-action-count"><?php echo number_format($detailed_stats['cloud']['total_eligible']); ?></div>
+                            <div class="bunny-action-description"><?php esc_html_e('Images stored on Bunny.net CDN', 'bunny-media-offload'); ?></div>
+                            <button type="button" class="button button-primary bunny-optimize-button" data-target="cloud" 
+                                    <?php echo $detailed_stats['cloud']['has_files_to_optimize'] ? '' : 'disabled'; ?>>
+                                <span class="dashicons dashicons-controls-play"></span>
+                                <?php esc_html_e('Optimize Cloud Images', 'bunny-media-offload'); ?>
+                            </button>
+                        </div>
+                    </div>
                     
-                    <p class="submit">
-                        <button type="submit" class="button button-primary" id="start-optimization" 
-                                <?php echo ($detailed_stats['local']['has_files_to_optimize'] || $detailed_stats['cloud']['has_files_to_optimize']) ? '' : 'disabled'; ?>>
-                            <?php esc_html_e('Start Optimization', 'bunny-media-offload'); ?>
-                        </button>
-                        <button type="button" class="button button-secondary bunny-button-hidden" id="cancel-optimization">
+                    <p class="description">
+                        <?php if ($detailed_stats['batch_size']): ?>
+                            <?php 
+                            // translators: %d is the number of images processed per batch
+                            echo sprintf(esc_html__('Processing %d images per batch. Each optimization runs independently.', 'bunny-media-offload'), esc_html($detailed_stats['batch_size'])); ?>
+                        <?php endif; ?>
+                    </p>
+                    
+                    <div class="bunny-cancel-section bunny-status-hidden">
+                        <button type="button" class="button button-secondary" id="cancel-optimization">
+                            <span class="dashicons dashicons-no"></span>
                             <?php esc_html_e('Cancel Optimization', 'bunny-media-offload'); ?>
                         </button>
-                    </p>
-                </form>
+                    </div>
+                </div>
             </div>
             
             <div id="optimization-progress" class="bunny-status-hidden">
                 <h3><?php esc_html_e('Optimization Progress', 'bunny-media-offload'); ?></h3>
+                
+                <!-- Overall Progress Bar -->
                 <div class="bunny-progress-bar">
                     <div class="bunny-progress-fill" id="optimization-progress-bar" style="width: 0%"></div>
+                    <span class="bunny-progress-text" id="optimization-progress-text">0%</span>
                 </div>
                 <p id="optimization-status-text"></p>
+                
+                <!-- Current Image Being Processed -->
+                <div id="current-image-processing" class="bunny-current-image bunny-status-hidden">
+                    <h4><?php esc_html_e('Currently Processing', 'bunny-media-offload'); ?></h4>
+                    <div class="bunny-image-card">
+                        <div class="bunny-image-thumbnail">
+                            <img id="current-image-thumb" src="" alt="" />
+                            <div class="bunny-image-overlay">
+                                <div class="bunny-spinner"></div>
+                            </div>
+                        </div>
+                        <div class="bunny-image-details">
+                            <h5 id="current-image-name"></h5>
+                            <div class="bunny-image-status">
+                                <!-- Local Image Process -->
+                                <div id="local-process" class="bunny-process-step">
+                                    <span class="bunny-step-icon">
+                                        <span class="dashicons dashicons-format-image"></span>
+                                    </span>
+                                    <span class="bunny-step-text" id="local-process-text"><?php esc_html_e('Processing...', 'bunny-media-offload'); ?></span>
+                                    <span class="bunny-step-spinner bunny-spinner-small"></span>
+                                </div>
+                                
+                                <!-- Cloud Image Process (Download, Process, Upload) -->
+                                <div id="cloud-download" class="bunny-process-step bunny-status-hidden">
+                                    <span class="bunny-step-icon">
+                                        <span class="dashicons dashicons-download"></span>
+                                    </span>
+                                    <span class="bunny-step-text" id="download-process-text"><?php esc_html_e('Downloading...', 'bunny-media-offload'); ?></span>
+                                    <span class="bunny-step-spinner bunny-spinner-small"></span>
+                                </div>
+                                
+                                <div id="cloud-process" class="bunny-process-step bunny-status-hidden">
+                                    <span class="bunny-step-icon">
+                                        <span class="dashicons dashicons-format-image"></span>
+                                    </span>
+                                    <span class="bunny-step-text" id="cloud-process-text"><?php esc_html_e('Optimizing...', 'bunny-media-offload'); ?></span>
+                                    <span class="bunny-step-spinner bunny-spinner-small"></span>
+                                </div>
+                                
+                                <div id="cloud-upload" class="bunny-process-step bunny-status-hidden">
+                                    <span class="bunny-step-icon">
+                                        <span class="dashicons dashicons-upload"></span>
+                                    </span>
+                                    <span class="bunny-step-text" id="upload-process-text"><?php esc_html_e('Uploading...', 'bunny-media-offload'); ?></span>
+                                    <span class="bunny-step-spinner bunny-spinner-small"></span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Recently Processed Images -->
+                <div id="recent-processed" class="bunny-recent-processed bunny-status-hidden">
+                    <h4><?php esc_html_e('Recently Processed', 'bunny-media-offload'); ?></h4>
+                    <div class="bunny-processed-list" id="processed-images-list">
+                        <!-- Recently processed images will be added here dynamically -->
+                    </div>
+                </div>
+                
+                <!-- Errors Section -->
                 <div id="optimization-errors" class="bunny-errors-hidden">
                     <h4><?php esc_html_e('Errors', 'bunny-media-offload'); ?></h4>
                     <ul id="optimization-error-list"></ul>
+                </div>
             </div>
-        </div>
         </div>
         <?php
     }
