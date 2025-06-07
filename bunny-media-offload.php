@@ -1,12 +1,12 @@
 <?php
 /**
  * Plugin Name: Bunny Media Offload
- * Plugin URI: https://nexwinds.com
- * Description: Fully integrates with Bunny.net Edge Storage to offload and manage WordPress media files with WooCommerce and HPOS compatibility.
+ * Plugin URI: https://nexwinds.com/bunny-media-offload
+ * Description: Seamlessly offload and manage WordPress media with Bunny.net Edge Storage. Compatible with WooCommerce and WPML.
  * Version: 1.0.0
  * Author: NexWinds
  * Author URI: https://nexwinds.com
- * License: GPL v2 or later
+ * License: GPL v3
  * Text Domain: bunny-media-offload
  * Domain Path: /languages
  * Requires at least: 5.0
