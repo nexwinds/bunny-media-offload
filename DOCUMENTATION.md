@@ -11,27 +11,36 @@
 7. [Media Migration](#media-migration)
 8. [Image Optimization](#image-optimization)
 9. [WPML Multilingual Support](#wpml-multilingual-support)
-10. [WP-CLI Commands](#wp-cli-commands)
-11. [Troubleshooting](#troubleshooting)
-12. [Performance Optimization](#performance-optimization)
-13. [Developer Guide](#developer-guide)
-14. [FAQ](#faq)
+
+10. [Troubleshooting](#troubleshooting)
+11. [Performance Optimization](#performance-optimization)
+12. [Developer Guide](#developer-guide)
+13. [FAQ](#faq)
 
 ---
 
 ## Introduction
 
-Bunny Media Offload is a comprehensive WordPress plugin that seamlessly integrates with Bunny.net Edge Storage to offload, optimize, and deliver your media files through a global CDN network. The plugin provides automatic media offloading, bulk migration tools, image optimization, and full WPML multilingual support.
+Bunny Media Offload is a comprehensive WordPress plugin that seamlessly integrates with Bunny.net Edge Storage to offload, optimize, and deliver your media files through a global CDN network. The plugin provides manual media migration, bulk migration tools, image optimization, and full WPML multilingual support.
+
+### Workflow Overview
+
+This plugin follows a **manual migration workflow**:
+1. **Upload**: Files are uploaded to WordPress normally (can be optimized during upload)
+2. **Manual Migration**: Use the admin interface to migrate files to Bunny.net CDN
+3. **CDN Delivery**: Once migrated, files are automatically served from CDN
+
+This approach gives you full control over which files are migrated and when.
 
 ### Key Features
 
-- **Automatic Media Offloading**: Optimize and Upload new media directly to Bunny.net Edge Storage
+- **Manual Media Migration**: Upload and optimize media to Bunny.net Edge Storage via admin interface
 - **Bulk Migration**: Migrate existing media libraries with animated progress tracking
 - **Image Optimization**: Convert to modern formats AVIF with intelligent compression
 - **Global CDN Delivery**: Serve media from 114+ global edge locations
 - **WPML Compatible**: Full multilingual support with shared CDN URLs
 - **WooCommerce**: Seamless product image handling with High-Performance Order Storage support
-- **CLI Support**: Comprehensive WP-CLI commands for automation
+
 - **Security First**: wp-config.php configuration support for sensitive data
 
 ---
@@ -74,10 +83,7 @@ Bunny Media Offload is a comprehensive WordPress plugin that seamlessly integrat
 3. Activate the plugin through **Plugins > Installed Plugins**
 4. Navigate to **Bunny CDN** in the admin menu
 
-### Using WP-CLI
-```bash
-wp plugin install bunny-media-offload --activate
-```
+
 
 ---
 
@@ -157,12 +163,13 @@ require_once ABSPATH . 'wp-settings.php';
    - Create a new API key with **Storage** permissions
    - Copy the API key securely
 
-4. **Required - Custom Hostname**:
+4. **Custom Hostname (Required)**:
    - Navigate to **Storage > Storage Zones**
    - Click on your storage zone
    - Go to **Custom Hostnames**
    - Add your custom domain (e.g., cdn.yoursite.com)
    - Configure DNS CNAME record pointing to your storage zone
+   - **Important**: Custom hostname is mandatory for this plugin to function
 
 ### Step 2: Plugin Configuration
 
@@ -188,12 +195,13 @@ Add the constants to your `wp-config.php` file as shown in the [Security Configu
 
 ### File Type Support
 
-This plugin focuses exclusively on modern image formats for optimal performance:
+This plugin supports modern file formats for optimal performance:
 
 - **WebP**: Modern image format with excellent compression and wide browser support
 - **AVIF**: Next-generation image format with superior compression ratios
+- **SVG**: Scalable vector graphics for icons and simple graphics
 
-> **Important**: Only WebP and AVIF file formats are supported for migration and synchronization. This ensures optimal performance and modern web standards compliance.
+> **Important**: WebP, AVIF, and SVG file formats are supported for migration and synchronization. Only files exceeding the configured size threshold are migrated to ensure efficient storage usage.
 
 ### Post Type Filtering
 
@@ -251,27 +259,14 @@ Before starting a bulk migration:
 2. Supported file types to migrate:
    - **WebP Images**: Modern image format with excellent compression
    - **AVIF Images**: Next-generation image format with superior compression
+   - **SVG Images**: Scalable vector graphics for icons and simple graphics
    
-   > **Note**: Only WebP and AVIF formats are supported for migration. The plugin focuses on modern image formats for optimal performance.
-   - **Other**: Any other file types
+   > **Note**: WebP, AVIF, and SVG formats are supported for migration. Only files exceeding the configured size threshold are migrated.
 3. Choose batch size (recommended: 50-100 files)
 4. For WPML sites, select language scope
 5. Click **Start Migration**
 
-#### Via WP-CLI
-```bash
-# Migrate all images
-wp bunny migrate --file-types=image
 
-# Migrate with custom batch size
-wp bunny migrate --file-types=image,video --batch-size=25
-
-# Migrate specific language (WPML)
-wp bunny migrate --language=en --file-types=image
-
-# Migrate all languages
-wp bunny migrate --all-languages --file-types=image,document
-```
 
 ### Monitoring Migration Progress
 
@@ -287,14 +282,9 @@ The migration interface provides real-time updates:
 #### Common Issues and Solutions
 
 **Migration Stalls:**
-```bash
-# Check migration status
-wp bunny migration-status
-
-# Cancel and restart if needed
-wp bunny migration-cancel
-wp bunny migrate --file-types=image --batch-size=10
-```
+- Check migration status via admin interface: **Bunny CDN > Migration**
+- Cancel current migration and restart with smaller batch size
+- Monitor server logs for errors
 
 **File Permission Errors:**
 ```bash
@@ -337,9 +327,9 @@ The plugin's optimization feature:
 - **55KB**: Minimal compression for high-quality images
 - **60KB**: Very light compression for hero images
 
-### Automatic Optimization
+### Optimization on Upload
 
-Enable automatic optimization for new uploads:
+Enable optimization for new uploads (files are optimized locally, but still require manual migration to CDN):
 
 ```php
 // In wp-config.php
@@ -357,23 +347,7 @@ define('BUNNY_OPTIMIZATION_MAX_SIZE', 50);
 3. Click **Run Optimization Now**
 4. Monitor progress in real-time
 
-#### Via WP-CLI
-```bash
-# Optimize all images
-wp bunny optimize
 
-# Optimize specific file types
-wp bunny optimize --file-types=jpg,png
-
-# Optimize with custom settings
-wp bunny optimize --format=webp --max-size=45
-
-# Check optimization status
-wp bunny optimization-status
-
-# Optimize specific attachment
-wp bunny optimize 123
-```
 
 ### Optimization Results
 
@@ -393,11 +367,11 @@ After optimization, you'll see:
 2. **Configure Languages**: Set up your site's languages
 3. **Enable Media Translation**: Go to **WPML > Settings > Media Translation**
 
-### Automatic Features
+### WPML Integration Features
 
-When WPML is detected, the plugin automatically:
+When WPML is detected, the plugin:
 - Shares CDN URLs across all language versions
-- Synchronizes offload metadata when translations are created  
+- Synchronizes migration metadata when translations are created  
 - Prevents duplicate optimization of the same physical file
 - Provides language-specific migration options
 
@@ -415,17 +389,7 @@ When WPML is detected, the plugin automatically:
 - Ensures complete coverage
 - May include duplicate files across languages
 
-#### CLI Examples
-```bash
-# Migrate current language only
-wp bunny migrate --language-scope=current
 
-# Migrate all languages  
-wp bunny migrate --language-scope=all
-
-# Check language-specific status
-wp bunny status --language=es
-```
 
 ### Optimization with WPML
 
@@ -434,112 +398,6 @@ The plugin optimizes efficiently across languages:
 - All language versions share the optimized file
 - Metadata synchronized across translations
 - No redundant processing
-
----
-
-## WP-CLI Commands
-
-### Installation and Status
-
-```bash
-# Install plugin via CLI
-wp plugin install bunny-media-offload --activate
-
-# Check plugin status
-wp bunny status
-
-# Detailed status with file counts
-wp bunny status --detailed
-
-# Test API connection
-wp bunny test-connection
-```
-
-### Migration Commands
-
-```bash
-# Basic migration
-wp bunny migrate
-
-# Migrate specific file types
-wp bunny migrate --file-types=image,video
-
-# Custom batch size
-wp bunny migrate --batch-size=25
-
-# Show migration progress
-wp bunny migration-status
-
-# Cancel running migration
-wp bunny migration-cancel
-```
-
-### File Operations
-
-```bash
-# Offload specific attachment
-wp bunny offload 123
-
-# Offload all images
-wp bunny offload --file-types=image
-
-# Sync file back to local
-wp bunny sync 123
-
-# Verify file integrity
-wp bunny verify 123
-
-# Verify all files with auto-fix
-wp bunny verify --all --fix
-```
-
-### Optimization Commands
-
-```bash
-# Optimize all images
-wp bunny optimize
-
-# Optimize specific format
-wp bunny optimize --file-types=jpg,png --format=webp
-
-# Optimize with size limit
-wp bunny optimize --max-size=40
-
-# Check optimization queue
-wp bunny optimization-status
-
-# Clear optimization queue
-wp bunny optimization-clear
-```
-
-### Maintenance Commands
-
-```bash
-# Cleanup orphaned files
-wp bunny cleanup
-
-# Regenerate file statistics
-wp bunny stats --regenerate
-
-# Export logs
-wp bunny logs --export=/tmp/bunny-logs.csv
-
-# Clear old logs
-wp bunny logs --clear-old=30
-```
-
-### WPML-Specific Commands
-
-```bash
-# Migrate specific language
-wp bunny migrate --language=es
-
-# Status for specific language
-wp bunny status --language=fr
-
-# Optimize originals only (WPML sites)
-wp bunny optimize --originals-only
-```
 
 ---
 
@@ -608,17 +466,13 @@ php -i | grep -E "(upload_max_filesize|post_max_size|max_execution_time)"
 **Symptoms**: Migration progress stops advancing
 
 **Solutions**:
-```bash
-# Check current migration status
-wp bunny migration-status
-
-# Cancel and restart with smaller batch size
-wp bunny migration-cancel
-wp bunny migrate --batch-size=10
-
-# Check server logs for errors
-tail -f wp-content/debug.log
-```
+- Check migration status via **Bunny CDN > Migration** page
+- Cancel current migration via admin interface
+- Restart with smaller batch size (10-25 files)
+- Check server logs for specific errors:
+  ```bash
+  tail -f wp-content/debug.log
+  ```
 
 #### Memory Issues
 **Symptoms**: "Fatal error: Allowed memory size exhausted"
@@ -628,9 +482,6 @@ tail -f wp-content/debug.log
 // In wp-config.php
 ini_set('memory_limit', '512M');
 define('WP_MEMORY_LIMIT', '512M');
-
-// For CLI operations
-ini_set('memory_limit', '1G');
 ```
 
 ### Performance Issues
@@ -642,10 +493,7 @@ ini_set('memory_limit', '1G');
 1. Reduce batch size: 10-25 files per batch
 2. Increase PHP max_execution_time
 3. Run migrations during low-traffic periods
-4. Use WP-CLI for better performance:
-   ```bash
-   wp bunny migrate --batch-size=15
-   ```
+4. Use admin interface for better control and monitoring
 
 #### High Server Load
 **Symptoms**: Website becomes slow during operations
@@ -667,31 +515,17 @@ ini_set('memory_limit', '1G');
 **Symptoms**: "File not found" errors on frontend
 
 **Solutions**:
-```bash
-# Verify file integrity
-wp bunny verify --all
-
-# Sync missing files back to local
-wp bunny sync --missing-only
-
-# Re-upload specific files
-wp bunny offload 123 --force
-```
+- Use **Bunny CDN > Sync & Recovery** page to verify file integrity
+- Download missing files via **Sync** functionality
+- Re-upload files via **Migration** page
 
 #### Corrupted Files
 **Symptoms**: Images appear broken or incomplete
 
 **Solutions**:
-```bash
-# Verify and fix file integrity
-wp bunny verify --all --fix
-
-# Re-upload corrupted files
-wp bunny offload --corrupted-only --force
-
-# Check file hashes
-wp bunny verify 123 --verbose
-```
+- Use **Bunny CDN > Sync & Recovery** page for integrity verification
+- Re-upload corrupted files via **Migration** page
+- Check file integrity via admin interface
 
 ### Optimization Issues
 
@@ -702,16 +536,10 @@ wp bunny verify 123 --verbose
 ```bash
 # Check GD library support
 php -m | grep -i gd
-
-# Verify optimization queue
-wp bunny optimization-status
-
-# Clear stuck optimization jobs
-wp bunny optimization-clear
-
-# Re-run optimization with verbose output
-wp bunny optimize 123 --verbose
 ```
+- Verify optimization status via **Bunny CDN > Optimization** page
+- Clear optimization queue via admin interface
+- Re-run optimization through admin panel
 
 #### Quality Issues
 **Symptoms**: Optimized images appear too compressed
@@ -734,16 +562,9 @@ wp bunny optimize 123 --verbose
 **Symptoms**: Translated attachments missing CDN URLs
 
 **Solutions**:
-```bash
-# Check WPML media translation status
-wp eval "var_dump(apply_filters('wpml_active_languages', null));"
-
-# Re-sync translated attachments
-wp bunny sync --translations-only
-
-# Verify WPML configuration
-wp bunny status --wpml-debug
-```
+- Check WPML media translation settings in **WPML > Settings**
+- Re-sync translated attachments via **Bunny CDN > Sync & Recovery**
+- Verify WPML configuration in plugin settings
 
 ### Debugging
 
@@ -759,13 +580,9 @@ define('BUNNY_DEBUG', true);
 ```bash
 # Monitor WordPress debug log
 tail -f wp-content/debug.log
-
-# Monitor plugin-specific logs
-wp bunny logs --tail
-
-# Export detailed logs for support
-wp bunny logs --export=/tmp/bunny-debug-logs.csv --level=debug
 ```
+- Monitor plugin-specific logs via **Bunny CDN > Logs** page
+- Export logs for support via admin interface
 
 ---
 
@@ -813,13 +630,9 @@ Enable gzip compression in your Bunny.net pull zone:
 ```bash
 # Optimize plugin tables
 wp db optimize
-
-# Clean old logs (keep last 30 days)
-wp bunny logs --cleanup --days=30
-
-# Regenerate statistics cache
-wp bunny stats --regenerate
 ```
+- Clean old logs via **Bunny CDN > Logs** page
+- Statistics are automatically maintained
 
 #### Index Optimization
 The plugin automatically creates optimal database indexes, but you can verify:
@@ -837,17 +650,7 @@ Monitor performance via **Bunny CDN > Dashboard**:
 - Bandwidth usage reduction
 - Optimization compression ratios
 
-#### CLI Monitoring
-```bash
-# Performance summary
-wp bunny stats --summary
-
-# Daily breakdown
-wp bunny stats --period=daily --days=7
-
-# Bandwidth savings
-wp bunny stats --bandwidth --month=2024-01
-```
+All statistics and performance metrics are available via the **Bunny CDN > Dashboard** page in the WordPress admin.
 
 ---
 
@@ -868,7 +671,6 @@ Bunny_Media_Offload (Main Controller)
 ├── Bunny_Settings (Configuration Management)
 ├── Bunny_Stats (Statistics and Analytics)
 ├── Bunny_Logger (Logging and Debugging)
-├── Bunny_CLI (WP-CLI Commands)
 ├── Bunny_WPML (Multilingual Support)
 └── Bunny_Utils (Helper Functions)
 ```
@@ -1062,7 +864,7 @@ add_action('bunny_before_upload', function($file_path, $attachment_id) {
 A: Yes, Bunny.net provides enterprise-grade security with SSL encryption, DDoS protection, and SOC 2 compliance. Your media files are distributed across multiple data centers for redundancy.
 
 **Q: Will this plugin slow down my WordPress site?**
-A: No, the plugin is designed for performance. After setup, your site will actually load faster due to CDN delivery. The initial migration may temporarily impact performance.
+A: No, the plugin is designed for performance. Only migrated files are served from CDN, improving load times. The manual migration process may temporarily impact performance during bulk operations.
 
 **Q: Can I use this with other CDN plugins?**
 A: It's not recommended to use multiple CDN plugins simultaneously as they may conflict. Disable other CDN plugins before using Bunny Media Offload.
@@ -1070,13 +872,16 @@ A: It's not recommended to use multiple CDN plugins simultaneously as they may c
 **Q: What happens if I deactivate the plugin?**
 A: Your media files remain on Bunny.net, but WordPress will revert to looking for local files. You can re-download files using the sync feature before deactivation.
 
+**Q: Do new uploads automatically go to the CDN?**
+A: No, this plugin uses a manual migration workflow. New uploads stay on your server until you manually migrate them via **Bunny CDN > Migration**. This gives you control over which files are migrated.
+
 ### Technical Questions
 
 **Q: Do I need to modify my theme?**
 A: No, the plugin automatically handles URL rewriting. Your theme's image display code remains unchanged.
 
 **Q: Can I migrate existing media files?**
-A: Yes, use the bulk migration tool in **Bunny CDN > Migration** or the WP-CLI command `wp bunny migrate`.
+A: Yes, use the bulk migration tool in **Bunny CDN > Migration**.
 
 **Q: How does the plugin handle image sizes (thumbnails)?**
 A: WordPress thumbnail generation works normally. The plugin uploads all image sizes to Bunny.net and serves them via CDN.
@@ -1109,10 +914,7 @@ A: This usually indicates:
 Run **Test Connection** in settings and check the logs.
 
 **Q: Can I restore my local files?**
-A: Yes, use the sync feature to download files back from Bunny.net:
-```bash
-wp bunny sync --all
-```
+A: Yes, use the sync feature via **Bunny CDN > Sync & Recovery** to download files back from Bunny.net.
 
 **Q: How do I handle SSL certificate issues?**
 A: Ensure your custom hostname has a valid SSL certificate. Bunny.net provides free SSL certificates for custom hostnames.
@@ -1154,13 +956,13 @@ A: Yes, the migration tool offers "Current Language Only" and "All Languages" op
 1. **Documentation**: This comprehensive guide covers most use cases
 2. **WordPress Support Forums**: Community support and discussions
 3. **Plugin Logs**: Check **Bunny CDN > Logs** for error details
-4. **WP-CLI Debugging**: Use `--debug` flag for verbose output
+4. **Plugin Logs**: Check **Bunny CDN > Logs** for detailed information
 
 ### Useful Resources
 
 - **Bunny.net Documentation**: [docs.bunny.net](https://docs.bunny.net)
 - **WordPress Developer Reference**: [developer.wordpress.org](https://developer.wordpress.org)
-- **WP-CLI Documentation**: [wp-cli.org](https://wp-cli.org)
+
 - **WPML Documentation**: [wpml.org/documentation](https://wpml.org/documentation)
 
 ### Reporting Issues
@@ -1182,5 +984,5 @@ The plugin is open source and welcomes contributions:
 
 ---
 
-*Last updated: January 2024*
+*Last updated: June 2025*
 *Plugin version: 1.0.0* 

@@ -355,14 +355,13 @@ class Bunny_Sync {
      */
     private function extract_remote_path_from_url($bunny_url) {
         $custom_hostname = $this->settings->get('custom_hostname');
-        $storage_zone = $this->settings->get('storage_zone');
         
-        if (!empty($custom_hostname)) {
-            $base_url = 'https://' . $custom_hostname . '/';
-        } else {
-            $base_url = 'https://' . $storage_zone . '.b-cdn.net/';
+        if (empty($custom_hostname)) {
+            $this->logger->error('Custom hostname not configured');
+            return '';
         }
         
+        $base_url = 'https://' . $custom_hostname . '/';
         $remote_path = str_replace($base_url, '', $bunny_url);
         
         // Remove version parameter if present

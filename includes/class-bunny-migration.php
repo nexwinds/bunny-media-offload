@@ -615,18 +615,32 @@ class Bunny_Migration {
         
         // Use the existing method to get accurate file counts
         $file_types = array('svg', 'avif', 'webp');
-        $total_supported_attachments = $this->get_files_to_migrate_count($file_types);
+        $total_eligible_files = $this->get_files_to_migrate_count($file_types);
         
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Counting migrated files for migration stats, caching not needed for one-time calculation
-        $migrated_files = $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM `{$wpdb->prefix}bunny_offloaded_files` WHERE is_synced = %d", 1));
-        $pending_files = max(0, $total_supported_attachments - $migrated_files);
+        // Get all files that match our criteria and check which are already migrated
+        $eligible_files = $this->get_files_to_migrate($file_types, array(), null, 0);
+        $eligible_ids = array_map(function($file) { return $file->ID; }, $eligible_files);
+        
+        // Count how many of the eligible files are already migrated
+        $migrated_files = 0;
+        if (!empty($eligible_ids)) {
+            $ids_placeholder = implode(',', array_fill(0, count($eligible_ids), '%d'));
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Counting migrated files for migration stats, caching not needed for one-time calculation  
+            $migrated_files = (int) $wpdb->get_var($wpdb->prepare("
+                SELECT COUNT(*) 
+                FROM {$wpdb->prefix}bunny_offloaded_files 
+                WHERE is_synced = 1 AND attachment_id IN ($ids_placeholder)
+            ", ...$eligible_ids));
+        }
+        
+        $pending_files = max(0, $total_eligible_files - $migrated_files);
         
         $batch_size = $this->settings->get('batch_size', 100);
-        $migration_percentage = $total_supported_attachments > 0 ? round(($migrated_files / $total_supported_attachments) * 100, 2) : 0;
+        $migration_percentage = $total_eligible_files > 0 ? round(($migrated_files / $total_eligible_files) * 100, 2) : 0;
         
         $base_stats = array(
-            'total_attachments' => (int) $total_supported_attachments,
-            'total_images_to_migrate' => (int) $total_supported_attachments,
+            'total_attachments' => (int) $total_eligible_files,
+            'total_images_to_migrate' => (int) $total_eligible_files,
             'total_migrated' => (int) $migrated_files,
             'migrated_files' => (int) $migrated_files,
             'pending_files' => (int) $pending_files,
@@ -643,8 +657,21 @@ class Bunny_Migration {
         // Add detailed breakdown by file type for detailed view
         $detailed_stats = array();
         foreach ($file_types as $type) {
-            $type_total = $this->get_files_to_migrate_count(array($type));
-            $type_migrated = $this->get_migrated_count_by_type($type);
+            $type_eligible_files = $this->get_files_to_migrate(array($type), array(), null, 0);
+            $type_eligible_ids = array_map(function($file) { return $file->ID; }, $type_eligible_files);
+            $type_total = count($type_eligible_files);
+            
+            $type_migrated = 0;
+            if (!empty($type_eligible_ids)) {
+                $type_ids_placeholder = implode(',', array_fill(0, count($type_eligible_ids), '%d'));
+                // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Counting migrated files by type for migration stats, caching not needed for one-time calculation
+                $type_migrated = (int) $wpdb->get_var($wpdb->prepare("
+                    SELECT COUNT(*) 
+                    FROM {$wpdb->prefix}bunny_offloaded_files 
+                    WHERE is_synced = 1 AND attachment_id IN ($type_ids_placeholder)
+                ", ...$type_eligible_ids));
+            }
+            
             $type_remaining = max(0, $type_total - $type_migrated);
             
             $detailed_stats[$type . '_total'] = (int) $type_total;
@@ -655,26 +682,7 @@ class Bunny_Migration {
         return array_merge($base_stats, $detailed_stats);
     }
     
-    /**
-     * Get migrated count by file type
-     */
-    private function get_migrated_count_by_type($file_type) {
-        global $wpdb;
-        
-        $mime_types = $this->get_supported_mime_types(array($file_type));
-        if (empty($mime_types)) {
-            return 0;
-        }
-        
-        $mime_type = $mime_types[0];
-        
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Counting migrated files by type for migration stats, caching not needed for one-time calculation
-        return (int) $wpdb->get_var($wpdb->prepare("
-            SELECT COUNT(*) 
-            FROM {$wpdb->prefix}bunny_offloaded_files 
-            WHERE is_synced = 1 AND file_type = %s
-        ", $mime_type));
-    }
+
     
 
     

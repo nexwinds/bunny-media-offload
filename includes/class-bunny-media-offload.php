@@ -60,10 +60,7 @@ class Bunny_Media_Offload {
         require_once BMO_PLUGIN_DIR . 'includes/class-bunny-optimizer.php';
         require_once BMO_PLUGIN_DIR . 'includes/class-bunny-wpml.php';
         
-        // Load CLI commands if WP CLI is available
-        if (defined('WP_CLI') && WP_CLI) {
-            require_once BMO_PLUGIN_DIR . 'includes/class-bunny-cli.php';
-        }
+
     }
     
     /**
@@ -91,10 +88,7 @@ class Bunny_Media_Offload {
         $this->wpml = new Bunny_WPML($this->settings, $this->logger);
         $this->admin = new Bunny_Admin($this->settings, $this->stats, $this->migration, $this->sync, $this->logger, $this->optimizer, $this->wpml);
         
-        // Initialize CLI commands
-        if (defined('WP_CLI') && WP_CLI) {
-            $this->cli = new Bunny_CLI($this->uploader, $this->sync, $this->migration, $this->optimizer);
-        }
+
     }
     
     /**

@@ -300,10 +300,6 @@ add_filter('bunny_remote_path', function($path, $attachment_id) {
 }, 10, 2);
 ```
 
-## License
-
-GPL v2 or later
-
 ## Support
 
 For technical support and feature requests, please use the WordPress plugin support forums or contact the plugin developer.

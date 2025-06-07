@@ -210,13 +210,12 @@ class Bunny_API {
      */
     public function get_public_url($remote_path) {
         $custom_hostname = $this->settings->get('custom_hostname');
-        $storage_zone = $this->settings->get('storage_zone');
         
-        if (!empty($custom_hostname)) {
-            return 'https://' . $custom_hostname . '/' . ltrim($remote_path, '/');
+        if (empty($custom_hostname)) {
+            return new WP_Error('missing_hostname', __('Custom hostname is required.', 'bunny-media-offload'));
         }
         
-        return 'https://' . $storage_zone . '.b-cdn.net/' . ltrim($remote_path, '/');
+        return 'https://' . $custom_hostname . '/' . ltrim($remote_path, '/');
     }
     
     /**

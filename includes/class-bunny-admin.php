@@ -648,8 +648,9 @@ class Bunny_Admin {
      * Migration page
      */
     public function migration_page() {
-        $migration_stats = $this->migration->get_migration_stats();
+        // Use only detailed stats to ensure consistency across all displays
         $detailed_stats = $this->migration->get_migration_stats(true);
+        $migration_stats = $detailed_stats; // Use same data source for consistency
         $max_file_size = $this->settings->get('optimization_max_size', '50kb');
         
         ?>
@@ -662,7 +663,7 @@ class Bunny_Admin {
                     <p><?php 
                         printf(
                             // translators: %s is the maximum file size setting
-                            esc_html__('Only images in AVIF or WebP format with a maximum file size lower than %s will be migrated. Images in other formats or exceeding this size limit will be skipped.', 'bunny-media-offload'), 
+                            esc_html__('Only images in SVG, AVIF or WebP format with a maximum file size lower than %s will be migrated. Images in other formats or exceeding this size limit will be skipped.', 'bunny-media-offload'), 
                             esc_html($max_file_size)
                         ); 
                     ?></p>
@@ -691,8 +692,9 @@ class Bunny_Admin {
                         <h4><?php esc_html_e('Total Images to Migrate', 'bunny-media-offload'); ?></h4>
                         <div class="bunny-stat-number"><?php echo number_format($detailed_stats['total_images_to_migrate']); ?></div>
                         <div class="bunny-stat-breakdown">
-                            <span><?php echo esc_html(number_format($detailed_stats['avif_total'])); ?> AVIF</span> • 
-                            <span><?php echo esc_html(number_format($detailed_stats['webp_total'])); ?> WebP</span>
+                            <span><?php echo esc_html(number_format($detailed_stats['svg_total'] ?? 0)); ?> SVG</span> • 
+                            <span><?php echo esc_html(number_format($detailed_stats['avif_total'] ?? 0)); ?> AVIF</span> • 
+                            <span><?php echo esc_html(number_format($detailed_stats['webp_total'] ?? 0)); ?> WebP</span>
                         </div>
                     </div>
                     
@@ -703,11 +705,12 @@ class Bunny_Admin {
                     </div>
                     
                     <div class="bunny-stat-card">
-                        <h4><?php esc_html_e('Remaining to Migrate', 'bunny-media-offload'); ?></h4>
-                        <div class="bunny-stat-number"><?php echo number_format($detailed_stats['total_remaining']); ?></div>
+                        <h4><?php esc_html_e('Already Migrated', 'bunny-media-offload'); ?></h4>
+                        <div class="bunny-stat-number"><?php echo number_format($detailed_stats['total_migrated']); ?></div>
                         <div class="bunny-stat-breakdown">
-                            <span><?php echo esc_html(number_format($detailed_stats['avif_remaining'])); ?> AVIF</span> • 
-                            <span><?php echo esc_html(number_format($detailed_stats['webp_remaining'])); ?> WebP</span>
+                            <span><?php echo esc_html(number_format($detailed_stats['svg_migrated'] ?? 0)); ?> SVG</span> • 
+                            <span><?php echo esc_html(number_format($detailed_stats['avif_migrated'] ?? 0)); ?> AVIF</span> • 
+                            <span><?php echo esc_html(number_format($detailed_stats['webp_migrated'] ?? 0)); ?> WebP</span>
                         </div>
                     </div>
                 </div>
@@ -792,7 +795,7 @@ class Bunny_Admin {
                     <p><?php esc_html_e('Download files from Bunny.net back to local storage for recovery or backup purposes.', 'bunny-media-offload'); ?></p>
                     
                     <div class="bunny-sync-notice">
-                        <p><strong><?php esc_html_e('Note:', 'bunny-media-offload'); ?></strong> <?php esc_html_e('Only WebP and AVIF files can be synchronized. If you need to recover files, consider disabling "Delete Local Files" in Settings first.', 'bunny-media-offload'); ?></p>
+                        <p><strong><?php esc_html_e('Note:', 'bunny-media-offload'); ?></strong> <?php esc_html_e('Only SVG, WebP and AVIF files can be synchronized. If you need to recover files, consider disabling "Delete Local Files" in Settings first.', 'bunny-media-offload'); ?></p>
                     </div>
                     
                     <div class="bunny-actions">
@@ -1068,12 +1071,17 @@ class Bunny_Admin {
         
         // Get logs based on filters
         $logs = $this->get_filtered_logs($log_type, $log_level, $limit);
-        $error_stats = $this->stats->get_error_stats();
         $optimization_stats = $this->get_optimization_log_stats();
+        
+        // Get simplified error counts for offload logs
+        $offload_stats = $this->get_simple_log_stats('offload');
         
         ?>
         <div class="wrap">
-            <h1><?php esc_html_e('Activity Logs', 'bunny-media-offload'); ?></h1>
+            <div class="bunny-page-header">
+                <h1><?php esc_html_e('Activity Logs', 'bunny-media-offload'); ?></h1>
+                <p class="bunny-page-description"><?php esc_html_e('Monitor plugin activity and troubleshoot issues with detailed logging.', 'bunny-media-offload'); ?></p>
+            </div>
             
             <!-- Log Filters -->
             <div class="bunny-logs-filters">
@@ -1111,9 +1119,9 @@ class Bunny_Admin {
                     <?php if ($log_type === 'all' || $log_type === 'offload'): ?>
                         <div class="bunny-log-stat-group">
                             <h4><?php esc_html_e('Media Offload', 'bunny-media-offload'); ?></h4>
-                            <span class="bunny-log-stat bunny-log-error"><?php esc_html_e('Errors:', 'bunny-media-offload'); ?> <?php echo esc_html($error_stats['error_counts']['error']); ?></span>
-                            <span class="bunny-log-stat bunny-log-warning"><?php esc_html_e('Warnings:', 'bunny-media-offload'); ?> <?php echo esc_html($error_stats['error_counts']['warning']); ?></span>
-                            <span class="bunny-log-stat bunny-log-info"><?php esc_html_e('Info:', 'bunny-media-offload'); ?> <?php echo esc_html($error_stats['error_counts']['info']); ?></span>
+                            <span class="bunny-log-stat bunny-log-error"><?php esc_html_e('Errors:', 'bunny-media-offload'); ?> <?php echo esc_html($offload_stats['error']); ?></span>
+                            <span class="bunny-log-stat bunny-log-warning"><?php esc_html_e('Warnings:', 'bunny-media-offload'); ?> <?php echo esc_html($offload_stats['warning']); ?></span>
+                            <span class="bunny-log-stat bunny-log-info"><?php esc_html_e('Info:', 'bunny-media-offload'); ?> <?php echo esc_html($offload_stats['info']); ?></span>
                         </div>
                     <?php endif; ?>
                     
@@ -1162,7 +1170,11 @@ class Bunny_Admin {
                             <?php endforeach; ?>
                         <?php else: ?>
                             <tr>
-                                <td colspan="4"><?php esc_html_e('No logs found matching the selected filters.', 'bunny-media-offload'); ?></td>
+                                <td colspan="4" class="bunny-empty-state">
+                                    <div class="bunny-empty-icon">📄</div>
+                                    <p><?php esc_html_e('No logs found matching the selected filters.', 'bunny-media-offload'); ?></p>
+                                    <small><?php esc_html_e('Try adjusting your filter criteria or check back later.', 'bunny-media-offload'); ?></small>
+                                </td>
                             </tr>
                         <?php endif; ?>
                     </tbody>
@@ -1894,6 +1906,58 @@ wp bunny logs --export                    # Export logs to CSV</pre>
             default:
                 return __('General', 'bunny-media-offload');
         }
+    }
+    
+    /**
+     * Get simple log statistics by category
+     */
+    private function get_simple_log_stats($category) {
+        global $wpdb;
+        
+        $cache_key = "bunny_simple_log_stats_{$category}";
+        $cached_stats = wp_cache_get($cache_key, 'bunny_media_offload');
+        
+        if ($cached_stats !== false) {
+            return $cached_stats;
+        }
+        
+        // Define category keywords
+        $keywords = array();
+        if ($category === 'offload') {
+            $keywords = array('upload', 'download', 'sync', 'migration', 'offload', 'CDN');
+        }
+        
+        if (empty($keywords)) {
+            return array('error' => 0, 'warning' => 0, 'info' => 0);
+        }
+        
+        // Build WHERE clause for keywords
+        $keyword_conditions = array();
+        foreach ($keywords as $keyword) {
+            $keyword_conditions[] = "message LIKE '%" . esc_sql($keyword) . "%'";
+        }
+        $where_clause = '(' . implode(' OR ', $keyword_conditions) . ')';
+        
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Custom table query with caching implemented
+        $counts = $wpdb->get_results("
+            SELECT log_level, COUNT(*) as count
+            FROM {$wpdb->prefix}bunny_logs 
+            WHERE {$where_clause}
+            AND date_created >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+            GROUP BY log_level
+        ");
+        
+        $stats = array('error' => 0, 'warning' => 0, 'info' => 0);
+        foreach ($counts as $count) {
+            if (isset($stats[$count->log_level])) {
+                $stats[$count->log_level] = (int) $count->count;
+            }
+        }
+        
+        // Cache for 3 minutes
+        wp_cache_set($cache_key, $stats, 'bunny_media_offload', 180);
+        
+        return $stats;
     }
     
     /**
