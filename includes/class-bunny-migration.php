@@ -48,6 +48,7 @@ class Bunny_Migration {
         
         // Include SVG, AVIF and WebP file types for migration
         $file_types = array('svg', 'avif', 'webp');
+        // phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verification is handled by validate_ajax_request() called above
         $post_types = isset($_POST['post_types']) ? array_map('sanitize_text_field', wp_unslash($_POST['post_types'])) : array();
         
         // Get total files to migrate
@@ -86,6 +87,7 @@ class Bunny_Migration {
     public function ajax_migration_batch() {
         $this->validate_ajax_request();
         
+        // phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verification is handled by validate_ajax_request() called above
         $migration_id = isset($_POST['migration_id']) ? sanitize_text_field(wp_unslash($_POST['migration_id'])) : '';
         $session = $this->get_migration_session($migration_id);
         
@@ -146,6 +148,7 @@ class Bunny_Migration {
     public function ajax_get_migration_status() {
         $this->validate_ajax_request();
         
+        // phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verification is handled by validate_ajax_request() called above
         $migration_id = isset($_POST['migration_id']) ? sanitize_text_field(wp_unslash($_POST['migration_id'])) : '';
         $session = $this->get_migration_session($migration_id);
         
@@ -172,6 +175,7 @@ class Bunny_Migration {
     public function ajax_cancel_migration() {
         $this->validate_ajax_request();
         
+        // phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verification is handled by validate_ajax_request() called above
         $migration_id = isset($_POST['migration_id']) ? sanitize_text_field(wp_unslash($_POST['migration_id'])) : '';
         
         $this->update_migration_session($migration_id, array('status' => 'cancelled'));

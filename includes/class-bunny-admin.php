@@ -903,7 +903,7 @@ class Bunny_Admin {
                     <h3><?php esc_html_e('Local Images Eligible', 'bunny-media-offload'); ?></h3>
                     <div class="bunny-stat-number"><?php echo number_format($detailed_stats['local']['total_eligible']); ?></div>
                     <div class="bunny-stat-breakdown">
-                        <small><?php echo number_format($detailed_stats['local']['jpg_png_to_convert']); ?> JPG/PNG • <?php echo number_format($detailed_stats['local']['webp_avif_to_recompress']); ?> WebP/AVIF</small>
+                        <small><?php echo number_format($detailed_stats['local']['convertible_formats'] ?? 0); ?> JPG/PNG • <?php echo number_format($detailed_stats['local']['compressible_formats'] ?? 0); ?> WebP/AVIF</small>
                     </div>
                 </div>
                 
@@ -911,7 +911,7 @@ class Bunny_Admin {
                     <h3><?php esc_html_e('Cloud Images Eligible', 'bunny-media-offload'); ?></h3>
                     <div class="bunny-stat-number"><?php echo number_format($detailed_stats['cloud']['total_eligible']); ?></div>
                     <div class="bunny-stat-breakdown">
-                        <small><?php echo number_format($detailed_stats['cloud']['jpg_png_to_convert']); ?> JPG/PNG • <?php echo number_format($detailed_stats['cloud']['webp_avif_to_recompress']); ?> WebP/AVIF</small>
+                        <small><?php echo number_format($detailed_stats['cloud']['convertible_formats'] ?? 0); ?> JPG/PNG • <?php echo number_format($detailed_stats['cloud']['compressible_formats'] ?? 0); ?> WebP/AVIF</small>
                     </div>
                 </div>
                 
@@ -996,7 +996,10 @@ class Bunny_Admin {
                     <h4><?php esc_html_e('Currently Processing', 'bunny-media-offload'); ?></h4>
                     <div class="bunny-image-card">
                         <div class="bunny-image-thumbnail">
-                            <img id="current-image-thumb" src="" alt="" />
+                            <?php
+                            // phpcs:ignore PluginCheck.CodeAnalysis.ImageFunctions.NonEnqueuedImage -- Dynamic placeholder image for optimization UI, src will be updated via JavaScript
+                            ?>
+                            <img id="current-image-thumb" src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMSIgaGVpZ2h0PSIxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9InRyYW5zcGFyZW50Ii8+PC9zdmc+" alt="" />
                             <div class="bunny-image-overlay">
                                 <div class="bunny-spinner"></div>
                             </div>
@@ -1065,8 +1068,10 @@ class Bunny_Admin {
      */
     public function logs_page() {
         // Get filter parameters
-        $log_type = isset($_GET['log_type']) ? sanitize_text_field($_GET['log_type']) : 'all';
-        $log_level = isset($_GET['log_level']) ? sanitize_text_field($_GET['log_level']) : '';
+        // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- GET parameters for admin filtering, nonce not required for read-only operations
+        $log_type = isset($_GET['log_type']) ? sanitize_text_field(wp_unslash($_GET['log_type'])) : 'all';
+        // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- GET parameters for admin filtering, nonce not required for read-only operations
+        $log_level = isset($_GET['log_level']) ? sanitize_text_field(wp_unslash($_GET['log_level'])) : '';
         $limit = 100;
         
         // Get logs based on filters
@@ -1652,8 +1657,8 @@ wp bunny logs --export                    # Export logs to CSV</pre>
             wp_die(esc_html__('Insufficient permissions.', 'bunny-media-offload'));
         }
         
-        $log_type = isset($_POST['log_type']) ? sanitize_text_field($_POST['log_type']) : 'all';
-        $log_level = isset($_POST['log_level']) ? sanitize_text_field($_POST['log_level']) : '';
+        $log_type = isset($_POST['log_type']) ? sanitize_text_field(wp_unslash($_POST['log_type'])) : 'all';
+        $log_level = isset($_POST['log_level']) ? sanitize_text_field(wp_unslash($_POST['log_level'])) : '';
         
         $csv_data = $this->export_filtered_logs($log_type, $log_level);
         
@@ -1670,7 +1675,7 @@ wp bunny logs --export                    # Export logs to CSV</pre>
             wp_die(esc_html__('Insufficient permissions.', 'bunny-media-offload'));
         }
         
-        $log_type = isset($_POST['log_type']) ? sanitize_text_field($_POST['log_type']) : 'all';
+        $log_type = isset($_POST['log_type']) ? sanitize_text_field(wp_unslash($_POST['log_type'])) : 'all';
         
         $result = $this->clear_filtered_logs($log_type);
         
@@ -1938,14 +1943,15 @@ wp bunny logs --export                    # Export logs to CSV</pre>
         }
         $where_clause = '(' . implode(' OR ', $keyword_conditions) . ')';
         
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Custom table query with caching implemented
-        $counts = $wpdb->get_results("
+        $query = "
             SELECT log_level, COUNT(*) as count
             FROM {$wpdb->prefix}bunny_logs 
             WHERE {$where_clause}
             AND date_created >= DATE_SUB(NOW(), INTERVAL 30 DAY)
             GROUP BY log_level
-        ");
+        ";
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.NotPrepared -- Custom table query with caching implemented, no user input to sanitize
+        $counts = $wpdb->get_results($query);
         
         $stats = array('error' => 0, 'warning' => 0, 'info' => 0);
         foreach ($counts as $count) {
@@ -1986,14 +1992,15 @@ wp bunny logs --export                    # Export logs to CSV</pre>
         }
         $where_clause = '(' . implode(' OR ', $keyword_conditions) . ')';
         
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Custom table query with caching implemented
-        $counts = $wpdb->get_results("
+        $optimization_query = "
             SELECT log_level, COUNT(*) as count
             FROM {$wpdb->prefix}bunny_logs 
             WHERE {$where_clause}
             AND date_created >= DATE_SUB(NOW(), INTERVAL 30 DAY)
             GROUP BY log_level
-        ");
+        ";
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.NotPrepared -- Custom table query with caching implemented, no user input to sanitize
+        $counts = $wpdb->get_results($optimization_query);
         
         $stats = array(
             'error' => 0,
@@ -2064,15 +2071,15 @@ wp bunny logs --export                    # Export logs to CSV</pre>
         
         if (empty($ids_to_delete)) {
             $type_label = $this->get_log_type_label($log_type);
+            // translators: %s is the log type (e.g. "optimization", "offload")
             return array('message' => sprintf(__('No %s logs found to clear.', 'bunny-media-offload'), strtolower($type_label)));
         }
         
         // Delete the filtered logs
         $placeholders = implode(',', array_fill(0, count($ids_to_delete), '%d'));
-        $query = "DELETE FROM {$wpdb->prefix}bunny_logs WHERE id IN ($placeholders)";
         
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Deleting filtered logs
-        $deleted_count = $wpdb->query($wpdb->prepare($query, $ids_to_delete));
+        $deleted_count = $wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->prefix}bunny_logs WHERE id IN ($placeholders)", ...$ids_to_delete));
         
         // Clear relevant caches
         wp_cache_delete('bunny_error_stats', 'bunny_media_offload');
@@ -2081,9 +2088,10 @@ wp bunny logs --export                    # Export logs to CSV</pre>
         $type_label = $this->get_log_type_label($log_type);
         
         return array('message' => sprintf(
+            // translators: %1$d is the number of logs, %2$s is the log type
             _n(
-                '%d %s log cleared successfully.',
-                '%d %s logs cleared successfully.',
+                '%1$d %2$s log cleared successfully.',
+                '%1$d %2$s logs cleared successfully.',
                 $deleted_count,
                 'bunny-media-offload'
             ),

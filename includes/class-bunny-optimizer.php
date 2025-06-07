@@ -286,7 +286,7 @@ class Bunny_Optimizer {
                 $temp_png = tempnam(sys_get_temp_dir(), 'heic_convert_');
                 $imagick->writeImage($temp_png);
                 $gd_image = imagecreatefrompng($temp_png);
-                unlink($temp_png);
+                wp_delete_file($temp_png);
                 
                 return $gd_image;
             } catch (Exception $e) {
@@ -847,6 +847,7 @@ class Bunny_Optimizer {
      * Get and validate optimization target from request
      */
     private function get_optimization_target() {
+        // phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verification is handled by validate_optimization_request() before calling this method
         return isset($_POST['optimization_target']) ? 
             sanitize_text_field(wp_unslash($_POST['optimization_target'])) : 'local';
     }
@@ -1257,7 +1258,8 @@ class Bunny_Optimizer {
             } else {
                 $failed++;
                 $current_image['status'] = 'error';
-                $errors[] = sprintf(__('%s: %s', 'bunny-media-offload'), $image_data['name'], $result['error_message']);
+                // translators: %1$s is the image name, %2$s is the error message
+                $errors[] = sprintf(__('%1$s: %2$s', 'bunny-media-offload'), $image_data['name'], $result['error_message']);
             }
             
             $recent_processed[] = $result['ui_data'];
@@ -1416,7 +1418,7 @@ class Bunny_Optimizer {
         
         if (is_wp_error($response) || wp_remote_retrieve_response_code($response) !== 200) {
             if (file_exists($temp_file)) {
-                unlink($temp_file);
+                wp_delete_file($temp_file);
             }
             return false;
         }
@@ -1520,7 +1522,7 @@ class Bunny_Optimizer {
         if (!$result || isset($result['error'])) {
             // Clean up downloaded file
             if (file_exists($local_path)) {
-                unlink($local_path);
+                wp_delete_file($local_path);
             }
             $error_msg = isset($result['error']) ? $result['error'] : "Unknown optimization error";
             return array('error' => "Cloud optimization failed: " . $error_msg);
@@ -1539,7 +1541,7 @@ class Bunny_Optimizer {
         
         // Clean up local files
         if (file_exists($local_path)) {
-            unlink($local_path);
+            wp_delete_file($local_path);
         }
         
         if ($upload_result) {

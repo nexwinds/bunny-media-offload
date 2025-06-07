@@ -414,9 +414,9 @@ class Bunny_Uploader {
         
         $table_name = $wpdb->prefix . 'bunny_offloaded_files';
         
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Query for file size from custom table, single row lookup doesn't benefit from object caching
         $file_info = $wpdb->get_row($wpdb->prepare(
-            "SELECT file_size FROM {$table_name} WHERE attachment_id = %d",
+            "SELECT file_size FROM `{$wpdb->prefix}bunny_offloaded_files` WHERE attachment_id = %d",
             $attachment_id
         ));
         

@@ -199,7 +199,8 @@ class Bunny_Settings {
         foreach (array_keys($this->constant_map) as $key) {
             if (isset($settings[$key]) && !$this->is_constant_defined($key)) {
                 $constant_name = $this->constant_map[$key];
-                $errors[$key] = sprintf(__('%s should be defined in wp-config.php as %s.', 'bunny-media-offload'), ucfirst(str_replace('_', ' ', $key)), $constant_name);
+                // translators: %1$s is the setting name, %2$s is the constant name
+                $errors[$key] = sprintf(__('%1$s should be defined in wp-config.php as %2$s.', 'bunny-media-offload'), ucfirst(str_replace('_', ' ', $key)), $constant_name);
             }
         }
         
@@ -328,7 +329,7 @@ class Bunny_Settings {
             'size' => filesize($this->config_file_path),
             'last_modified' => filemtime($this->config_file_path),
             'readable' => is_readable($this->config_file_path),
-            'writable' => is_writable($this->config_file_path)
+            'writable' => wp_is_writable($this->config_file_path)
         );
     }
 } 
