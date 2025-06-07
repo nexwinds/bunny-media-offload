@@ -267,7 +267,8 @@ class Bunny_Admin {
      */
     public function settings_page() {
         $settings = $this->settings->get_all();
-        $active_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'connection';
+        // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- GET parameter for admin tab navigation
+        $active_tab = isset($_GET['tab']) ? sanitize_text_field(wp_unslash($_GET['tab'])) : 'connection';
         
         ?>
         <div class="wrap">
@@ -275,7 +276,7 @@ class Bunny_Admin {
             
             <?php echo wp_kses_post($this->display_config_status()); ?>
             
-            <!-- Settings Navigation Tabs -->
+                            <!-- Settings Navigation Tabs -->
             <div class="bunny-settings-tabs">
                 <nav class="nav-tab-wrapper">
                     <a href="?page=bunny-media-offload-settings&tab=connection" class="nav-tab <?php echo $active_tab === 'connection' ? 'nav-tab-active' : ''; ?>">
@@ -654,8 +655,8 @@ class Bunny_Admin {
                 <div class="notice notice-info">
                     <h3><?php esc_html_e('Migration Requirements', 'bunny-media-offload'); ?></h3>
                     <p><?php 
-                        // translators: %s is the maximum file size setting
                         printf(
+                            // translators: %s is the maximum file size setting
                             esc_html__('Only images in AVIF or WebP format with a maximum file size lower than %s will be migrated. Images in other formats or exceeding this size limit will be skipped.', 'bunny-media-offload'), 
                             esc_html($max_file_size)
                         ); 
@@ -844,7 +845,11 @@ class Bunny_Admin {
                 );
             }
         } catch (Exception $e) {
-            error_log('Bunny Optimization Stats Error: ' . $e->getMessage());
+            // Log error only in debug mode
+            if (defined('WP_DEBUG') && WP_DEBUG) {
+                // Use WordPress logging instead of error_log for production compatibility
+                $this->logger->log_error('Bunny Optimization Stats Error: ' . $e->getMessage());
+            }
             $detailed_stats = array(
                 'local' => array(
                     'jpg_png_to_convert' => 0,
@@ -916,7 +921,9 @@ class Bunny_Admin {
                                 <p class="description">
                                     <?php esc_html_e('Local: Images stored on your server. Cloud: Images stored on Bunny.net CDN.', 'bunny-media-offload'); ?>
                                     <?php if ($detailed_stats['batch_size']): ?>
-                                        <?php echo sprintf(esc_html__('Processing %d images per batch.', 'bunny-media-offload'), $detailed_stats['batch_size']); ?>
+                                        <?php 
+                                        // translators: %d is the number of images processed per batch
+                                        echo sprintf(esc_html__('Processing %d images per batch.', 'bunny-media-offload'), esc_html($detailed_stats['batch_size'])); ?>
                                     <?php endif; ?>
                                 </p>
                             </td>
@@ -1588,7 +1595,9 @@ wp bunny logs --export                    # Export logs to CSV</pre>
         global $pagenow;
         
         if ($pagenow === 'upload.php') {
-            $selected = isset($_GET['bunny_filter']) ? sanitize_text_field($_GET['bunny_filter']) : '';
+            // No nonce verification needed for GET filter in admin - this is for display filtering only
+            // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- GET parameter for admin filtering
+            $selected = isset($_GET['bunny_filter']) ? sanitize_text_field(wp_unslash($_GET['bunny_filter'])) : '';
             
             ?>
             <select name="bunny_filter" class="bunny-media-filter">
@@ -1606,8 +1615,10 @@ wp bunny logs --export                    # Export logs to CSV</pre>
     public function filter_media_library_query($query) {
         global $pagenow, $wpdb;
         
+        // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- GET parameter for admin query filtering
         if ($pagenow === 'upload.php' && isset($_GET['bunny_filter']) && !empty($_GET['bunny_filter'])) {
-            $filter = sanitize_text_field($_GET['bunny_filter']);
+            // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- GET parameter for admin query filtering
+            $filter = sanitize_text_field(wp_unslash($_GET['bunny_filter']));
             
             if ($filter === 'cloud') {
                 // Show only files that are offloaded to cloud

@@ -376,12 +376,29 @@ class Bunny_Settings {
             return null;
         }
         
+        global $wp_filesystem;
+        
+        // Initialize WP_Filesystem if not already initialized
+        if (!$wp_filesystem) {
+            require_once ABSPATH . 'wp-admin/includes/file.php';
+            WP_Filesystem();
+        }
+        
+        // Use WP_Filesystem method for checking writability
+        $is_writable = false;
+        if ($wp_filesystem && $wp_filesystem->exists($this->config_file_path)) {
+            $is_writable = $wp_filesystem->is_writable($this->config_file_path);
+        } elseif ($wp_filesystem && $wp_filesystem->exists(dirname($this->config_file_path))) {
+            // If file doesn't exist, check if parent directory is writable
+            $is_writable = $wp_filesystem->is_writable(dirname($this->config_file_path));
+        }
+        
         return array(
             'path' => $this->config_file_path,
             'size' => filesize($this->config_file_path),
             'last_modified' => filemtime($this->config_file_path),
             'readable' => is_readable($this->config_file_path),
-            'writable' => is_writable($this->config_file_path)
+            'writable' => $is_writable
         );
     }
 } 
