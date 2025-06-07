@@ -629,12 +629,12 @@ class Bunny_Migration {
         $migrated_files = 0;
         if (!empty($eligible_ids)) {
             $ids_placeholder = implode(',', array_fill(0, count($eligible_ids), '%d'));
-            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Counting migrated files for migration stats, caching not needed for one-time calculation  
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare -- Counting migrated files for migration stats, caching not needed for one-time calculation, safe placeholder interpolation for IN clause  
             $migrated_files = (int) $wpdb->get_var($wpdb->prepare("
                 SELECT COUNT(*) 
                 FROM {$wpdb->prefix}bunny_offloaded_files 
-                WHERE is_synced = 1 AND attachment_id IN ($ids_placeholder)
-            ", ...$eligible_ids));
+                WHERE is_synced = 1 AND attachment_id IN ($ids_placeholder)" // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare -- Safe placeholder interpolation for dynamic IN clause
+            , ...$eligible_ids)); // phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare -- Dynamic placeholder count for IN clause
         }
         
         $pending_files = max(0, $total_eligible_files - $migrated_files);
@@ -668,12 +668,12 @@ class Bunny_Migration {
             $type_migrated = 0;
             if (!empty($type_eligible_ids)) {
                 $type_ids_placeholder = implode(',', array_fill(0, count($type_eligible_ids), '%d'));
-                // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Counting migrated files by type for migration stats, caching not needed for one-time calculation
+                // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare -- Counting migrated files by type for migration stats, caching not needed for one-time calculation, safe placeholder interpolation for IN clause
                 $type_migrated = (int) $wpdb->get_var($wpdb->prepare("
                     SELECT COUNT(*) 
                     FROM {$wpdb->prefix}bunny_offloaded_files 
-                    WHERE is_synced = 1 AND attachment_id IN ($type_ids_placeholder)
-                ", ...$type_eligible_ids));
+                    WHERE is_synced = 1 AND attachment_id IN ($type_ids_placeholder)" // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare -- Safe placeholder interpolation for dynamic IN clause
+                , ...$type_eligible_ids)); // phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare -- Dynamic placeholder count for IN clause
             }
             
             $type_remaining = max(0, $type_total - $type_migrated);

@@ -847,9 +847,15 @@ class Bunny_Optimizer {
      * Get and validate optimization target from request
      */
     private function get_optimization_target() {
-        // phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verification is handled by validate_optimization_request() before calling this method
-        return isset($_POST['optimization_target']) ? 
-            sanitize_text_field(wp_unslash($_POST['optimization_target'])) : 'local';
+        // Verify nonce for security
+        if (!isset($_POST['_wpnonce']) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['_wpnonce'])), 'bunny_optimization_action')) {
+            return 'local'; // Default fallback if nonce verification fails
+        }
+        
+        if (isset($_POST['optimization_target'])) {
+            return sanitize_text_field(wp_unslash($_POST['optimization_target']));
+        }
+        return 'local';
     }
     
     /**

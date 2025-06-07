@@ -414,14 +414,26 @@ class Bunny_Uploader {
         
         $table_name = $wpdb->prefix . 'bunny_offloaded_files';
         
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Query for file size from custom table, single row lookup doesn't benefit from object caching
-        $file_info = $wpdb->get_row($wpdb->prepare(
-            "SELECT file_size FROM `{$wpdb->prefix}bunny_offloaded_files` WHERE attachment_id = %d",
-            $attachment_id
-        ));
+        // Check cache first
+        $cache_key = 'bunny_file_info_' . $attachment_id;
+        $file_info = wp_cache_get($cache_key, 'bunny_media_offload');
+        
+        if (false === $file_info) {
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery -- Custom plugin table query with caching
+            $file_info = $wpdb->get_row($wpdb->prepare(
+                "SELECT file_size FROM `{$wpdb->prefix}bunny_offloaded_files` WHERE attachment_id = %d",
+                $attachment_id
+            ));
+            
+            // Cache for 1 hour
+            wp_cache_set($cache_key, $file_info, 'bunny_media_offload', HOUR_IN_SECONDS);
+        }
         
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
         $wpdb->delete($table_name, array('attachment_id' => $attachment_id));
+        
+        // Clear cache after deletion
+        wp_cache_delete($cache_key, 'bunny_media_offload');
         
         if ($file_info) {
             $this->update_stats(-$file_info->file_size, -1);

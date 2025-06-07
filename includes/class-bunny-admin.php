@@ -997,9 +997,9 @@ class Bunny_Admin {
                     <div class="bunny-image-card">
                         <div class="bunny-image-thumbnail">
                             <?php
-                            // phpcs:ignore PluginCheck.CodeAnalysis.ImageFunctions.NonEnqueuedImage -- Dynamic placeholder image for optimization UI, src will be updated via JavaScript
+                            // phpcs:ignore PluginCheck.CodeAnalysis.ImageFunctions.NonEnqueuedImage -- Dynamic placeholder image for optimization UI process display, src attribute updated via JavaScript during optimization
                             ?>
-                            <img id="current-image-thumb" src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMSIgaGVpZ2h0PSIxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9InRyYW5zcGFyZW50Ii8+PC9zdmc+" alt="" />
+                            <img id="current-image-thumb" src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMSIgaGVpZ2h0PSIxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9InRyYW5zcGFyZW50Ii8+PC9zdmc+" alt="" /> <?php // phpcs:ignore PluginCheck.CodeAnalysis.ImageFunctions.NonEnqueuedImage -- Dynamic placeholder for optimization UI, src updated via JS ?>
                             <div class="bunny-image-overlay">
                                 <div class="bunny-spinner"></div>
                             </div>
@@ -2078,7 +2078,7 @@ wp bunny logs --export                    # Export logs to CSV</pre>
         // Delete the filtered logs
         $placeholders = implode(',', array_fill(0, count($ids_to_delete), '%d'));
         
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Deleting filtered logs
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare -- Deleting filtered logs, safe placeholder interpolation for IN clause
         $deleted_count = $wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->prefix}bunny_logs WHERE id IN ($placeholders)", ...$ids_to_delete));
         
         // Clear relevant caches
