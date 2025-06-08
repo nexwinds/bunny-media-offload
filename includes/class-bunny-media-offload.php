@@ -333,7 +333,6 @@ class Bunny_Media_Offload {
             'batch_size' => 100,
             'enable_logs' => true,
             'log_level' => 'info',
-            'optimize_on_upload' => false,
             'optimization_format' => 'auto',
             'optimization_quality' => 85,
             'migration_concurrent_limit' => 4

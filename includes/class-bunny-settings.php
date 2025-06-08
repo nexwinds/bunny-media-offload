@@ -153,7 +153,6 @@ class Bunny_Settings {
             'batch_size' => 100,
             'enable_logs' => true,
             'log_level' => 'info',
-            'optimize_on_upload' => false,
             'optimization_format' => 'auto',
             'optimization_quality' => 85,
             'migration_concurrent_limit' => 4
@@ -214,7 +213,7 @@ class Bunny_Settings {
      * Validate boolean settings
      */
     private function validate_booleans($settings) {
-        $boolean_settings = array('delete_local', 'file_versioning', 'enable_logs', 'optimization_enabled', 'optimize_on_upload');
+        $boolean_settings = array('delete_local', 'file_versioning', 'enable_logs', 'optimization_enabled');
         $validated = array();
         
         foreach ($boolean_settings as $setting) {

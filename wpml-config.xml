@@ -15,7 +15,6 @@
                 <key name="enable_logs" />
                 <key name="log_level" />
                 <key name="optimization_enabled" />
-                <key name="optimize_on_upload" />
                 <key name="optimization_format" />
                 <key name="optimization_max_size" />
                 <key name="optimization_batch_size" />

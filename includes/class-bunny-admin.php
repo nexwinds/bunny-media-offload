@@ -385,6 +385,18 @@ class Bunny_Admin {
                         <p class="description"><?php esc_html_e('Your Bunny.net Storage Zone name. This is the name you gave your storage zone when creating it.', 'bunny-media-offload'); ?></p>
                         </td>
                     </tr>
+                    <tr>
+                        <th scope="row"><?php esc_html_e('Image Processor API Region', 'bunny-media-offload'); ?></th>
+                        <td>
+                            <?php 
+                            $api_region = $this->settings->get('bmo_api_region', 'us');
+                            $region_label = ($api_region === 'eu') ? 'Europe (EU)' : 'United States (US)';
+                            ?>
+                            <input type="text" value="<?php echo esc_attr($region_label); ?>" class="regular-text bunny-readonly-field" readonly />
+                            <span class="bunny-config-source"><?php esc_html_e('Configured in wp-config.php', 'bunny-media-offload'); ?></span>
+                            <p class="description"><?php esc_html_e('Active image processor API region set via BMO_API_REGION constant.', 'bunny-media-offload'); ?></p>
+                        </td>
+                    </tr>
             </table>
         </div>
         
@@ -469,20 +481,10 @@ class Bunny_Admin {
             <h3><?php esc_html_e('Image Optimization', 'bunny-media-offload'); ?></h3>
             
             <div class="bunny-info-box">
-                <p><?php esc_html_e('Image optimization converts your images to AVIF format and compresses them to reduce file sizes and improve loading speeds. Optimization can be done on upload or manually from the Optimization page.', 'bunny-media-offload'); ?></p>
+                <p><?php esc_html_e('Image optimization converts your images to AVIF format and compresses them to reduce file sizes and improve loading speeds. Optimization can be done manually from the Optimization page.', 'bunny-media-offload'); ?></p>
             </div>
             
             <table class="form-table">
-                <tr>
-                    <th scope="row"><?php esc_html_e('Optimize on Upload', 'bunny-media-offload'); ?></th>
-                    <td>
-                        <label>
-                            <input type="checkbox" name="bunny_json_settings[optimize_on_upload]" value="1" <?php checked($settings['optimize_on_upload'] ?? false); ?> />
-                            <?php esc_html_e('Automatically optimize images when they are uploaded', 'bunny-media-offload'); ?>
-                        </label>
-                        <p class="description"><?php esc_html_e('New uploads will be converted to AVIF format immediately. Disable this to only optimize manually via the Optimization page.', 'bunny-media-offload'); ?></p>
-                    </td>
-                </tr>
                 <tr>
                     <th scope="row"><?php esc_html_e('Maximum File Size', 'bunny-media-offload'); ?></th>
                     <td>
@@ -544,37 +546,7 @@ class Bunny_Admin {
                 </tr>
             </table>
         </div>
-        
-        <div class="bunny-settings-section">
-            <h3><?php esc_html_e('Optimization Performance', 'bunny-media-offload'); ?></h3>
-            
-            <table class="form-table">
-                <tr>
-                    <th scope="row"><?php esc_html_e('Optimization Batch Size', 'bunny-media-offload'); ?></th>
-                        <td>
-                            <select name="bunny_json_settings[optimization_batch_size]">
-                                <option value="30" <?php selected($settings['optimization_batch_size'] ?? 60, 30); ?>>30</option>
-                            <option value="60" <?php selected($settings['optimization_batch_size'] ?? 60, 60); ?>>60 (recommended)</option>
-                                <option value="90" <?php selected($settings['optimization_batch_size'] ?? 60, 90); ?>>90</option>
-                                <option value="150" <?php selected($settings['optimization_batch_size'] ?? 60, 150); ?>>150</option>
-                            </select>
-                        <p class="description"><?php esc_html_e('Number of images to optimize in each batch. Image optimization is CPU-intensive, so smaller batches are recommended.', 'bunny-media-offload'); ?></p>
-                        </td>
-                    </tr>
-                    <tr>
-                    <th scope="row"><?php esc_html_e('Optimization Concurrent Limit', 'bunny-media-offload'); ?></th>
-                        <td>
-                            <select name="bunny_json_settings[optimization_concurrent_limit]">
-                            <option value="2" <?php selected($settings['optimization_concurrent_limit'] ?? 3, 2); ?>>2 (safe)</option>
-                            <option value="3" <?php selected($settings['optimization_concurrent_limit'] ?? 3, 3); ?>>3 (recommended)</option>
-                            <option value="5" <?php selected($settings['optimization_concurrent_limit'] ?? 3, 5); ?>>5 (fast)</option>
-                            </select>
-                        <p class="description"><?php esc_html_e('Number of images to optimize simultaneously. Use lower values to reduce CPU usage.', 'bunny-media-offload'); ?></p>
-                        </td>
-                    </tr>
-                </table>
-        </div>
-                <?php 
+        <?php 
     }
     
     /**

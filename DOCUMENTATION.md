@@ -349,7 +349,7 @@ define('BMO_API_REGION', 'us'); // or 'eu'
 // In wp-config.php
 define('BMO_API_KEY', 'your-bmo-api-key');
 define('BMO_API_REGION', 'us'); // or 'eu'
-define('BUNNY_OPTIMIZE_ON_UPLOAD', true);
+
 define('BUNNY_OPTIMIZATION_FORMAT', 'auto'); // 'avif', 'webp', or 'auto'
 define('BUNNY_OPTIMIZATION_QUALITY', 85); // 1-100
 ```

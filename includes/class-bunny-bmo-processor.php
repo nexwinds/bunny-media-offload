@@ -42,51 +42,6 @@ class Bunny_BMO_Processor {
     }
     
     /**
-     * Optimize a single image on upload
-     */
-    public function optimize_on_upload($attachment_id, $image_url) {
-        if (!$this->is_available()) {
-            $this->logger->log('warning', 'BMO API not available for upload optimization');
-            return false;
-        }
-        
-        $this->logger->log('info', "Starting BMO API optimization for upload", array(
-            'attachment_id' => $attachment_id,
-            'image_url' => $image_url
-        ));
-        
-        try {
-            $result = $this->bmo_api->optimize_single_image($image_url, array(
-                'format' => $this->settings->get('optimization_format', 'auto'),
-                'quality' => $this->settings->get('optimization_quality', 85)
-            ));
-            
-            if ($result && isset($result['success']) && $result['success']) {
-                $this->logger->log('info', "BMO API optimization completed for upload", array(
-                    'attachment_id' => $attachment_id,
-                    'credits_used' => $result['creditsUsed'] ?? 0,
-                    'processing_time' => $result['processingTime'] ?? 0
-                ));
-                
-                return $result;
-            }
-            
-            $this->logger->log('warning', 'BMO API optimization failed for upload', array(
-                'attachment_id' => $attachment_id,
-                'result' => $result
-            ));
-            
-        } catch (Exception $e) {
-            $this->logger->log('error', 'BMO API upload optimization exception: ' . $e->getMessage(), array(
-                'attachment_id' => $attachment_id,
-                'image_url' => $image_url
-            ));
-        }
-        
-        return false;
-    }
-    
-    /**
      * Process a batch of images via BMO API
      */
     public function process_batch($images) {

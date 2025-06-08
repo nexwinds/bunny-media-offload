@@ -28,9 +28,6 @@ class Bunny_Optimization_Controller {
      * Initialize WordPress hooks
      */
     private function init_hooks() {
-        // Hook into upload process if optimization on upload is enabled
-        add_filter('bunny_before_upload', array($this, 'optimize_on_upload'), 10, 2);
-        
         // AJAX handlers for manual optimization
         add_action('wp_ajax_bunny_start_step_optimization', array($this, 'handle_step_optimization'));
         add_action('wp_ajax_bunny_optimization_batch', array($this, 'ajax_optimization_batch'));
@@ -38,53 +35,6 @@ class Bunny_Optimization_Controller {
         
         // Cleanup hook
         add_action('bunny_cleanup_sessions', array($this, 'cleanup_old_sessions'));
-    }
-    
-    /**
-     * Optimize image during upload process
-     */
-    public function optimize_on_upload($file_path, $attachment_id) {
-        if (!$this->settings->get('optimize_on_upload', false)) {
-            return $file_path;
-        }
-        
-        if (!$this->is_image($file_path)) {
-            return $file_path;
-        }
-        
-        $this->logger->log('info', "Starting optimization for upload: {$file_path}", array(
-            'attachment_id' => $attachment_id
-        ));
-        
-        try {
-            // Get the image URL for BMO API
-            $image_url = wp_get_attachment_url($attachment_id);
-            if (!$image_url) {
-                $this->logger->log('warning', 'Could not get image URL for optimization');
-                return $file_path;
-            }
-            
-            // Process via BMO API
-            $result = $this->bmo_processor->optimize_on_upload($attachment_id, $image_url);
-            
-            if ($result) {
-                // Update attachment metadata
-                $this->bmo_processor->update_attachment_meta($attachment_id, $result);
-                
-                $this->logger->log('info', "Upload optimization completed", array(
-                    'attachment_id' => $attachment_id,
-                    'credits_used' => $result['creditsUsed'] ?? 0
-                ));
-            }
-            
-        } catch (Exception $e) {
-            $this->logger->log('error', 'Upload optimization failed: ' . $e->getMessage(), array(
-                'attachment_id' => $attachment_id,
-                'file_path' => $file_path
-            ));
-        }
-        
-        return $file_path;
     }
     
     /**

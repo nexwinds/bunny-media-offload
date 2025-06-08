@@ -53,11 +53,6 @@ class Bunny_Optimizer {
         return $this->bmo_processor->process_batch($images);
     }
     
-    // Controller API (WordPress Integration)
-    public function optimize_on_upload($file_path, $attachment_id) {
-        return $this->controller->optimize_on_upload($file_path, $attachment_id);
-    }
-    
     // Legacy Support Methods - Delegate to controller
     public function add_to_optimization_queue($attachment_ids, $priority = 'normal') {
         return $this->controller->add_to_optimization_queue($attachment_ids, $priority);
