@@ -18,14 +18,15 @@ A comprehensive WordPress plugin that integrates with Bunny.net Edge Storage (SS
 
 ### 🚀 Core Functionality
 - **Automatic Media Offload**: Automatically uploads new media files to Bunny.net Edge Storage
-- **Image Optimization**: Convert images to modern formats (AVIF/WebP) and compress for web performance
+- **External Image Optimization**: Convert images to modern formats (AVIF/WebP) using regional BMO API microservices
+- **Regional Processing**: Choose between US or EU microservice APIs for compliance and performance
 - **Local File Management**: Optionally deletes local copies after successful upload
 - **File Versioning**: Adds timestamp-based versioning for CDN cache busting
 - **WooCommerce & HPOS Compatible**: Full integration with WooCommerce product images and High-Performance Order Storage
 
 ### 📊 Migration & Management
-- **Bulk Migration Tool**: Migrate existing media files in batches of 90 (configurable)
-- **Bulk Optimization**: Queue-based image optimization with configurable batch processing
+- **Bulk Migration Tool**: Migrate existing media files with configurable batch processing
+- **External Optimization**: High-performance image optimization via BMO API with fixed 10-image batches
 - **Progress Tracking**: Real-time migration and optimization progress with detailed logs
 - **Selective Migration**: Choose file types to migrate (images, videos, documents)
 - **Recovery Options**: Re-download files from Bunny.net back to local storage
@@ -50,6 +51,7 @@ A comprehensive WordPress plugin that integrates with Bunny.net Edge Storage (SS
 - PHP 7.4 or higher
 - WooCommerce 5.0+ (for e-commerce features)
 - Bunny.net account with Edge Storage zone
+- BMO API key for image optimization
 
 ### Manual Installation
 1. Download the plugin files
@@ -73,6 +75,10 @@ Add these constants to your `wp-config.php` file:
 define('BUNNY_API_KEY', 'your-storage-api-key-here');
 define('BUNNY_STORAGE_ZONE', 'your-storage-zone-name');
 define('BUNNY_CUSTOM_HOSTNAME', 'cdn.yoursite.com'); // Required
+
+// BMO API Configuration (Required for Image Optimization)
+define('BMO_API_KEY', 'your-bmo-api-key-here');
+define('BMO_API_REGION', 'us'); // 'us' or 'eu'
 ```
 
 **Option B: Admin Interface Configuration**
@@ -80,8 +86,9 @@ define('BUNNY_CUSTOM_HOSTNAME', 'cdn.yoursite.com'); // Required
 2. Enter your Bunny.net API key
 3. Enter your storage zone name
 4. Set a custom hostname for your CDN URLs (Required)
-5. Configure automatic offload settings
-6. Test the connection using the "Test Connection" button
+5. Configure BMO API settings (key should be set in wp-config.php, region will be displayed)
+6. Configure automatic offload settings
+7. Test the connection using the "Test Connection" button
 
 **Note**: All other settings are managed in a JSON configuration file for better performance and portability.
 
@@ -134,6 +141,33 @@ wp bunny optimize 123
 # Check optimization status
 wp bunny optimization-status
 ```
+
+## ⚠️ Important API Migration Notice
+
+### New External Optimization System
+
+Starting with this version, the plugin has migrated to the new **Bunny Media Offload (BMO) API** for high-performance image optimization:
+
+#### What's Changed
+- **External Processing**: Images are now optimized using regional BMO API microservices instead of local processing
+- **Regional APIs**: Choose between US (`https://api-us.bmo.nexwinds.com`) or EU (`https://api-eu.bmo.nexwinds.com`) endpoints
+- **Fixed Batch Size**: API processes exactly 10 images per batch (no longer user-configurable)
+- **~~Concurrent Limits Removed~~**: No more optimization concurrent limit settings (processing is external)
+
+#### Required Configuration Updates
+1. **Obtain BMO API Key**: Get your key from [BMO Dashboard](https://bmo.nexwinds.com/dashboard)
+2. **Update wp-config.php**: Add the new BMO API constants:
+   ```php
+   define('BMO_API_KEY', 'your-bmo-api-key-here');
+   define('BMO_API_REGION', 'us'); // or 'eu'
+   ```
+3. **Settings Page**: The BMO API key will be displayed (masked) in **Settings > Connection** tab
+
+#### Benefits of the New System
+- **Better Performance**: Dedicated microservices with auto-scaling
+- **GDPR Compliance**: EU region API for European users
+- **Enhanced Features**: Better format detection, advanced error handling
+- **Improved Reliability**: Load balancing and failover capabilities
 
 ## WPML Multilingual Support
 
@@ -196,6 +230,8 @@ apply_filters('bunny_cdn_url', $url, $attachment_id, $original_url);
 - **API Key**: Your Bunny.net Storage API key
 - **Storage Zone**: Name of your Bunny.net storage zone
 - **Custom Hostname**: Required custom domain for CDN URLs
+- **BMO API Key**: Your BMO API key for image optimization (set in wp-config.php)
+- **BMO API Region**: Choose 'us' or 'eu' based on your location/compliance needs
 
 ### Behavior Settings
 - **Auto Offload**: Automatically offload new uploads

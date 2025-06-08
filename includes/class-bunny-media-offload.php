@@ -14,6 +14,7 @@ class Bunny_Media_Offload {
      * Plugin components
      */
     public $api;
+    public $bmo_api;
     public $uploader;
     public $admin;
     public $migration;
@@ -48,19 +49,24 @@ class Bunny_Media_Offload {
      * Load plugin dependencies
      */
     private function load_dependencies() {
+        require_once BMO_PLUGIN_DIR . 'includes/class-bunny-utils.php';
+        require_once BMO_PLUGIN_DIR . 'includes/class-bunny-logger.php';
+        require_once BMO_PLUGIN_DIR . 'includes/class-bunny-settings.php';
         require_once BMO_PLUGIN_DIR . 'includes/class-bunny-api.php';
+        require_once BMO_PLUGIN_DIR . 'includes/class-bunny-bmo-api.php';
+        
+        // Load modular optimization components
+        require_once BMO_PLUGIN_DIR . 'includes/class-bunny-optimization-session.php';
+        require_once BMO_PLUGIN_DIR . 'includes/class-bunny-bmo-processor.php';
+        require_once BMO_PLUGIN_DIR . 'includes/class-bunny-optimization-controller.php';
+        require_once BMO_PLUGIN_DIR . 'includes/class-bunny-optimizer.php';
+        
         require_once BMO_PLUGIN_DIR . 'includes/class-bunny-uploader.php';
-        require_once BMO_PLUGIN_DIR . 'includes/class-bunny-admin.php';
         require_once BMO_PLUGIN_DIR . 'includes/class-bunny-migration.php';
         require_once BMO_PLUGIN_DIR . 'includes/class-bunny-sync.php';
-        require_once BMO_PLUGIN_DIR . 'includes/class-bunny-settings.php';
         require_once BMO_PLUGIN_DIR . 'includes/class-bunny-stats.php';
-        require_once BMO_PLUGIN_DIR . 'includes/class-bunny-logger.php';
-        require_once BMO_PLUGIN_DIR . 'includes/class-bunny-utils.php';
-        require_once BMO_PLUGIN_DIR . 'includes/class-bunny-optimizer.php';
         require_once BMO_PLUGIN_DIR . 'includes/class-bunny-wpml.php';
-        
-
+        require_once BMO_PLUGIN_DIR . 'includes/class-bunny-admin.php';
     }
     
     /**
@@ -80,7 +86,8 @@ class Bunny_Media_Offload {
         $this->logger = new Bunny_Logger();
         $this->settings = new Bunny_Settings();
         $this->api = new Bunny_API($this->settings, $this->logger);
-        $this->optimizer = new Bunny_Optimizer($this->api, $this->settings, $this->logger);
+        $this->bmo_api = new Bunny_BMO_API($this->settings, $this->logger);
+        $this->optimizer = new Bunny_Optimizer($this->api, $this->settings, $this->logger, $this->bmo_api);
         $this->uploader = new Bunny_Uploader($this->api, $this->settings, $this->logger);
         $this->migration = new Bunny_Migration($this->api, $this->settings, $this->logger);
         $this->sync = new Bunny_Sync($this->api, $this->settings, $this->logger);
@@ -321,18 +328,17 @@ class Bunny_Media_Offload {
         $default_settings = array(
             'delete_local' => true,
             'file_versioning' => true,
-            'allowed_file_types' => array('webp', 'avif'),
+            'allowed_file_types' => array('webp', 'avif', 'svg'),
             'allowed_post_types' => array('attachment', 'product'),
             'batch_size' => 100,
             'enable_logs' => true,
             'log_level' => 'info',
-            'optimization_enabled' => false,
-            'optimize_on_upload' => true,
-            'optimization_format' => 'avif',
-            'optimization_max_size' => '50kb',
-            'optimization_batch_size' => 60,
-            'migration_concurrent_limit' => 4,
-            'optimization_concurrent_limit' => 3
+            'optimize_on_upload' => false,
+            'optimization_format' => 'auto',
+            'optimization_quality' => 85,
+            'migration_concurrent_limit' => 4
+            // Note: optimization_concurrent_limit removed - processing is now external via BMO API
+            // Note: optimization_batch_size removed - fixed at 10 for BMO API
         );
         
         // Ensure directory exists

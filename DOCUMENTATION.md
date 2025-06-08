@@ -21,12 +21,12 @@
 
 ## Introduction
 
-Bunny Media Offload is a comprehensive WordPress plugin that seamlessly integrates with Bunny.net Edge Storage to offload, optimize, and deliver your media files through a global CDN network. The plugin provides manual media migration, bulk migration tools, image optimization, and full WPML multilingual support.
+Bunny Media Offload is a comprehensive WordPress plugin that seamlessly integrates with Bunny.net Edge Storage to offload, optimize, and deliver your media files through a global CDN network. The plugin provides manual media migration, bulk migration tools, **external image optimization via regional BMO API microservices**, and full WPML multilingual support.
 
 ### Workflow Overview
 
 This plugin follows a **manual migration workflow**:
-1. **Upload**: Files are uploaded to WordPress normally (can be optimized during upload)
+1. **Upload**: Files are uploaded to WordPress normally (can be optimized via external BMO API during upload)
 2. **Manual Migration**: Use the admin interface to migrate files to Bunny.net CDN
 3. **CDN Delivery**: Once migrated, files are automatically served from CDN
 
@@ -36,7 +36,8 @@ This approach gives you full control over which files are migrated and when.
 
 - **Manual Media Migration**: Upload and optimize media to Bunny.net Edge Storage via admin interface
 - **Bulk Migration**: Migrate existing media libraries with animated progress tracking
-- **Image Optimization**: Convert to modern formats AVIF with intelligent compression
+- **External Image Optimization**: Convert to modern formats AVIF/WebP using high-performance regional BMO API microservices
+- **Regional Processing**: Choose between US or EU microservice APIs for compliance and performance
 - **Global CDN Delivery**: Serve media from 114+ global edge locations
 - **WPML Compatible**: Full multilingual support with shared CDN URLs
 - **WooCommerce**: Seamless product image handling with High-Performance Order Storage support
@@ -52,7 +53,7 @@ This approach gives you full control over which files are migrated and when.
 - **PHP**: 7.4 or higher (8.0+ recommended)
 - **Memory**: 128MB minimum, 256MB recommended
 - **cURL**: Required for API communication
-- **GD Library**: Required for image optimization
+- **GD Library**: Required for local image processing (if external optimization is disabled)
 
 ### Recommended Environment
 - **WordPress**: 6.0+
@@ -61,11 +62,10 @@ This approach gives you full control over which files are migrated and when.
 - **WooCommerce**: 5.0+ (if using e-commerce features)
 - **WPML**: 4.0+ (if using multilingual features)
 
-### Bunny.net Requirements
-- Active Bunny.net account
-- Edge Storage zone configured
-- API key with storage permissions
-- Required: Custom hostname configured
+### API Requirements
+- Active Bunny.net account with Edge Storage zone configured
+- **BMO API Key**: Required for external image optimization (set via wp-config.php)
+- **Regional API Selection**: Choose US or EU microservice based on your location/compliance needs
 
 ---
 
@@ -83,8 +83,6 @@ This approach gives you full control over which files are migrated and when.
 3. Activate the plugin through **Plugins > Installed Plugins**
 4. Navigate to **Bunny CDN** in the admin menu
 
-
-
 ---
 
 ## Configuration System
@@ -95,7 +93,7 @@ The plugin uses a hybrid configuration system:
 
 ### wp-config.php Constants (Required)
 
-Add **only these three constants** to your `wp-config.php` file, **before** the `/* That's all, stop editing! */` line:
+Add **these constants** to your `wp-config.php` file, **before** the `/* That's all, stop editing! */` line:
 
 ```php
 <?php
@@ -110,6 +108,10 @@ define('BUNNY_STORAGE_ZONE', 'your-storage-zone-name');
 
 // Required: Custom hostname for CDN URLs (without https://)
 define('BUNNY_CUSTOM_HOSTNAME', 'cdn.yoursite.com');
+
+// BMO API Configuration (Required for Image Optimization)
+define('BMO_API_KEY', 'your-bmo-api-key-here');
+define('BMO_API_REGION', 'us'); // 'us' or 'eu'
 ```
 
 ### JSON Configuration File
@@ -126,6 +128,9 @@ define('BUNNY_API_KEY', 'b8f2c4d5-1234-5678-9abc-def123456789');
 define('BUNNY_STORAGE_ZONE', 'mysite-storage');
 define('BUNNY_CUSTOM_HOSTNAME', 'cdn.mysite.com');
 
+// ** BMO API Configuration ** //
+define('BMO_API_KEY', 'your-bmo-api-key-here');
+define('BMO_API_REGION', 'us'); // 'us' or 'eu'
 
 /* That's all, stop editing! Happy publishing. */
 require_once ABSPATH . 'wp-settings.php';
@@ -137,12 +142,13 @@ require_once ABSPATH . 'wp-settings.php';
 2. **Environment Portability**: 
    - Credentials in `wp-config.php` for environment-specific settings
    - Configuration in JSON file for consistent application settings
-3. **Version Control Safe**: 
+3. **Regional Compliance**: EU region API for GDPR compliance requirements
+4. **Version Control Safe**: 
    - Exclude `wp-config.php` from commits (credentials)
    - Include `bunny-config.json` in version control (shared settings)
-4. **Performance**: JSON file loads faster than database queries
-5. **Backup Safety**: Settings preserved during database restores
-6. **Easy Management**: Modify JSON file directly or use admin interface
+5. **Performance**: JSON file loads faster than database queries, regional APIs reduce latency
+6. **Backup Safety**: Settings preserved during database restores
+7. **Easy Management**: Modify JSON file directly or use admin interface
 
 ---
 
@@ -266,8 +272,6 @@ Before starting a bulk migration:
 4. For WPML sites, select language scope
 5. Click **Start Migration**
 
-
-
 ### Monitoring Migration Progress
 
 The migration interface provides real-time updates:
@@ -306,56 +310,83 @@ define('WP_MEMORY_LIMIT', '512M');
 
 ## Image Optimization
 
-### Understanding Optimization
+### New External Optimization System
 
-The plugin's optimization feature:
-- Converts images to modern formats (AVIF/WebP)
-- Compresses images to target file sizes
-- Maintains visual quality while reducing bandwidth
-- Processes images before uploading to Bunny.net
+The plugin now uses **external regional BMO API microservices** for high-performance image optimization:
+
+#### Regional Microservice APIs
+- **US Region**: `https://api-us.bmo.nexwinds.com/v1/images/wp/optimize`
+- **EU Region**: `https://api-eu.bmo.nexwinds.com/v1/images/wp/optimize` (GDPR Compliant)
+
+#### Key Features
+- **Batch Processing**: Fixed batch size of 10 images per API request
+- **Modern Formats**: AVIF and WebP with intelligent format selection
+- **Smart Optimization**: Content-aware quality optimization
+- **Regional Processing**: Choose US or EU based on compliance needs
+- **Enhanced Performance**: Dedicated Fastify microservices with auto-scaling
 
 ### Optimization Settings
 
+#### Regional Configuration
+Set your preferred region in `wp-config.php`:
+```php
+define('BMO_API_REGION', 'us'); // or 'eu'
+```
+
 #### Format Selection
-- **AVIF**: Best compression, newest format, limited browser support
+- **AVIF**: Best compression, newest format, growing browser support
 - **WebP**: Good compression, wide browser support
+- **Auto**: API intelligently selects format based on browser support
 
-#### File Size Targets
-- **40KB**: Aggressive compression for thumbnails
-- **45KB**: Balanced compression for medium images  
-- **50KB**: Light compression for large images
-- **55KB**: Minimal compression for high-quality images
-- **60KB**: Very light compression for hero images
+#### Batch Processing
+- **Fixed Batch Size**: 10 images per API request (no longer user-configurable)
+- **Concurrent Processing**: Images are processed externally, no local concurrent limits
+- **Queue Management**: Automatic queue management for large optimization tasks
 
-### Optimization on Upload
-
-Enable optimization for new uploads (files are optimized locally, but still require manual migration to CDN):
+### Optimization Configuration
 
 ```php
 // In wp-config.php
-define('BUNNY_OPTIMIZATION_ENABLED', true);
+define('BMO_API_KEY', 'your-bmo-api-key');
+define('BMO_API_REGION', 'us'); // or 'eu'
 define('BUNNY_OPTIMIZE_ON_UPLOAD', true);
-define('BUNNY_OPTIMIZATION_FORMAT', 'avif');
-define('BUNNY_OPTIMIZATION_MAX_SIZE', 50);
+define('BUNNY_OPTIMIZATION_FORMAT', 'auto'); // 'avif', 'webp', or 'auto'
+define('BUNNY_OPTIMIZATION_QUALITY', 85); // 1-100
 ```
 
-### Bulk Optimization
+### API Request Format
 
-#### Via Admin Interface
-1. Navigate to **Bunny CDN > Optimization**
-2. Review optimization statistics
-3. Click **Run Optimization Now**
-4. Monitor progress in real-time
+The plugin automatically formats requests to the BMO API:
 
-
+```json
+{
+  "images": [
+    {
+      "imageUrl": "https://example.com/image.jpg",
+      "quality": 85
+    }
+  ],
+  "supportsAVIF": true,
+  "batch": true
+}
+```
 
 ### Optimization Results
 
-After optimization, you'll see:
-- **Original Size**: Size before optimization
-- **Optimized Size**: Size after optimization  
-- **Compression Ratio**: Percentage reduction
-- **Format**: Final image format (AVIF/WebP/original)
+The BMO API returns comprehensive optimization data:
+- **Original Format**: Input image format
+- **Target Format**: Optimized output format (AVIF/WebP)
+- **Compression Ratio**: Percentage size reduction
+- **Processing Time**: Optimization duration
+- **Credits Used**: API credits consumed
+
+### Migration from Local Processing
+
+**Important Changes:**
+- ~~**Optimization Concurrent Limit**: Removed (processing now external)~~
+- **Batch Size**: Fixed at 10 images (no longer user-configurable)
+- **Processing Location**: External BMO API microservices
+- **Regional Selection**: New requirement to choose US or EU API
 
 ---
 
@@ -388,8 +419,6 @@ When WPML is detected, the plugin:
 - Migrates files from all active languages
 - Ensures complete coverage
 - May include duplicate files across languages
-
-
 
 ### Optimization with WPML
 

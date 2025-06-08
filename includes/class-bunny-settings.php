@@ -9,7 +9,9 @@ class Bunny_Settings {
     private $constant_map = array(
         'api_key' => 'BUNNY_API_KEY',
         'storage_zone' => 'BUNNY_STORAGE_ZONE',
-        'custom_hostname' => 'BUNNY_CUSTOM_HOSTNAME'
+        'custom_hostname' => 'BUNNY_CUSTOM_HOSTNAME',
+        'bmo_api_key' => 'BMO_API_KEY',
+        'bmo_api_region' => 'BMO_API_REGION'
     );
     
     /**
@@ -152,10 +154,11 @@ class Bunny_Settings {
             'enable_logs' => true,
             'log_level' => 'info',
             'optimize_on_upload' => false,
-            'optimization_max_size' => '50kb',
-            'optimization_batch_size' => 60,
-            'migration_concurrent_limit' => 4,
-            'optimization_concurrent_limit' => 3
+            'optimization_format' => 'auto',
+            'optimization_quality' => 85,
+            'migration_concurrent_limit' => 4
+            // Note: optimization_concurrent_limit removed - processing is now external via BMO API
+            // Note: optimization_batch_size fixed at 10 for BMO API
         );
     }
     
@@ -256,11 +259,10 @@ class Bunny_Settings {
         $choices = array(
             'batch_size' => array(50, 100, 150, 250),
             'log_level' => array('error', 'warning', 'info', 'debug'),
-            'optimization_format' => array('avif', 'webp'),
-            'optimization_max_size' => array('40kb', '45kb', '50kb', '55kb', '60kb'),
-            'optimization_batch_size' => array(30, 60, 90, 150),
-            'migration_concurrent_limit' => array(2, 4, 8),
-            'optimization_concurrent_limit' => array(2, 3, 5)
+            'optimization_format' => array('avif', 'webp', 'auto'),
+            'migration_concurrent_limit' => array(2, 4, 8)
+            // Note: optimization_concurrent_limit removed - processing is now external via BMO API
+            // Note: optimization_batch_size removed - fixed at 10 for BMO API
         );
         
         $defaults = $this->get_default_settings();
@@ -270,6 +272,12 @@ class Bunny_Settings {
                 $value = is_numeric($valid_values[0]) ? intval($settings[$setting]) : $settings[$setting];
                 $validated[$setting] = in_array($value, $valid_values) ? $value : ($defaults[$setting] ?? $valid_values[0]);
             }
+        }
+        
+        // Validate optimization quality (1-100)
+        if (isset($settings['optimization_quality'])) {
+            $quality = intval($settings['optimization_quality']);
+            $validated['optimization_quality'] = ($quality >= 1 && $quality <= 100) ? $quality : 85;
         }
         
         return $validated;
