@@ -284,6 +284,13 @@ class Bunny_Media_Offload {
     }
     
     /**
+     * Public method to ensure tables exist
+     */
+    public static function ensure_tables_exist() {
+        self::create_tables();
+    }
+    
+    /**
      * Drop plugin tables
      */
     private static function drop_tables() {

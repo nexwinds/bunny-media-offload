@@ -53,6 +53,11 @@ class Bunny_Optimization_Controller {
         
         $images = $this->session_manager->get_optimizable_attachments();
         
+        $this->logger->log('info', 'Step optimization - found attachments', array(
+            'count' => count($images),
+            'sample_ids' => array_slice($images, 0, 5)
+        ));
+        
         if (empty($images)) {
             wp_send_json_error('No images found that need optimization.');
             return;
@@ -107,6 +112,12 @@ class Bunny_Optimization_Controller {
         
         // Get next batch of images
         $images = $this->session_manager->get_next_batch($session_id, 10); // BMO API batch size
+        
+        $this->logger->log('info', 'Processing batch', array(
+            'session_id' => $session_id,
+            'batch_size' => count($images),
+            'attachment_ids' => $images
+        ));
         
         if (empty($images)) {
             // Mark session as completed

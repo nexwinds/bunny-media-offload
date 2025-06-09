@@ -37,7 +37,7 @@ class Bunny_BMO_API {
         $api_key = $this->settings->get('bmo_api_key');
         
         if (empty($api_key)) {
-            throw new Exception('BMO API key not configured. Please set BMO_API_KEY in wp-config.php.');
+            throw new Exception('BMO API key not configured. Please add "define(\'BMO_API_KEY\', \'your-api-key-here\');" to your wp-config.php file.');
         }
         
         if (empty($images)) {
@@ -78,7 +78,7 @@ class Bunny_BMO_API {
             'headers' => array(
                 'x-api-key' => $api_key,
                 'Content-Type' => 'application/json',
-                'User-Agent' => 'Bunny-Media-Offload/' . BMO_VERSION
+                'User-Agent' => 'Bunny-Media-Offload/' . BMO_PLUGIN_VERSION
             ),
             'body' => json_encode($request_data)
         ));
@@ -176,12 +176,12 @@ class Bunny_BMO_API {
         
         $api_key = $this->settings->get('bmo_api_key');
         if (empty($api_key)) {
-            $errors[] = 'BMO API key is required. Please set BMO_API_KEY in wp-config.php.';
+            $errors[] = 'BMO API key is required. Please add "define(\'BMO_API_KEY\', \'your-api-key-here\');" to your wp-config.php file.';
         }
         
         $region = $this->settings->get('bmo_api_region');
         if (empty($region) || !in_array($region, array('us', 'eu'))) {
-            $errors[] = 'BMO API region must be set to "us" or "eu". Please set BMO_API_REGION in wp-config.php.';
+            $errors[] = 'BMO API region must be set to "us" or "eu". Please add "define(\'BMO_API_REGION\', \'us\');" or "define(\'BMO_API_REGION\', \'eu\');" to your wp-config.php file.';
         }
         
         return $errors;

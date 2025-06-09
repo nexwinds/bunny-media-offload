@@ -209,30 +209,98 @@ class Bunny_Optimization_Session {
     public function get_optimizable_attachments($limit = 100) {
         global $wpdb;
         
-        $sql = "
-            SELECT p.ID 
-            FROM {$wpdb->posts} p
-            WHERE p.post_type = 'attachment'
-            AND p.post_mime_type LIKE 'image/%'
-            AND p.ID NOT IN (
-                SELECT post_id 
-                FROM {$wpdb->postmeta} 
-                WHERE meta_key = '_bunny_last_optimized' 
-                AND meta_value > DATE_SUB(NOW(), INTERVAL 1 DAY)
-            )
-            AND p.ID NOT IN (
-                SELECT attachment_id 
-                FROM {$this->queue_table} 
-                WHERE status IN ('pending', 'processing')
-            )
-            ORDER BY p.post_date DESC
-            LIMIT %d
-        ";
+        // Check if queue table exists
+        $table_exists = $wpdb->get_var("SHOW TABLES LIKE '{$this->queue_table}'") === $this->queue_table;
+        
+        if (!$table_exists) {
+            $this->logger->log('warning', 'Optimization queue table does not exist, creating it now');
+            
+            // Try to create the table
+            $charset_collate = $wpdb->get_charset_collate();
+            $sql = "CREATE TABLE {$this->queue_table} (
+                id bigint(20) NOT NULL AUTO_INCREMENT,
+                attachment_id bigint(20) NOT NULL,
+                priority varchar(20) DEFAULT 'normal',
+                status varchar(20) DEFAULT 'pending',
+                date_added datetime DEFAULT CURRENT_TIMESTAMP,
+                date_started datetime DEFAULT NULL,
+                date_completed datetime DEFAULT NULL,
+                error_message text DEFAULT NULL,
+                PRIMARY KEY (id),
+                KEY attachment_id (attachment_id),
+                KEY status (status),
+                KEY priority (priority),
+                KEY date_added (date_added)
+            ) $charset_collate;";
+            
+            require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
+            dbDelta($sql);
+            
+            // Verify creation
+            $table_exists = $wpdb->get_var("SHOW TABLES LIKE '{$this->queue_table}'") === $this->queue_table;
+            if (!$table_exists) {
+                $this->logger->log('error', 'Failed to create optimization queue table');
+            }
+        }
+        
+        // Build the query with conditional queue table check
+        if ($table_exists) {
+            $sql = "
+                SELECT p.ID 
+                FROM {$wpdb->posts} p
+                WHERE p.post_type = 'attachment'
+                AND p.post_mime_type LIKE 'image/%'
+                AND p.ID NOT IN (
+                    SELECT post_id 
+                    FROM {$wpdb->postmeta} 
+                    WHERE meta_key = '_bunny_last_optimized' 
+                    AND meta_value > DATE_SUB(NOW(), INTERVAL 1 DAY)
+                )
+                AND p.ID NOT IN (
+                    SELECT attachment_id 
+                    FROM {$this->queue_table} 
+                    WHERE status IN ('pending', 'processing')
+                )
+                ORDER BY p.post_date DESC
+                LIMIT %d
+            ";
+        } else {
+            // Fallback query without queue table check
+            $sql = "
+                SELECT p.ID 
+                FROM {$wpdb->posts} p
+                WHERE p.post_type = 'attachment'
+                AND p.post_mime_type LIKE 'image/%'
+                AND p.ID NOT IN (
+                    SELECT post_id 
+                    FROM {$wpdb->postmeta} 
+                    WHERE meta_key = '_bunny_last_optimized' 
+                    AND meta_value > DATE_SUB(NOW(), INTERVAL 1 DAY)
+                )
+                ORDER BY p.post_date DESC
+                LIMIT %d
+            ";
+        }
         
         $results = $wpdb->get_col($wpdb->prepare($sql, $limit));
         
+        $this->logger->log('info', 'Found optimizable attachments', array(
+            'count' => count($results),
+            'attachment_ids' => array_slice($results, 0, 10), // Log first 10 IDs for debugging
+            'queue_table_exists' => $table_exists
+        ));
+        
         // Apply WPML filter
-        return apply_filters('bunny_optimization_attachments', $results);
+        $filtered_results = apply_filters('bunny_optimization_attachments', $results);
+        
+        if (count($filtered_results) !== count($results)) {
+            $this->logger->log('info', 'WPML filter modified attachment list', array(
+                'original_count' => count($results),
+                'filtered_count' => count($filtered_results)
+            ));
+        }
+        
+        return $filtered_results;
     }
     
     /**

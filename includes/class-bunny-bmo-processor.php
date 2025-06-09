@@ -63,16 +63,52 @@ class Bunny_BMO_Processor {
             $image_mapping = array();
             
             foreach ($images as $index => $attachment_id) {
-                $image_url = wp_get_attachment_url($attachment_id);
+                // Validate attachment ID
+                if (!is_numeric($attachment_id) || $attachment_id <= 0) {
+                    $this->logger->log('warning', "Invalid attachment ID: {$attachment_id}");
+                    continue;
+                }
+                
+                // Check if attachment exists
+                $post = get_post($attachment_id);
+                if (!$post || $post->post_type !== 'attachment') {
+                    $this->logger->log('warning', "Attachment {$attachment_id} does not exist or is not an attachment");
+                    continue;
+                }
+                
+                // Check if it's an image
+                if (!wp_attachment_is_image($attachment_id)) {
+                    $this->logger->log('warning', "Attachment {$attachment_id} is not an image", array(
+                        'post_mime_type' => $post->post_mime_type
+                    ));
+                    continue;
+                }
+                
+                $image_url = $this->get_image_url($attachment_id);
                 if ($image_url) {
-                    $image_data = $this->bmo_api->prepare_image_data($attachment_id, $image_url);
-                    $bmo_images[] = $image_data;
-                    $image_mapping[] = $attachment_id;
+                    try {
+                        $image_data = $this->bmo_api->prepare_image_data($attachment_id, $image_url);
+                        $bmo_images[] = $image_data;
+                        $image_mapping[] = $attachment_id;
+                    } catch (Exception $e) {
+                        $this->logger->log('warning', "Failed to prepare image data for attachment {$attachment_id}: " . $e->getMessage());
+                    }
+                } else {
+                    // Log which attachments are missing URLs
+                    $file_path = get_attached_file($attachment_id);
+                    $this->logger->log('warning', "No URL found for attachment {$attachment_id}", array(
+                        'post_title' => $post->post_title ?: 'Unknown',
+                        'post_mime_type' => $post->post_mime_type ?: 'Unknown',
+                        'file_path' => $file_path,
+                        'file_exists' => $file_path ? file_exists($file_path) : false
+                    ));
                 }
             }
             
             if (empty($bmo_images)) {
-                return $this->create_batch_error_result($images, 'No valid image URLs found');
+                $error_msg = sprintf('No valid image URLs found in batch of %d images. Check logs for details on missing URLs.', count($images));
+                $this->logger->log('error', $error_msg);
+                return $this->create_batch_error_result($images, $error_msg);
             }
             
             // Send to BMO API
@@ -376,6 +412,49 @@ class Bunny_BMO_Processor {
         wp_cache_set($cache_key, $stats, 'bunny_media_offload', 5 * MINUTE_IN_SECONDS);
         
         return $stats;
+    }
+    
+    /**
+     * Get image URL with fallback methods
+     */
+    private function get_image_url($attachment_id) {
+        // First try the standard WordPress function
+        $image_url = wp_get_attachment_url($attachment_id);
+        
+        if ($image_url) {
+            return $image_url;
+        }
+        
+        // Try getting the file path and constructing URL manually
+        $file_path = get_attached_file($attachment_id);
+        if ($file_path && file_exists($file_path)) {
+            $upload_dir = wp_upload_dir();
+            
+            // Check if file is in uploads directory
+            if (strpos($file_path, $upload_dir['basedir']) === 0) {
+                $relative_path = str_replace($upload_dir['basedir'], '', $file_path);
+                $image_url = $upload_dir['baseurl'] . $relative_path;
+                
+                // Ensure we use the correct directory separator for URLs
+                $image_url = str_replace('\\', '/', $image_url);
+                
+                return $image_url;
+            }
+        }
+        
+        // Last resort: try getting from post meta
+        $meta_file = get_post_meta($attachment_id, '_wp_attached_file', true);
+        if ($meta_file) {
+            $upload_dir = wp_upload_dir();
+            $image_url = $upload_dir['baseurl'] . '/' . $meta_file;
+            
+            // Ensure we use the correct directory separator for URLs
+            $image_url = str_replace('\\', '/', $image_url);
+            
+            return $image_url;
+        }
+        
+        return false;
     }
     
     /**
