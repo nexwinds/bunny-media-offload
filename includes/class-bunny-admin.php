@@ -202,28 +202,6 @@ class Bunny_Admin {
                 <div class="bunny-dashboard-row">
                     <div class="bunny-dashboard-col">
                         <div class="bunny-card">
-                            <h3><?php esc_html_e('Quick Actions', 'bunny-media-offload'); ?></h3>
-                            <div class="bunny-quick-actions">
-                                <button type="button" class="button button-primary" id="test-connection">
-                                    <?php esc_html_e('Test Connection', 'bunny-media-offload'); ?>
-                                </button>
-                                <a href="<?php echo esc_url(admin_url('admin.php?page=bunny-media-offload-migration')); ?>" class="button">
-                                    <?php esc_html_e('Start Migration', 'bunny-media-offload'); ?>
-                                </a>
-                                <?php if ($this->optimizer): ?>
-                                <a href="<?php echo esc_url(admin_url('admin.php?page=bunny-media-offload-optimization')); ?>" class="button">
-                                    <?php esc_html_e('Optimize Images', 'bunny-media-offload'); ?>
-                                </a>
-                                <?php endif; ?>
-                                <a href="<?php echo esc_url(admin_url('admin.php?page=bunny-media-offload-settings')); ?>" class="button">
-                                    <?php esc_html_e('Settings', 'bunny-media-offload'); ?>
-                                </a>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="bunny-dashboard-col">
-                        <div class="bunny-card">
                             <h3><?php esc_html_e('Recent Activity', 'bunny-media-offload'); ?></h3>
                             <div class="bunny-recent-logs">
                                 <?php if (!empty($recent_logs)): ?>
@@ -895,16 +873,7 @@ class Bunny_Admin {
                             </button>
                         </div>
                         
-                        <div class="bunny-action-card">
-                            <h4><?php esc_html_e('Cloud Images', 'bunny-media-offload'); ?></h4>
-                            <div class="bunny-action-count"><?php echo number_format($detailed_stats['cloud']['total_eligible']); ?></div>
-                            <div class="bunny-action-description"><?php esc_html_e('Images stored on Bunny.net CDN', 'bunny-media-offload'); ?></div>
-                            <button type="button" class="button button-primary bunny-optimize-button" data-target="cloud" 
-                                    <?php echo $detailed_stats['cloud']['has_files_to_optimize'] ? '' : 'disabled'; ?>>
-                                <span class="dashicons dashicons-controls-play"></span>
-                                <?php esc_html_e('Optimize Cloud Images', 'bunny-media-offload'); ?>
-                            </button>
-                        </div>
+
                     </div>
                     
                     <p class="description">
@@ -959,30 +928,7 @@ class Bunny_Admin {
                                     <span class="bunny-step-spinner bunny-spinner-small"></span>
                                 </div>
                                 
-                                <!-- Cloud Image Process (Download, Process, Upload) -->
-                                <div id="cloud-download" class="bunny-process-step bunny-status-hidden">
-                                    <span class="bunny-step-icon">
-                                        <span class="dashicons dashicons-download"></span>
-                                    </span>
-                                    <span class="bunny-step-text" id="download-process-text"><?php esc_html_e('Downloading...', 'bunny-media-offload'); ?></span>
-                                    <span class="bunny-step-spinner bunny-spinner-small"></span>
-                                </div>
-                                
-                                <div id="cloud-process" class="bunny-process-step bunny-status-hidden">
-                                    <span class="bunny-step-icon">
-                                        <span class="dashicons dashicons-format-image"></span>
-                                    </span>
-                                    <span class="bunny-step-text" id="cloud-process-text"><?php esc_html_e('Optimizing...', 'bunny-media-offload'); ?></span>
-                                    <span class="bunny-step-spinner bunny-spinner-small"></span>
-                                </div>
-                                
-                                <div id="cloud-upload" class="bunny-process-step bunny-status-hidden">
-                                    <span class="bunny-step-icon">
-                                        <span class="dashicons dashicons-upload"></span>
-                                    </span>
-                                    <span class="bunny-step-text" id="upload-process-text"><?php esc_html_e('Uploading...', 'bunny-media-offload'); ?></span>
-                                    <span class="bunny-step-spinner bunny-spinner-small"></span>
-                                </div>
+
                             </div>
                         </div>
                     </div>
