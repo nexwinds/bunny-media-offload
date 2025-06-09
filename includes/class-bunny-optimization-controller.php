@@ -59,7 +59,20 @@ class Bunny_Optimization_Controller {
         ));
         
         if (empty($images)) {
-            wp_send_json_error('No images found that need optimization.');
+            // Get detailed stats to provide more helpful error message
+            $detailed_stats = $this->bmo_processor->get_detailed_stats();
+            $skipped_count = isset($detailed_stats['local']['skipped_count']) ? $detailed_stats['local']['skipped_count'] : 0;
+            
+            if ($skipped_count > 0) {
+                $error_message = sprintf(
+                    'No images found that meet optimization criteria. %d images were skipped due to various reasons (file size too small, missing files, etc.). Use the "Run Diagnostics" button for detailed information.',
+                    $skipped_count
+                );
+            } else {
+                $error_message = 'No images found that need optimization. All your images may already be optimized or migrated to the CDN.';
+            }
+            
+            wp_send_json_error($error_message);
             return;
         }
         

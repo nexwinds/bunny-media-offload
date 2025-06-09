@@ -244,12 +244,13 @@ class Bunny_Optimization_Session {
         }
         
         // Build the query with conditional queue table check
+        // Only include legacy formats that need optimization, exclude migrated images
         if ($table_exists) {
             $sql = "
                 SELECT p.ID 
                 FROM {$wpdb->posts} p
                 WHERE p.post_type = 'attachment'
-                AND p.post_mime_type LIKE 'image/%'
+                AND p.post_mime_type IN ('image/jpeg', 'image/jpg', 'image/png', 'image/gif')
                 AND p.ID NOT IN (
                     SELECT post_id 
                     FROM {$wpdb->postmeta} 
@@ -261,6 +262,11 @@ class Bunny_Optimization_Session {
                     FROM {$this->queue_table} 
                     WHERE status IN ('pending', 'processing')
                 )
+                AND p.ID NOT IN (
+                    SELECT DISTINCT attachment_id 
+                    FROM {$wpdb->prefix}bunny_offloaded_files 
+                    WHERE is_synced = 1
+                )
                 ORDER BY p.post_date DESC
                 LIMIT %d
             ";
@@ -270,12 +276,17 @@ class Bunny_Optimization_Session {
                 SELECT p.ID 
                 FROM {$wpdb->posts} p
                 WHERE p.post_type = 'attachment'
-                AND p.post_mime_type LIKE 'image/%'
+                AND p.post_mime_type IN ('image/jpeg', 'image/jpg', 'image/png', 'image/gif')
                 AND p.ID NOT IN (
                     SELECT post_id 
                     FROM {$wpdb->postmeta} 
                     WHERE meta_key = '_bunny_last_optimized' 
                     AND meta_value > DATE_SUB(NOW(), INTERVAL 1 DAY)
+                )
+                AND p.ID NOT IN (
+                    SELECT DISTINCT attachment_id 
+                    FROM {$wpdb->prefix}bunny_offloaded_files 
+                    WHERE is_synced = 1
                 )
                 ORDER BY p.post_date DESC
                 LIMIT %d
@@ -284,23 +295,133 @@ class Bunny_Optimization_Session {
         
         $results = $wpdb->get_col($wpdb->prepare($sql, $limit));
         
+        // Filter out attachments that don't have valid file paths or URLs
+        $valid_attachments = array();
+        $skipped_attachments = array();
+        
+        foreach ($results as $attachment_id) {
+            $validation_result = $this->validate_attachment_for_optimization($attachment_id);
+            
+            if ($validation_result['valid']) {
+                $valid_attachments[] = $attachment_id;
+            } else {
+                $skipped_attachments[] = array(
+                    'id' => $attachment_id,
+                    'reason' => $validation_result['reason']
+                );
+            }
+        }
+        
         $this->logger->log('info', 'Found optimizable attachments', array(
-            'count' => count($results),
-            'attachment_ids' => array_slice($results, 0, 10), // Log first 10 IDs for debugging
+            'total_found' => count($results),
+            'valid_attachments' => count($valid_attachments),
+            'skipped_attachments' => count($skipped_attachments),
+            'sample_valid_ids' => array_slice($valid_attachments, 0, 10),
+            'sample_skipped' => array_slice($skipped_attachments, 0, 5),
             'queue_table_exists' => $table_exists
         ));
         
         // Apply WPML filter
-        $filtered_results = apply_filters('bunny_optimization_attachments', $results);
+        $filtered_results = apply_filters('bunny_optimization_attachments', $valid_attachments);
         
-        if (count($filtered_results) !== count($results)) {
+        if (count($filtered_results) !== count($valid_attachments)) {
             $this->logger->log('info', 'WPML filter modified attachment list', array(
-                'original_count' => count($results),
+                'original_count' => count($valid_attachments),
                 'filtered_count' => count($filtered_results)
             ));
         }
         
         return $filtered_results;
+    }
+    
+    /**
+     * Validate attachment for optimization eligibility
+     */
+    private function validate_attachment_for_optimization($attachment_id) {
+        // Check if post exists
+        $post = get_post($attachment_id);
+        if (!$post) {
+            return array(
+                'valid' => false,
+                'reason' => 'Post not found'
+            );
+        }
+        
+        // Check if it's an image
+        if (!wp_attachment_is_image($attachment_id)) {
+            return array(
+                'valid' => false,
+                'reason' => 'Not an image attachment'
+            );
+        }
+        
+        // Check if image is already migrated
+        global $wpdb;
+        $is_migrated = $wpdb->get_var($wpdb->prepare("
+            SELECT COUNT(*) 
+            FROM {$wpdb->prefix}bunny_offloaded_files 
+            WHERE attachment_id = %d AND is_synced = 1
+        ", $attachment_id));
+        
+        if ($is_migrated > 0) {
+            return array(
+                'valid' => false,
+                'reason' => 'Image already migrated to CDN'
+            );
+        }
+        
+        // Check if it's already in modern format (shouldn't be optimized, should be migrated)
+        $mime_type = get_post_mime_type($attachment_id);
+        $modern_formats = array('image/webp', 'image/avif', 'image/svg+xml');
+        if (in_array($mime_type, $modern_formats)) {
+            return array(
+                'valid' => false,
+                'reason' => 'Already in optimal format (should be migrated instead)'
+            );
+        }
+        
+        // Check if file exists
+        $file_path = get_attached_file($attachment_id);
+        if (!$file_path || !file_exists($file_path)) {
+            return array(
+                'valid' => false,
+                'reason' => 'File path not found or file does not exist'
+            );
+        }
+        
+        // Check file size (must be at least 35KB for BMO API)
+        $file_size = filesize($file_path);
+        if ($file_size < 35840) { // 35KB = 35 * 1024 bytes
+            return array(
+                'valid' => false,
+                'reason' => 'File size below 35KB minimum requirement'
+            );
+        }
+        
+        // Check if we can get a valid URL
+        $image_url = wp_get_attachment_url($attachment_id);
+        if (!$image_url) {
+            // Try alternative methods
+            $upload_dir = wp_upload_dir();
+            $meta_file = get_post_meta($attachment_id, '_wp_attached_file', true);
+            
+            if ($meta_file) {
+                $image_url = $upload_dir['baseurl'] . '/' . $meta_file;
+                $image_url = str_replace('\\', '/', $image_url);
+            }
+            
+            if (!$image_url || !filter_var($image_url, FILTER_VALIDATE_URL)) {
+                return array(
+                    'valid' => false,
+                    'reason' => 'Cannot generate valid URL for attachment'
+                );
+            }
+        }
+        
+        return array(
+            'valid' => true,
+            'reason' => 'Passed all validation checks'
+        );
     }
     
     /**

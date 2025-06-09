@@ -186,6 +186,12 @@
                 e.preventDefault();
                 BunnyAdmin.cancelOptimization();
             });
+            
+            // Handle diagnostic button clicks
+            $(document).on('click', '.bunny-diagnostic-button', function(e) {
+                e.preventDefault();
+                BunnyAdmin.runOptimizationDiagnostics();
+            });
         },
         
         /**
@@ -296,20 +302,7 @@
             $('#start-migration').hide();
             $('#cancel-migration').show();
             
-            // Create concurrent processing indicators
-            var concurrentHtml = '<div class="bunny-concurrent-processors">';
-            concurrentHtml += '<h4>Processing Threads (Concurrent Limit: ' + this.migrationState.concurrentLimit + ')</h4>';
-            
-            for (var i = 1; i <= this.migrationState.concurrentLimit; i++) {
-                concurrentHtml += '<div class="bunny-processor" id="processor-' + i + '">';
-                concurrentHtml += '<div class="bunny-processor-status">Thread ' + i + ': <span class="status-text">Waiting...</span></div>';
-                concurrentHtml += '<div class="bunny-processor-file"><span class="file-name">-</span></div>';
-                concurrentHtml += '<div class="bunny-processor-progress"><div class="bunny-processor-bar"></div></div>';
-                concurrentHtml += '</div>';
-            }
-            concurrentHtml += '</div>';
-            
-            // Add real-time stats
+            // Add basic stats without animation
             var statsHtml = '<div class="bunny-migration-stats">';
             statsHtml += '<div class="bunny-stat-item"><span class="label">Total Files:</span> <span id="total-files">' + this.migrationState.totalFiles + '</span></div>';
             statsHtml += '<div class="bunny-stat-item"><span class="label">Processed:</span> <span id="processed-files">0</span></div>';
@@ -318,7 +311,7 @@
             statsHtml += '<div class="bunny-stat-item"><span class="label">Speed:</span> <span id="processing-speed">0 files/min</span></div>';
             statsHtml += '</div>';
             
-            $('#migration-progress').prepend(concurrentHtml + statsHtml);
+            $('#migration-progress').prepend(statsHtml);
             
             // Initialize speed tracking
             this.migrationState.startTime = Date.now();
@@ -333,9 +326,6 @@
             if (!this.migrationState.active) {
                 return;
             }
-            
-            // Start animation before processing
-            this.animateProcessors();
             
             $.ajax({
                 url: bunnyAjax.ajaxurl,
@@ -368,10 +358,7 @@
                             ' (' + data.successful + ' successful, ' + data.failed + ' failed)'
                         );
                         
-                        // Update processors with real file information
-                        if (data.current_files && data.current_files.length > 0) {
-                            self.updateProcessorsWithRealFiles(data.current_files);
-                        }
+
                         
                         // Handle errors
                         if (data.errors && data.errors.length > 0) {
@@ -384,111 +371,20 @@
                                 self.processMigrationBatch(migrationId);
                             }, 1500);
                         } else {
-                            // Stop animation and complete migration
-                            self.stopProcessorAnimation();
+                            // Complete migration
                             self.completeMigration(data.completed);
                         }
                     } else {
-                        self.stopProcessorAnimation();
                         self.handleMigrationError(response.data.message);
                     }
                 },
                 error: function() {
-                    self.stopProcessorAnimation();
                     self.handleMigrationError('Migration batch failed.');
                 }
             });
         },
         
-        /**
-         * Animate processors to show concurrent processing
-         */
-        animateProcessors: function() {
-            var self = this;
-            var limit = this.migrationState.concurrentLimit;
-            
-            // Reset all processors
-            $('.bunny-processor').removeClass('active processing completed error');
-            
-            // Activate processors up to concurrent limit
-            for (var i = 1; i <= limit; i++) {
-                var processor = $('#processor-' + i);
-                processor.addClass('active processing');
-                
-                // Simulate processing with different timings
-                this.simulateProcessorWork(i, i * 200);
-            }
-        },
-        
-        /**
-         * Simulate individual processor work
-         */
-        simulateProcessorWork: function(processorId, delay) {
-            var processor = $('#processor-' + processorId);
-            var self = this;
-            
-            processor.data('animation-timeout', setTimeout(function() {
-                if (!self.migrationState.active) return; // Don't start if migration stopped
-                
-                processor.find('.status-text').text('Processing...');
-                processor.find('.file-name').text('Uploading file ' + processorId + '...');
-                
-                // Animate progress bar
-                var progressBar = processor.find('.bunny-processor-bar');
-                progressBar.css('width', '0%');
-                
-                var animationInterval = progressBar.animate({
-                    width: '100%'
-                }, 1200, function() {
-                    if (!self.migrationState.active) return; // Don't complete if migration stopped
-                    
-                    // Mark as completed
-                    processor.removeClass('processing').addClass('completed');
-                    processor.find('.status-text').text('Completed');
-                    processor.find('.file-name').text('Upload successful');
-                });
-                
-                processor.data('animation-interval', animationInterval);
-            }, delay));
-        },
 
-        /**
-         * Stop processor animation
-         */
-        stopProcessorAnimation: function() {
-            var self = this;
-            
-            // Clear all timeouts and stop animations
-            $('.bunny-processor').each(function() {
-                var processor = $(this);
-                var timeout = processor.data('animation-timeout');
-                var interval = processor.data('animation-interval');
-                
-                if (timeout) {
-                    clearTimeout(timeout);
-                    processor.removeData('animation-timeout');
-                }
-                
-                if (interval) {
-                    processor.find('.bunny-processor-bar').stop(true, false);
-                    processor.removeData('animation-interval');
-                }
-            });
-        },
-
-        /**
-         * Update processors with real file information
-         */
-        updateProcessorsWithRealFiles: function(currentFiles) {
-            for (var i = 0; i < currentFiles.length && i < this.migrationState.concurrentLimit; i++) {
-                var file = currentFiles[i];
-                var processor = $('#processor-' + (i + 1));
-                
-                if (processor.length > 0) {
-                    processor.find('.file-name').text('Uploading: ' + (file.post_title || file.file_path || 'Unknown file'));
-                }
-            }
-        },
         
         /**
          * Update migration statistics in real-time
@@ -530,17 +426,7 @@
          * Complete migration
          */
         completeMigration: function(completed) {
-            // Stop all animations first
-            this.stopProcessorAnimation();
-            
             if (completed) {
-                $('.bunny-processor').removeClass('processing').addClass('completed');
-                $('.bunny-processor .status-text').text('Migration Complete');
-                $('.bunny-processor .file-name').text('All files processed');
-                
-                // Ensure progress bars are at 100%
-                $('.bunny-processor .bunny-processor-bar').stop(true, true).css('width', '100%');
-                
                 setTimeout(function() {
                     alert('Migration completed successfully!');
                 }, 1000);
@@ -558,9 +444,6 @@
             }
             
             var self = this;
-            
-            // Stop animations immediately
-            self.stopProcessorAnimation();
             
             $.ajax({
                 url: bunnyAjax.ajaxurl,
@@ -587,17 +470,14 @@
          * Reset migration interface
          */
         resetMigrationInterface: function() {
-            // Stop all animations first
-            this.stopProcessorAnimation();
-            
             this.migrationState.active = false;
             this.migrationState.sessionId = null;
             
             $('#start-migration').show();
             $('#cancel-migration').hide();
             
-            // Remove concurrent processors and stats
-            $('.bunny-concurrent-processors, .bunny-migration-stats').remove();
+            // Remove stats
+            $('.bunny-migration-stats').remove();
         },
         
         
@@ -1476,6 +1356,95 @@
             
             // Add criteria message before optimization actions
             $('.bunny-optimization-actions').before(criteriaHtml);
+        },
+        
+        /**
+         * Run diagnostics for optimization issues
+         */
+        runOptimizationDiagnostics: function() {
+            var self = this;
+            
+            // Show loading state
+            var $button = $('.bunny-diagnostic-button');
+            var originalText = $button.html();
+            $button.prop('disabled', true).html('<span class="dashicons dashicons-update-alt" style="animation: rotate 1s linear infinite;"></span> Running diagnostics...');
+            
+            // Clear any existing diagnostics results
+            $('#diagnostics-results').remove();
+            
+            $.ajax({
+                url: bunnyAjax.ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'bunny_run_optimization_diagnostics',
+                    nonce: bunnyAjax.nonce
+                },
+                success: function(response) {
+                    $button.prop('disabled', false).html(originalText);
+                    
+                    if (response.success) {
+                        self.displayDiagnosticsResults(response.data);
+                    } else {
+                        alert('Diagnostics failed: ' + (response.data || 'Unknown error'));
+                    }
+                },
+                error: function(xhr, status, error) {
+                    $button.prop('disabled', false).html(originalText);
+                    console.error('Diagnostics AJAX error:', error);
+                    alert('Diagnostics failed due to network error.');
+                }
+            });
+        },
+        
+        /**
+         * Display diagnostics results
+         */
+        displayDiagnosticsResults: function(data) {
+            var html = '<div id="diagnostics-results" class="notice notice-info" style="margin-top: 20px; padding: 15px;">';
+            html += '<h3>🔍 Optimization Diagnostics Results</h3>';
+            
+            // Summary
+            html += '<div style="margin-bottom: 15px;">';
+            html += '<h4>Summary</h4>';
+            html += '<ul>';
+            html += '<li><strong>Total attachments found:</strong> ' + data.total_attachments + '</li>';
+            html += '<li><strong>Valid for optimization:</strong> ' + data.valid_attachments + '</li>';
+            html += '<li><strong>Problematic attachments:</strong> ' + data.problematic_attachments + '</li>';
+            html += '</ul>';
+            html += '</div>';
+            
+            // Issues found
+            if (data.issues && data.issues.length > 0) {
+                html += '<div style="margin-bottom: 15px;">';
+                html += '<h4>Issues Found</h4>';
+                html += '<ul>';
+                data.issues.forEach(function(issue) {
+                    html += '<li><strong>Attachment ID ' + issue.id + ':</strong> ' + issue.reason;
+                    if (issue.title) {
+                        html += ' (<em>' + issue.title + '</em>)';
+                    }
+                    html += '</li>';
+                });
+                html += '</ul>';
+                html += '</div>';
+            }
+            
+            // Recommendations
+            if (data.recommendations && data.recommendations.length > 0) {
+                html += '<div>';
+                html += '<h4>Recommendations</h4>';
+                html += '<ul>';
+                data.recommendations.forEach(function(rec) {
+                    html += '<li>' + rec + '</li>';
+                });
+                html += '</ul>';
+                html += '</div>';
+            }
+            
+            html += '</div>';
+            
+            // Insert after the optimization section
+            $('.bunny-optimization-section').after(html);
         }
     };
     

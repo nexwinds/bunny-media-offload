@@ -429,9 +429,9 @@ class Bunny_BMO_Processor {
         
         global $wpdb;
         
-        // Get count of optimizable images
-        $optimizable_count = $wpdb->get_var("
-            SELECT COUNT(*) 
+        // Get all image attachments (not recently optimized to avoid double-processing)
+        $all_images = $wpdb->get_results("
+            SELECT p.ID, p.post_mime_type 
             FROM {$wpdb->posts} p
             WHERE p.post_type = 'attachment'
             AND p.post_mime_type LIKE 'image/%'
@@ -441,25 +441,92 @@ class Bunny_BMO_Processor {
                 WHERE meta_key = '_bunny_last_optimized' 
                 AND meta_value > DATE_SUB(NOW(), INTERVAL 1 DAY)
             )
+            ORDER BY p.post_date DESC
+            LIMIT 1000
         ");
         
-        $optimized_count = $wpdb->get_var("
-            SELECT COUNT(*) 
-            FROM {$wpdb->postmeta} 
-            WHERE meta_key = '_bunny_optimized' 
-            AND meta_value = '1'
+        // Define modern/optimized formats
+        $modern_formats = array('image/webp', 'image/avif', 'image/svg+xml');
+        $legacy_formats = array('image/jpeg', 'image/jpg', 'image/png', 'image/gif');
+        
+        // Get migrated images
+        $migrated_attachment_ids = $wpdb->get_col("
+            SELECT DISTINCT attachment_id 
+            FROM {$wpdb->prefix}bunny_offloaded_files 
+            WHERE is_synced = 1
         ");
+        $migrated_ids_lookup = array_flip($migrated_attachment_ids);
+        
+        // Initialize counters
+        $local_eligible_count = 0;        // Images that need optimization (legacy formats, local)
+        $already_optimized_count = 0;     // Images in modern formats but still local
+        $migrated_count = count($migrated_attachment_ids); // Images on CDN
+        $skipped_count = 0;
+        $skipped_reasons = array();
+        
+        foreach ($all_images as $image) {
+            $attachment_id = $image->ID;
+            $mime_type = $image->post_mime_type;
+            
+            // Check if this image is migrated (on CDN)
+            if (isset($migrated_ids_lookup[$attachment_id])) {
+                // Skip - already counted in migrated_count
+                continue;
+            }
+            
+            // For local images, validate they meet basic requirements
+            $validation_result = $this->validate_attachment_for_optimization($attachment_id);
+            
+            if (!$validation_result['valid']) {
+                $skipped_count++;
+                $reason = $validation_result['reason'];
+                if (!isset($skipped_reasons[$reason])) {
+                    $skipped_reasons[$reason] = 0;
+                }
+                $skipped_reasons[$reason]++;
+                continue;
+            }
+            
+            // Categorize based on format
+            if (in_array($mime_type, $modern_formats)) {
+                // Modern format but still local = Already Optimized (pending migration)
+                $already_optimized_count++;
+            } elseif (in_array($mime_type, $legacy_formats)) {
+                // Legacy format = Needs optimization
+                $local_eligible_count++;
+            } else {
+                // Unknown format - skip
+                $skipped_count++;
+                $reason = 'Unsupported image format: ' . $mime_type;
+                if (!isset($skipped_reasons[$reason])) {
+                    $skipped_reasons[$reason] = 0;
+                }
+                $skipped_reasons[$reason]++;
+            }
+        }
+        
+        $this->logger->log('info', 'Detailed stats calculation completed', array(
+            'total_images_checked' => count($all_images),
+            'local_eligible' => $local_eligible_count,
+            'already_optimized' => $already_optimized_count,
+            'migrated_count' => $migrated_count,
+            'skipped_count' => $skipped_count,
+            'skipped_reasons' => $skipped_reasons
+        ));
         
         $stats = array(
             'local' => array(
-                'total_eligible' => (int) $optimizable_count,
-                'has_files_to_optimize' => $optimizable_count > 0
+                'total_eligible' => $local_eligible_count,
+                'has_files_to_optimize' => $local_eligible_count > 0,
+                'skipped_count' => $skipped_count,
+                'skipped_reasons' => $skipped_reasons
             ),
             'cloud' => array(
                 'total_eligible' => 0,
                 'has_files_to_optimize' => false
             ),
-            'already_optimized' => (int) $optimized_count,
+            'already_optimized' => $already_optimized_count,
+            'images_migrated' => $migrated_count,
             'batch_size' => 10, // Fixed BMO API batch size
             'api_type' => 'BMO API (External)'
         );
@@ -471,20 +538,106 @@ class Bunny_BMO_Processor {
     }
     
     /**
+     * Validate attachment for optimization eligibility
+     * This uses the same logic as the session manager to ensure consistency
+     */
+    private function validate_attachment_for_optimization($attachment_id) {
+        // Check if post exists
+        $post = get_post($attachment_id);
+        if (!$post) {
+            return array(
+                'valid' => false,
+                'reason' => 'Post not found'
+            );
+        }
+        
+        // Check if it's an image
+        if (!wp_attachment_is_image($attachment_id)) {
+            return array(
+                'valid' => false,
+                'reason' => 'Not an image attachment'
+            );
+        }
+        
+        // Check file existence
+        $file_path = get_attached_file($attachment_id);
+        if (!$file_path || !file_exists($file_path)) {
+            return array(
+                'valid' => false,
+                'reason' => 'File not found on server'
+            );
+        }
+        
+        // Check file size (must be at least 35KB for BMO API)
+        $file_size = filesize($file_path);
+        if ($file_size < 35840) { // 35KB = 35 * 1024 bytes
+            return array(
+                'valid' => false,
+                'reason' => 'File size below 35KB minimum'
+            );
+        }
+        
+        // Check if we can get a valid URL
+        $image_url = wp_get_attachment_url($attachment_id);
+        if (!$image_url) {
+            // Try alternative methods
+            $upload_dir = wp_upload_dir();
+            $meta_file = get_post_meta($attachment_id, '_wp_attached_file', true);
+            
+            if ($meta_file) {
+                $image_url = $upload_dir['baseurl'] . '/' . $meta_file;
+                $image_url = str_replace('\\', '/', $image_url);
+            }
+            
+            if (!$image_url || !filter_var($image_url, FILTER_VALIDATE_URL)) {
+                return array(
+                    'valid' => false,
+                    'reason' => 'Cannot generate valid URL'
+                );
+            }
+        }
+        
+        return array(
+            'valid' => true,
+            'reason' => 'Passed all validation checks'
+        );
+    }
+    
+    /**
      * Get image URL with fallback methods
      */
     private function get_image_url($attachment_id) {
+        $this->logger->log('debug', "Attempting to get URL for attachment {$attachment_id}");
+        
         // First try the standard WordPress function
         $image_url = wp_get_attachment_url($attachment_id);
         
         if ($image_url) {
-            return $image_url;
+            // Validate the URL is accessible
+            if ($this->validate_image_url($image_url)) {
+                $this->logger->log('debug', "Standard wp_get_attachment_url successful for attachment {$attachment_id}", array(
+                    'url' => $image_url
+                ));
+                return $image_url;
+            } else {
+                $this->logger->log('warning', "URL from wp_get_attachment_url is not accessible for attachment {$attachment_id}", array(
+                    'url' => $image_url
+                ));
+            }
+        } else {
+            $this->logger->log('warning', "wp_get_attachment_url returned empty for attachment {$attachment_id}");
         }
         
         // Try getting the file path and constructing URL manually
         $file_path = get_attached_file($attachment_id);
         if ($file_path && file_exists($file_path)) {
             $upload_dir = wp_upload_dir();
+            
+            $this->logger->log('debug', "File path found for attachment {$attachment_id}", array(
+                'file_path' => $file_path,
+                'upload_basedir' => $upload_dir['basedir'],
+                'upload_baseurl' => $upload_dir['baseurl']
+            ));
             
             // Check if file is in uploads directory
             if (strpos($file_path, $upload_dir['basedir']) === 0) {
@@ -494,8 +647,28 @@ class Bunny_BMO_Processor {
                 // Ensure we use the correct directory separator for URLs
                 $image_url = str_replace('\\', '/', $image_url);
                 
-                return $image_url;
+                if ($this->validate_image_url($image_url)) {
+                    $this->logger->log('debug', "Manual URL construction successful for attachment {$attachment_id}", array(
+                        'url' => $image_url,
+                        'relative_path' => $relative_path
+                    ));
+                    return $image_url;
+                } else {
+                    $this->logger->log('warning', "Manually constructed URL is not accessible for attachment {$attachment_id}", array(
+                        'url' => $image_url
+                    ));
+                }
+            } else {
+                $this->logger->log('warning', "File path is not in uploads directory for attachment {$attachment_id}", array(
+                    'file_path' => $file_path,
+                    'uploads_dir' => $upload_dir['basedir']
+                ));
             }
+        } else {
+            $this->logger->log('warning', "File path not found or doesn't exist for attachment {$attachment_id}", array(
+                'file_path' => $file_path,
+                'file_exists' => $file_path ? file_exists($file_path) : false
+            ));
         }
         
         // Last resort: try getting from post meta
@@ -507,10 +680,59 @@ class Bunny_BMO_Processor {
             // Ensure we use the correct directory separator for URLs
             $image_url = str_replace('\\', '/', $image_url);
             
-            return $image_url;
+            if ($this->validate_image_url($image_url)) {
+                $this->logger->log('debug', "Post meta URL successful for attachment {$attachment_id}", array(
+                    'url' => $image_url,
+                    'meta_file' => $meta_file
+                ));
+                return $image_url;
+            } else {
+                $this->logger->log('warning', "Post meta URL is not accessible for attachment {$attachment_id}", array(
+                    'url' => $image_url,
+                    'meta_file' => $meta_file
+                ));
+            }
+        } else {
+            $this->logger->log('warning', "No _wp_attached_file meta found for attachment {$attachment_id}");
         }
         
+        // Log complete failure with all available debug info
+        $post = get_post($attachment_id);
+        $this->logger->log('error', "Failed to get valid URL for attachment {$attachment_id}", array(
+            'attachment_id' => $attachment_id,
+            'post_exists' => !is_null($post),
+            'post_type' => $post ? $post->post_type : null,
+            'post_mime_type' => $post ? $post->post_mime_type : null,
+            'post_title' => $post ? $post->post_title : null,
+            'wp_get_attachment_url' => wp_get_attachment_url($attachment_id),
+            'get_attached_file' => get_attached_file($attachment_id),
+            'wp_attached_file_meta' => get_post_meta($attachment_id, '_wp_attached_file', true),
+            'upload_dir_info' => wp_upload_dir()
+        ));
+        
         return false;
+    }
+    
+    /**
+     * Validate if an image URL is accessible
+     */
+    private function validate_image_url($url) {
+        // Basic URL format validation
+        if (!filter_var($url, FILTER_VALIDATE_URL)) {
+            return false;
+        }
+        
+        // Check if it's a local file that exists
+        if (strpos($url, home_url()) === 0) {
+            $upload_dir = wp_upload_dir();
+            $file_path = str_replace($upload_dir['baseurl'], $upload_dir['basedir'], $url);
+            $file_path = str_replace('/', DIRECTORY_SEPARATOR, $file_path);
+            
+            return file_exists($file_path);
+        }
+        
+        // For external URLs, assume they're valid (we'll let BMO API handle validation)
+        return true;
     }
     
     /**

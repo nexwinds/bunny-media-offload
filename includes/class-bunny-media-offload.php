@@ -88,7 +88,7 @@ class Bunny_Media_Offload {
         $this->optimizer = new Bunny_Optimizer($this->api, $this->settings, $this->logger, $this->bmo_api);
         $this->uploader = new Bunny_Uploader($this->api, $this->settings, $this->logger);
         $this->migration = new Bunny_Migration($this->api, $this->settings, $this->logger);
-        $this->stats = new Bunny_Stats($this->api, $this->settings);
+        $this->stats = new Bunny_Stats($this->api, $this->settings, $this->migration, $this->optimizer);
         $this->wpml = new Bunny_WPML($this->settings, $this->logger);
         $this->admin = new Bunny_Admin($this->settings, $this->stats, $this->migration, $this->logger, $this->optimizer, $this->wpml);
         

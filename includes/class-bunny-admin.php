@@ -39,6 +39,12 @@ class Bunny_Admin {
         add_action('wp_ajax_bunny_export_logs', array($this, 'ajax_export_logs'));
         add_action('wp_ajax_bunny_clear_logs', array($this, 'ajax_clear_logs'));
         add_action('wp_ajax_bunny_regenerate_thumbnails', array($this, 'ajax_regenerate_thumbnails'));
+        add_action('wp_ajax_bunny_start_migration', array($this, 'ajax_start_migration'));
+        add_action('wp_ajax_bunny_migration_batch', array($this, 'ajax_migration_batch'));
+        add_action('wp_ajax_bunny_cancel_migration', array($this, 'ajax_cancel_migration'));
+        add_action('wp_ajax_bunny_get_logs', array($this, 'ajax_get_logs'));
+        add_action('wp_ajax_bunny_run_optimization_diagnostics', array($this, 'ajax_run_optimization_diagnostics'));
+        add_action('wp_ajax_bunny_refresh_stats', array($this, 'ajax_refresh_stats'));
         
         // Add media library column and filters
         add_filter('manage_media_columns', array($this, 'add_media_column'));
@@ -163,13 +169,13 @@ class Bunny_Admin {
      */
     public function dashboard_page() {
         $stats = $this->stats->get_dashboard_stats();
-        $migration_stats = $this->migration->get_migration_stats();
         $recent_logs = $this->logger->get_logs(5);
-        $optimization_stats = $this->optimizer ? $this->optimizer->get_optimization_stats() : null;
         
         ?>
         <div class="wrap">
             <h1><?php esc_html_e('Bunny Media Offload Dashboard', 'bunny-media-offload'); ?></h1>
+            
+            <?php $this->render_unified_stats_widget(__('Image Overview', 'bunny-media-offload')); ?>
             
             <div class="bunny-dashboard">
                 <div class="bunny-stats-grid">
@@ -191,12 +197,7 @@ class Bunny_Admin {
                         </div>
                     </div>
                     
-                    <?php if ($optimization_stats): ?>
-                    <div class="bunny-stat-card">
-                        <h3><?php esc_html_e('Images Optimized', 'bunny-media-offload'); ?></h3>
-                        <div class="bunny-stat-number"><?php echo esc_html(number_format($optimization_stats['images_actually_optimized'])); ?></div>
-                    </div>
-                    <?php endif; ?>
+
                 </div>
                 
                 <div class="bunny-dashboard-row">
@@ -600,14 +601,15 @@ class Bunny_Admin {
      * Migration page
      */
     public function migration_page() {
-        // Use only detailed stats to ensure consistency across all displays
-        $detailed_stats = $this->migration->get_migration_stats(true);
-        $migration_stats = $detailed_stats; // Use same data source for consistency
+        // Use consolidated stats from the stats class
+        $migration_stats = $this->stats->get_migration_progress();
         $max_file_size = $this->settings->get('optimization_max_size', '50kb');
         
         ?>
         <div class="wrap">
             <h1><?php esc_html_e('Bulk Migration', 'bunny-media-offload'); ?></h1>
+            
+            <?php $this->render_unified_stats_widget(__('Image Statistics', 'bunny-media-offload')); ?>
             
             <div class="bunny-migration-info">
                 <div class="notice notice-info">
@@ -623,36 +625,7 @@ class Bunny_Admin {
             </div>
             
 
-            <div class="bunny-migration-statistics">
-                <h3><?php esc_html_e('Migration Statistics', 'bunny-media-offload'); ?></h3>
-                <div class="bunny-stats-grid">
-                    <div class="bunny-stat-card">
-                        <h4><?php esc_html_e('Total Images to Migrate', 'bunny-media-offload'); ?></h4>
-                        <div class="bunny-stat-number"><?php echo number_format($detailed_stats['total_images_to_migrate']); ?></div>
-                        <div class="bunny-stat-breakdown">
-                            <span><?php echo esc_html(number_format($detailed_stats['svg_total'] ?? 0)); ?> SVG</span> • 
-                            <span><?php echo esc_html(number_format($detailed_stats['avif_total'] ?? 0)); ?> AVIF</span> • 
-                            <span><?php echo esc_html(number_format($detailed_stats['webp_total'] ?? 0)); ?> WebP</span>
-                        </div>
-                    </div>
-                    
-                    <div class="bunny-stat-card">
-                        <h4><?php esc_html_e('Images per Batch', 'bunny-media-offload'); ?></h4>
-                        <div class="bunny-stat-number"><?php echo number_format($detailed_stats['batch_size']); ?></div>
-                        <div class="bunny-stat-description"><?php esc_html_e('Configurable in Settings', 'bunny-media-offload'); ?></div>
-                    </div>
-                    
-                    <div class="bunny-stat-card">
-                        <h4><?php esc_html_e('Already Migrated', 'bunny-media-offload'); ?></h4>
-                        <div class="bunny-stat-number"><?php echo number_format($detailed_stats['total_migrated']); ?></div>
-                        <div class="bunny-stat-breakdown">
-                            <span><?php echo esc_html(number_format($detailed_stats['svg_migrated'] ?? 0)); ?> SVG</span> • 
-                            <span><?php echo esc_html(number_format($detailed_stats['avif_migrated'] ?? 0)); ?> AVIF</span> • 
-                            <span><?php echo esc_html(number_format($detailed_stats['webp_migrated'] ?? 0)); ?> WebP</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
+
             
             <div class="bunny-migration-form">
                 <h3><?php esc_html_e('Start New Migration', 'bunny-media-offload'); ?></h3>
@@ -678,8 +651,8 @@ class Bunny_Admin {
                     <?php endif; ?>
                     
                     <p class="submit">
-                        <button type="submit" class="button button-primary" id="start-migration" <?php echo $detailed_stats['has_files_to_migrate'] ? '' : 'disabled'; ?>>
-                            <?php if ($detailed_stats['has_files_to_migrate']): ?>
+                        <button type="submit" class="button button-primary" id="start-migration" <?php echo $migration_stats['images_pending'] > 0 ? '' : 'disabled'; ?>>
+                            <?php if ($migration_stats['images_pending'] > 0): ?>
                                 <?php esc_html_e('Start Migration', 'bunny-media-offload'); ?>
                             <?php else: ?>
                                 <?php esc_html_e('No Files to Migrate', 'bunny-media-offload'); ?>
@@ -725,6 +698,9 @@ class Bunny_Admin {
      * Optimization page
      */
     public function optimization_page() {
+        // Clear cache to ensure we show the most current stats
+        wp_cache_delete('bunny_detailed_optimization_stats', 'bunny_media_offload');
+        
         if (!$this->optimizer) {
             ?>
             <div class="wrap">
@@ -802,6 +778,8 @@ class Bunny_Admin {
         <div class="wrap">
             <h1><?php esc_html_e('Image Optimization', 'bunny-media-offload'); ?></h1>
             
+            <?php $this->render_unified_stats_widget(__('Image Statistics', 'bunny-media-offload')); ?>
+            
 
             
             <!-- Optimization Statistics -->
@@ -815,14 +793,6 @@ class Bunny_Admin {
                 </div>
                 
                 <div class="bunny-stat-card">
-                    <h3><?php esc_html_e('Cloud Images Eligible', 'bunny-media-offload'); ?></h3>
-                    <div class="bunny-stat-number"><?php echo number_format($detailed_stats['cloud']['total_eligible']); ?></div>
-                    <div class="bunny-stat-breakdown">
-                        <small><?php echo number_format($detailed_stats['cloud']['convertible_formats'] ?? 0); ?> JPG/PNG • <?php echo number_format($detailed_stats['cloud']['compressible_formats'] ?? 0); ?> WebP/AVIF</small>
-                    </div>
-                </div>
-                
-                <div class="bunny-stat-card">
                     <h3><?php esc_html_e('Already Optimized', 'bunny-media-offload'); ?></h3>
                     <div class="bunny-stat-number"><?php echo number_format($detailed_stats['already_optimized']); ?></div>
                     <div class="bunny-stat-description">
@@ -832,7 +802,7 @@ class Bunny_Admin {
                 
                 <div class="bunny-stat-card">
                     <h3><?php esc_html_e('Images Migrated', 'bunny-media-offload'); ?></h3>
-                    <div class="bunny-stat-number"><?php echo number_format($this->stats->get_dashboard_stats()['total_files']); ?></div>
+                    <div class="bunny-stat-number"><?php echo number_format($detailed_stats['images_migrated'] ?? 0); ?></div>
                     <div class="bunny-stat-description">
                         <small><?php esc_html_e('Images successfully migrated to CDN', 'bunny-media-offload'); ?></small>
                     </div>
@@ -841,21 +811,41 @@ class Bunny_Admin {
             
 
             
-            <div class="bunny-optimization-actions">
-                <h3><?php esc_html_e('Start Image Optimization', 'bunny-media-offload'); ?></h3>
-                <p><?php esc_html_e('Choose which images you want to optimize. All images will be converted to AVIF format for best compression.', 'bunny-media-offload'); ?></p>
-                
-                <!-- Direct Optimization Action Buttons -->
+            <!-- Optimization Actions -->
+            <div class="bunny-optimization-section">
                 <div class="bunny-optimization-targets">
                     <div class="bunny-action-buttons">
                         <div class="bunny-action-card">
                             <h4><?php esc_html_e('Local Images', 'bunny-media-offload'); ?></h4>
                             <div class="bunny-action-count"><?php echo number_format($detailed_stats['local']['total_eligible']); ?></div>
                             <div class="bunny-action-description"><?php esc_html_e('Images stored on your server', 'bunny-media-offload'); ?></div>
+                            
+                            <!-- Show breakdown of skipped images if any -->
+                            <?php if (isset($detailed_stats['local']['skipped_count']) && $detailed_stats['local']['skipped_count'] > 0): ?>
+                                <div class="bunny-skipped-info" style="margin-top: 8px; padding: 8px; background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 4px; font-size: 12px;">
+                                    <strong><?php echo number_format($detailed_stats['local']['skipped_count']); ?> images skipped:</strong>
+                                    <ul style="margin: 4px 0 0 0; padding-left: 16px;">
+                                        <?php 
+                                        if (isset($detailed_stats['local']['skipped_reasons'])) {
+                                            foreach ($detailed_stats['local']['skipped_reasons'] as $reason => $count) {
+                                                echo '<li>' . esc_html($count) . ' - ' . esc_html($reason) . '</li>';
+                                            }
+                                        }
+                                        ?>
+                                    </ul>
+                                </div>
+                            <?php endif; ?>
+                            
                             <button type="button" class="button button-primary bunny-optimize-button" data-target="local" 
                                     <?php echo $detailed_stats['local']['has_files_to_optimize'] ? '' : 'disabled'; ?>>
                                 <span class="dashicons dashicons-controls-play"></span>
                                 <?php esc_html_e('Optimize Local Images', 'bunny-media-offload'); ?>
+                            </button>
+                            
+                            <!-- Diagnostic button -->
+                            <button type="button" class="button button-secondary bunny-diagnostic-button" style="margin-top: 8px;">
+                                <span class="dashicons dashicons-admin-tools"></span>
+                                <?php esc_html_e('Run Diagnostics', 'bunny-media-offload'); ?>
                             </button>
                         </div>
                         
@@ -1765,6 +1755,253 @@ class Bunny_Admin {
             ),
             $deleted_count,
             strtolower($type_label)
+        ));
+    }
+    
+    /**
+     * Run optimization diagnostics
+     */
+    public function ajax_run_optimization_diagnostics() {
+        check_ajax_referer('bunny_ajax_nonce', 'nonce');
+        
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(__('Insufficient permissions.', 'bunny-media-offload'));
+        }
+        
+        try {
+            global $wpdb;
+            
+            // Get sample of recent image attachments
+            $sample_size = 50; // Check last 50 image attachments
+            $attachments = $wpdb->get_results($wpdb->prepare("
+                SELECT p.ID, p.post_title, p.post_mime_type, p.post_date
+                FROM {$wpdb->posts} p
+                WHERE p.post_type = 'attachment'
+                AND p.post_mime_type LIKE 'image/%'
+                ORDER BY p.post_date DESC
+                LIMIT %d
+            ", $sample_size));
+            
+            $issues = array();
+            $valid_count = 0;
+            $problematic_count = 0;
+            $recommendations = array();
+            
+            foreach ($attachments as $attachment) {
+                $attachment_id = $attachment->ID;
+                
+                // Check if post exists
+                $post = get_post($attachment_id);
+                if (!$post) {
+                    $issues[] = array(
+                        'id' => $attachment_id,
+                        'title' => $attachment->post_title,
+                        'reason' => 'Post no longer exists in database'
+                    );
+                    $problematic_count++;
+                    continue;
+                }
+                
+                // Check if it's an image
+                if (!wp_attachment_is_image($attachment_id)) {
+                    $issues[] = array(
+                        'id' => $attachment_id,
+                        'title' => $attachment->post_title,
+                        'reason' => 'Not recognized as an image attachment'
+                    );
+                    $problematic_count++;
+                    continue;
+                }
+                
+                // Check file existence
+                $file_path = get_attached_file($attachment_id);
+                if (!$file_path || !file_exists($file_path)) {
+                    $issues[] = array(
+                        'id' => $attachment_id,
+                        'title' => $attachment->post_title,
+                        'reason' => 'File not found on server (' . ($file_path ? $file_path : 'no path') . ')'
+                    );
+                    $problematic_count++;
+                    continue;
+                }
+                
+                // Check file size
+                $file_size = filesize($file_path);
+                if ($file_size < 35840) { // 35KB
+                    $issues[] = array(
+                        'id' => $attachment_id,
+                        'title' => $attachment->post_title,
+                        'reason' => sprintf('File size too small for optimization (%s, minimum 35KB)', size_format($file_size))
+                    );
+                    $problematic_count++;
+                    continue;
+                }
+                
+                // Check URL generation
+                $image_url = wp_get_attachment_url($attachment_id);
+                if (!$image_url) {
+                    $issues[] = array(
+                        'id' => $attachment_id,
+                        'title' => $attachment->post_title,
+                        'reason' => 'Cannot generate URL for attachment'
+                    );
+                    $problematic_count++;
+                    continue;
+                }
+                
+                // Validate URL format
+                if (!filter_var($image_url, FILTER_VALIDATE_URL)) {
+                    $issues[] = array(
+                        'id' => $attachment_id,
+                        'title' => $attachment->post_title,
+                        'reason' => 'Generated URL is not valid: ' . $image_url
+                    );
+                    $problematic_count++;
+                    continue;
+                }
+                
+                $valid_count++;
+            }
+            
+            // Generate recommendations
+            if ($problematic_count > 0) {
+                $recommendations[] = 'Some attachments have missing files. Consider running a media file repair tool.';
+            }
+            
+            if ($problematic_count > ($sample_size * 0.5)) {
+                $recommendations[] = 'High number of problematic attachments detected. Consider checking your uploads directory permissions and WordPress configuration.';
+            }
+            
+            $upload_dir = wp_upload_dir();
+            if ($upload_dir['error']) {
+                $recommendations[] = 'WordPress uploads directory has errors: ' . $upload_dir['error'];
+            }
+            
+            if (empty($recommendations)) {
+                $recommendations[] = 'No major issues detected. If you\'re still experiencing problems, check the detailed logs for more information.';
+            }
+            
+            wp_send_json_success(array(
+                'total_attachments' => count($attachments),
+                'valid_attachments' => $valid_count,
+                'problematic_attachments' => $problematic_count,
+                'issues' => array_slice($issues, 0, 20), // Limit to first 20 issues
+                'recommendations' => $recommendations,
+                'upload_dir_info' => array(
+                    'basedir' => $upload_dir['basedir'],
+                    'baseurl' => $upload_dir['baseurl'],
+                    'error' => $upload_dir['error']
+                )
+            ));
+            
+        } catch (Exception $e) {
+            $this->logger->log('error', 'Diagnostics failed: ' . $e->getMessage());
+            wp_send_json_error('Diagnostics failed: ' . $e->getMessage());
+        }
+    }
+    
+
+    
+    /**
+     * Render unified image statistics widget
+     */
+    private function render_unified_stats_widget($title = null) {
+        $stats = $this->stats->get_unified_image_stats();
+        $widget_title = $title ?: __('Image Statistics', 'bunny-media-offload');
+        ?>
+        <div class="bunny-unified-stats-widget">
+            <div class="bunny-stats-header">
+                <h3><?php echo esc_html($widget_title); ?></h3>
+                <div class="bunny-total-count">
+                    <span class="bunny-total-number"><?php echo number_format($stats['total_images']); ?></span>
+                    <span class="bunny-total-label"><?php esc_html_e('Total Images', 'bunny-media-offload'); ?></span>
+                </div>
+            </div>
+            
+            <div class="bunny-stats-visualization">
+                <div class="bunny-circular-chart">
+                    <svg viewBox="0 0 42 42" class="bunny-donut">
+                        <!-- Background circle -->
+                        <circle class="bunny-donut-hole" cx="21" cy="21" r="15.915494309189533"></circle>
+                        <circle class="bunny-donut-ring" cx="21" cy="21" r="15.915494309189533" fill="transparent" stroke="#e5e7eb" stroke-width="3"></circle>
+                        
+                        <?php if ($stats['total_images'] > 0): ?>
+                            <?php
+                            $circumference = 100;
+                            $offset = 0;
+                            
+                            // Not optimized (red)
+                            if ($stats['not_optimized_percent'] > 0) {
+                                $stroke_dasharray = $stats['not_optimized_percent'] . ' ' . (100 - $stats['not_optimized_percent']);
+                                $stroke_dashoffset = -$offset;
+                                echo '<circle class="bunny-donut-segment bunny-not-optimized" cx="21" cy="21" r="15.915494309189533" fill="transparent" stroke="#ef4444" stroke-width="3" stroke-dasharray="' . esc_attr($stroke_dasharray) . '" stroke-dashoffset="' . esc_attr($stroke_dashoffset) . '"></circle>';
+                                $offset += $stats['not_optimized_percent'];
+                            }
+                            
+                            // Optimized (yellow)
+                            if ($stats['optimized_percent'] > 0) {
+                                $stroke_dasharray = $stats['optimized_percent'] . ' ' . (100 - $stats['optimized_percent']);
+                                $stroke_dashoffset = -$offset;
+                                echo '<circle class="bunny-donut-segment bunny-optimized" cx="21" cy="21" r="15.915494309189533" fill="transparent" stroke="#f59e0b" stroke-width="3" stroke-dasharray="' . esc_attr($stroke_dasharray) . '" stroke-dashoffset="' . esc_attr($stroke_dashoffset) . '"></circle>';
+                                $offset += $stats['optimized_percent'];
+                            }
+                            
+                            // Cloud (green)
+                            if ($stats['cloud_percent'] > 0) {
+                                $stroke_dasharray = $stats['cloud_percent'] . ' ' . (100 - $stats['cloud_percent']);
+                                $stroke_dashoffset = -$offset;
+                                echo '<circle class="bunny-donut-segment bunny-cloud" cx="21" cy="21" r="15.915494309189533" fill="transparent" stroke="#10b981" stroke-width="3" stroke-dasharray="' . esc_attr($stroke_dasharray) . '" stroke-dashoffset="' . esc_attr($stroke_dashoffset) . '"></circle>';
+                            }
+                            ?>
+                        <?php endif; ?>
+                    </svg>
+                    
+                    <div class="bunny-chart-center">
+                        <div class="bunny-chart-icon">📊</div>
+                    </div>
+                </div>
+                
+                <div class="bunny-stats-legend">
+                    <div class="bunny-legend-item">
+                        <span class="bunny-legend-color bunny-not-optimized-color"></span>
+                        <span class="bunny-legend-label"><?php esc_html_e('Not Optimized', 'bunny-media-offload'); ?></span>
+                        <span class="bunny-legend-value"><?php echo number_format($stats['local_eligible']); ?> (<?php echo esc_html($stats['not_optimized_percent']); ?>%)</span>
+                    </div>
+                    <div class="bunny-legend-item">
+                        <span class="bunny-legend-color bunny-optimized-color"></span>
+                        <span class="bunny-legend-label"><?php esc_html_e('Ready for Migration', 'bunny-media-offload'); ?></span>
+                        <span class="bunny-legend-value"><?php echo number_format($stats['already_optimized']); ?> (<?php echo esc_html($stats['optimized_percent']); ?>%)</span>
+                    </div>
+                    <div class="bunny-legend-item">
+                        <span class="bunny-legend-color bunny-cloud-color"></span>
+                        <span class="bunny-legend-label"><?php esc_html_e('On CDN', 'bunny-media-offload'); ?></span>
+                        <span class="bunny-legend-value"><?php echo number_format($stats['images_migrated']); ?> (<?php echo esc_html($stats['cloud_percent']); ?>%)</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <?php
+    }
+    
+    /**
+     * AJAX handler to refresh statistics after migration
+     */
+    public function ajax_refresh_stats() {
+        // Verify nonce
+        if (!check_ajax_referer('bunny_ajax_nonce', 'nonce', false)) {
+            wp_send_json_error(array('message' => __('Security check failed.', 'bunny-media-offload')));
+            return;
+        }
+        
+        // Clear all statistics caches
+        $this->stats->clear_cache();
+        
+        // Get fresh stats
+        $unified_stats = $this->stats->get_unified_image_stats();
+        
+        wp_send_json_success(array(
+            'stats' => $unified_stats,
+            'message' => __('Statistics refreshed successfully.', 'bunny-media-offload')
         ));
     }
 } 
