@@ -44,8 +44,8 @@ class Bunny_BMO_API {
             throw new Exception('No images provided for optimization.');
         }
         
-        // Limit to 10 images per batch (BMO API requirement)
-        $images = array_slice($images, 0, 10);
+        // Limit to 20 images per batch (BMO API requirement)
+        $images = array_slice($images, 0, 20);
         
         $endpoint = $this->get_api_endpoint();
         

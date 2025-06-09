@@ -123,8 +123,7 @@ wp bunny status
 # Offload all images
 wp bunny offload --file-types=image
 
-# Sync specific file
-wp bunny sync 123
+
 
 # Verify file integrity
 wp bunny verify --fix
@@ -307,7 +306,7 @@ bunny-media-offload/
 │   ├── class-bunny-api.php
 │   ├── class-bunny-uploader.php
 │   ├── class-bunny-migration.php
-│   ├── class-bunny-sync.php
+
 │   ├── class-bunny-admin.php
 │   ├── class-bunny-settings.php
 │   ├── class-bunny-stats.php

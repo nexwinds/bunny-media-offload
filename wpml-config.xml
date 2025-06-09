@@ -29,7 +29,7 @@
             <key name="settings_title">Settings</key>
             <key name="migration_title">Migration</key>
             <key name="optimization_title">Optimization</key>
-            <key name="sync_title">Sync &amp; Recovery</key>
+    
             <key name="logs_title">Logs</key>
             <key name="files_offloaded">Files Offloaded</key>
             <key name="space_saved">Space Saved</key>

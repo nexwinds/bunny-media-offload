@@ -15,11 +15,10 @@ class Bunny_Admin {
     /**
      * Constructor
      */
-    public function __construct($settings, $stats, $migration, $sync, $logger, $optimizer = null, $wpml = null) {
+    public function __construct($settings, $stats, $migration, $logger, $optimizer = null, $wpml = null) {
         $this->settings = $settings;
         $this->stats = $stats;
         $this->migration = $migration;
-        $this->sync = $sync;
         $this->logger = $logger;
         $this->optimizer = $optimizer;
         $this->wpml = $wpml;
@@ -88,14 +87,7 @@ class Bunny_Admin {
             array($this, 'migration_page')
         );
         
-        add_submenu_page(
-            'bunny-media-offload',
-            __('Sync & Recovery', 'bunny-media-offload'),
-            __('Sync & Recovery', 'bunny-media-offload'),
-            'manage_options',
-            'bunny-media-offload-sync',
-            array($this, 'sync_page')
-        );
+
         
         add_submenu_page(
             'bunny-media-offload',
@@ -753,38 +745,7 @@ class Bunny_Admin {
         <?php
     }
     
-    /**
-     * Sync page
-     */
-    public function sync_page() {
-        ?>
-        <div class="wrap">
-            <h1><?php esc_html_e('Sync & Recovery', 'bunny-media-offload'); ?></h1>
-            
-            <div class="bunny-sync-actions">
-                <div class="bunny-card">
-                    <h3><?php esc_html_e('Sync Options', 'bunny-media-offload'); ?></h3>
-                    <p><?php esc_html_e('Download files from Bunny.net back to local storage for recovery or backup purposes.', 'bunny-media-offload'); ?></p>
-                    
-                    <div class="bunny-sync-notice">
-                        <p><strong><?php esc_html_e('Note:', 'bunny-media-offload'); ?></strong> <?php esc_html_e('Only SVG, WebP and AVIF files can be synchronized. If you need to recover files, consider disabling "Delete Local Files" in Settings first.', 'bunny-media-offload'); ?></p>
-                    </div>
-                    
-                    <div class="bunny-actions">
-                        <button type="button" class="button button-primary" id="verify-sync"><?php esc_html_e('Verify File Integrity', 'bunny-media-offload'); ?></button>
-                        <button type="button" class="button" id="sync-all-files"><?php esc_html_e('Sync All Remote Files', 'bunny-media-offload'); ?></button>
-                        <button type="button" class="button" id="cleanup-orphaned"><?php esc_html_e('Cleanup Orphaned Files', 'bunny-media-offload'); ?></button>
-                    </div>
-                </div>
-            </div>
-            
-            <div id="sync-results" class="bunny-status-hidden">
-                <h3><?php esc_html_e('Sync Results', 'bunny-media-offload'); ?></h3>
-                <div id="sync-results-content"></div>
-            </div>
-        </div>
-        <?php
-    }
+
     
     /**
      * Optimization page
@@ -1022,6 +983,18 @@ class Bunny_Admin {
                     <h4><?php esc_html_e('Recently Processed', 'bunny-media-offload'); ?></h4>
                     <div class="bunny-processed-list" id="processed-images-list">
                         <!-- Recently processed images will be added here dynamically -->
+                    </div>
+                </div>
+                
+                <!-- Real-time Optimization Log -->
+                <div id="optimization-log" class="bunny-optimization-log bunny-status-hidden">
+                    <h4><?php esc_html_e('Optimization Log', 'bunny-media-offload'); ?></h4>
+                    <div class="bunny-log-container" id="optimization-log-container">
+                        <div class="bunny-log-entry bunny-log-info">
+                            <span class="bunny-log-icon">ℹ️</span>
+                            <span class="bunny-log-message"><?php esc_html_e('Optimization logs will appear here...', 'bunny-media-offload'); ?></span>
+                            <span class="bunny-log-time"><?php echo esc_html(current_time('H:i:s')); ?></span>
+                        </div>
                     </div>
                 </div>
                 
@@ -1455,8 +1428,7 @@ wp bunny optimization-status              # Check optimization queue</pre>
                     <div class="bunny-cli-section">
                         <h3><?php esc_html_e('🧹 Maintenance Commands', 'bunny-media-offload'); ?></h3>
                         <div class="bunny-code-block">
-                            <pre>wp bunny sync-verify                      # Verify file integrity
-wp bunny cleanup-orphaned                # Clean orphaned files
+                            <pre>wp bunny cleanup-orphaned                # Clean orphaned files
 wp bunny clear-cache                      # Clear plugin cache
 wp bunny logs --export                    # Export logs to CSV</pre>
                         </div>

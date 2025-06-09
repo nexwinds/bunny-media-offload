@@ -30,7 +30,6 @@
         init: function() {
             this.bindEvents();
             this.initMigration();
-            this.initSync();
             this.initLogs();
             this.initOptimization();
         },
@@ -39,17 +38,29 @@
          * Bind events
          */
         bindEvents: function() {
+            var self = this;
+            
+            console.log('Binding global events...');
+            
             // Test connection
             $(document).on('click', '#test-connection', this.testConnection);
             
             // Settings form
             $(document).on('submit', '#bunny-settings-form', this.saveSettings);
             
-            // Clear logs
-            $(document).on('click', '#clear-logs', this.clearLogs);
+            // Clear logs - with proper context binding
+            $(document).on('click', '#clear-logs', function(e) {
+                console.log('Clear logs event triggered via delegation');
+                self.clearLogs(e);
+            });
             
-            // Export logs
-            $(document).on('click', '#export-logs', this.exportLogs);
+            // Export logs - with proper context binding
+            $(document).on('click', '#export-logs', function(e) {
+                console.log('Export logs event triggered via delegation');
+                self.exportLogs(e);
+            });
+            
+            console.log('Global events bound successfully');
         },
         
         /**
@@ -78,14 +89,7 @@
             });
         },
         
-        /**
-         * Initialize sync functionality
-         */
-        initSync: function() {
-            $(document).on('click', '#verify-sync', this.verifySync);
-            $(document).on('click', '#sync-all-files', this.syncAllFiles);
-            $(document).on('click', '#cleanup-orphaned', this.cleanupOrphaned);
-        },
+
         
         /**
          * Initialize logs functionality
@@ -97,6 +101,55 @@
                     location.reload();
                 }, 30000);
             }
+            
+            // Enhanced debugging for logs buttons
+            console.log('=== LOGS INITIALIZATION DEBUG ===');
+            console.log('Logs page detected, checking buttons...');
+            console.log('Export button found:', $('#export-logs').length > 0);
+            console.log('Clear button found:', $('#clear-logs').length > 0);
+            console.log('bunnyAjax available:', typeof bunnyAjax !== 'undefined');
+            
+            if (typeof bunnyAjax !== 'undefined') {
+                console.log('bunnyAjax.ajaxurl:', bunnyAjax.ajaxurl);
+                console.log('bunnyAjax.nonce:', bunnyAjax.nonce);
+            } else {
+                console.error('bunnyAjax object is not available!');
+            }
+            
+            // Test if buttons exist and have data attributes
+            var $exportBtn = $('#export-logs');
+            var $clearBtn = $('#clear-logs');
+            
+            if ($exportBtn.length > 0) {
+                console.log('Export button data-log-type:', $exportBtn.data('log-type'));
+                console.log('Export button data-log-level:', $exportBtn.data('log-level'));
+            }
+            
+            if ($clearBtn.length > 0) {
+                console.log('Clear button data-log-type:', $clearBtn.data('log-type'));
+            }
+            
+            // Remove any existing handlers and add new ones
+            $exportBtn.off('click.bunny').on('click.bunny', function(e) {
+                console.log('=== EXPORT BUTTON CLICKED ===');
+                console.log('Event object:', e);
+                BunnyAdmin.exportLogs(e);
+            });
+            
+            $clearBtn.off('click.bunny').on('click.bunny', function(e) {
+                console.log('=== CLEAR BUTTON CLICKED ===');
+                console.log('Event object:', e);
+                BunnyAdmin.clearLogs(e);
+            });
+            
+            // Test click events after a short delay
+            setTimeout(function() {
+                console.log('Testing button click events...');
+                console.log('Export button click events:', $._data($exportBtn[0], 'events'));
+                console.log('Clear button click events:', $._data($clearBtn[0], 'events'));
+            }, 1000);
+            
+            console.log('=== END LOGS INITIALIZATION ===');
         },
         
         /**
@@ -552,116 +605,22 @@
             $('.bunny-concurrent-processors, .bunny-migration-stats').remove();
         },
         
-        /**
-         * Verify sync
-         */
-        verifySync: function(e) {
-            e.preventDefault();
-            
-            var $button = $(this);
-            var originalText = $button.text();
-            
-            $button.text('Verifying...').prop('disabled', true);
-            
-            $.ajax({
-                url: bunnyAjax.ajaxurl,
-                type: 'POST',
-                data: {
-                    action: 'bunny_verify_sync',
-                    nonce: bunnyAjax.nonce
-                },
-                success: function(response) {
-                    if (response.success) {
-                        var data = response.data;
-                        var resultHtml = '<h4>Verification Results</h4>';
-                        resultHtml += '<p>Total Files: ' + data.total_files + '</p>';
-                        resultHtml += '<p>Synced Files: ' + data.synced_files + '</p>';
-                        resultHtml += '<p>Missing Local: ' + data.missing_local + '</p>';
-                        resultHtml += '<p>Missing Remote: ' + data.missing_remote + '</p>';
-                        
-                        $('#sync-results-content').html(resultHtml);
-                        $('#sync-results').show();
-                    } else {
-                        BunnyAdmin.showNotice(response.data.message, 'error');
-                    }
-                },
-                error: function() {
-                    BunnyAdmin.showNotice('Verification failed.', 'error');
-                },
-                complete: function() {
-                    $button.text(originalText).prop('disabled', false);
-                }
-            });
-        },
         
-        /**
-         * Sync all files
-         */
-        syncAllFiles: function(e) {
-            e.preventDefault();
-            
-            if (!confirm('This will download all remote files to local storage. Continue?')) {
-                return;
-            }
-            
-            var $button = $(this);
-            var originalText = $button.text();
-            
-            $button.text('Syncing...').prop('disabled', true);
-            
-            $.ajax({
-                url: bunnyAjax.ajaxurl,
-                type: 'POST',
-                data: {
-                    action: 'bunny_bulk_sync',
-                    nonce: bunnyAjax.nonce
-                },
-                success: function(response) {
-                    if (response.success) {
-                        BunnyAdmin.showNotice('Files synced successfully.', 'success');
-                    } else {
-                        BunnyAdmin.showNotice(response.data.message, 'error');
-                    }
-                },
-                error: function() {
-                    BunnyAdmin.showNotice('Sync failed.', 'error');
-                },
-                complete: function() {
-                    $button.text(originalText).prop('disabled', false);
-                }
-            });
-        },
-        
-        /**
-         * Cleanup orphaned files
-         */
-        cleanupOrphaned: function(e) {
-            e.preventDefault();
-            
-            if (!confirm('This will permanently delete orphaned files from Bunny.net. Continue?')) {
-                return;
-            }
-            
-            var $button = $(this);
-            var originalText = $button.text();
-            
-            $button.text('Cleaning up...').prop('disabled', true);
-            
-            // Implementation would go here
-            setTimeout(function() {
-                $button.text(originalText).prop('disabled', false);
-                BunnyAdmin.showNotice('Cleanup completed.', 'success');
-            }, 2000);
-        },
         
         /**
          * Clear logs
          */
         clearLogs: function(e) {
             e.preventDefault();
+            console.log('clearLogs function called');
             
             var $button = $(e.target);
             var logType = $button.data('log-type') || 'all';
+            
+            console.log('Button:', $button);
+            console.log('Log type:', logType);
+            console.log('bunnyAjax:', bunnyAjax);
+            
             var confirmMessage = logType === 'all' 
                 ? 'This will permanently delete all logs. Continue?'
                 : 'This will permanently delete all ' + logType + ' logs. Continue?';
@@ -669,6 +628,9 @@
             if (!confirm(confirmMessage)) {
                 return;
             }
+            
+            // Show loading state
+            $button.prop('disabled', true).text('Clearing...');
             
             $.ajax({
                 url: bunnyAjax.ajaxurl,
@@ -679,15 +641,20 @@
                     log_type: logType
                 },
                 success: function(response) {
+                    console.log('Clear logs response:', response);
                     if (response.success) {
-                        BunnyAdmin.showNotice(response.data.message, 'success');
+                        alert(response.data.message);
                         location.reload();
                     } else {
                         alert('Failed to clear logs: ' + (response.data.message || 'Unknown error'));
                     }
                 },
-                error: function() {
-                    alert('Failed to clear logs.');
+                error: function(xhr, status, error) {
+                    console.error('Clear logs error:', xhr, status, error);
+                    alert('Failed to clear logs due to an error.');
+                },
+                complete: function() {
+                    $button.prop('disabled', false).text('Clear Filtered Logs');
                 }
             });
         },
@@ -697,10 +664,19 @@
          */
         exportLogs: function(e) {
             e.preventDefault();
+            console.log('exportLogs function called');
             
             var $button = $(e.target);
             var logType = $button.data('log-type') || 'all';
             var logLevel = $button.data('log-level') || '';
+            
+            console.log('Button:', $button);
+            console.log('Log type:', logType);
+            console.log('Log level:', logLevel);
+            console.log('bunnyAjax:', bunnyAjax);
+            
+            // Show loading state
+            $button.prop('disabled', true).text('Exporting...');
             
             $.ajax({
                 url: bunnyAjax.ajaxurl,
@@ -712,6 +688,7 @@
                     log_level: logLevel
                 },
                 success: function(response) {
+                    console.log('Export logs response:', response);
                     if (response.success) {
                         // Create download link
                         var blob = new Blob([response.data.csv_data], { type: 'text/csv' });
@@ -733,12 +710,18 @@
                         a.click();
                         document.body.removeChild(a);
                         window.URL.revokeObjectURL(url);
+                        
+                        alert('Logs exported successfully!');
                     } else {
-                        BunnyAdmin.showNotice(response.data.message || 'Export failed', 'error');
+                        alert('Export failed: ' + (response.data.message || 'Unknown error'));
                     }
                 },
-                error: function() {
-                    BunnyAdmin.showNotice('Failed to export logs.', 'error');
+                error: function(xhr, status, error) {
+                    console.error('Export logs error:', xhr, status, error);
+                    alert('Failed to export logs due to an error.');
+                },
+                complete: function() {
+                    $button.prop('disabled', false).text('Export Filtered Logs');
                 }
             });
         },
@@ -846,6 +829,11 @@
             // Show current image processing section
             $('#current-image-processing').show();
             $('#recent-processed').show();
+            $('#optimization-log').show();
+            
+            // Clear and initialize log
+            this.clearOptimizationLog();
+            this.addOptimizationLog('Optimization session started', 'info');
             
             // Clear any previous processing data
             $('#processed-images-list').empty();
@@ -883,6 +871,9 @@
                 return;
             }
             
+            // Log batch processing start
+            this.addOptimizationLog('Processing batch of images...', 'processing');
+            
             $.ajax({
                 url: bunnyAjax.ajaxurl,
                 type: 'POST',
@@ -896,6 +887,21 @@
                     
                     if (response.success) {
                         var data = response.data;
+                        
+                        // Log batch completion with enhanced statistics
+                        var batchInfo = {
+                            current: Math.ceil(data.processed / 20),
+                            total: Math.ceil(data.total / 20),
+                            images: data.recent_processed ? data.recent_processed.length : 0,
+                            successful: data.successful,
+                            failed: data.failed
+                        };
+                        
+                        var statusMessage = `Batch ${batchInfo.current}/${batchInfo.total} complete: ${batchInfo.images} images processed`;
+                        if (batchInfo.successful > 0 || batchInfo.failed > 0) {
+                            statusMessage += ` (${batchInfo.successful} optimized, ${batchInfo.failed} failed)`;
+                        }
+                        self.addOptimizationLog(statusMessage, 'success', batchInfo);
                         
                         // Update progress bar
                         $('#optimization-progress-bar').css('width', data.progress + '%');
@@ -928,19 +934,24 @@
                         // Handle errors
                         if (data.errors && data.errors.length > 0) {
                             self.displayOptimizationErrors(data.errors);
+                            self.addOptimizationLog('Encountered ' + data.errors.length + ' errors in current batch', 'error');
                         }
                         
                         if (!data.completed && self.optimizationState.active) {
-                            // Continue processing
+                            // Log waiting period
+                            self.addOptimizationLog('Waiting 3 seconds before next batch...', 'waiting');
+                            
+                            // Continue processing after 3 seconds
                             setTimeout(function() {
                                 self.processOptimizationBatch(sessionId);
-                            }, 1000);
+                            }, 3000);
                         } else {
                             self.completeOptimization(data.completed);
                         }
                     } else {
                         console.error('Batch processing failed:', response);
                         var message = response.data && response.data.message ? response.data.message : 'Unknown batch error';
+                        self.addOptimizationLog('Batch processing failed: ' + message, 'error');
                         self.handleOptimizationError(message);
                     }
                 },
@@ -951,6 +962,7 @@
                         error: error,
                         responseText: xhr.responseText
                     });
+                    self.addOptimizationLog('Network error during batch processing: ' + error, 'error');
                     self.handleOptimizationError('Optimization batch failed due to network error.');
                 }
             });
@@ -1154,6 +1166,7 @@
         handleOptimizationError: function(message) {
             this.optimizationState.active = false;
             $('#optimization-status-text').text('Error: ' + message);
+            this.addOptimizationLog('Optimization session failed: ' + message, 'error');
             $('.bunny-optimization-actions').show();
             $('.bunny-cancel-section').hide();
             $('#optimization-progress').hide();
@@ -1170,7 +1183,10 @@
             
             if (completed) {
                 $('#optimization-status-text').text('Optimization completed successfully!');
+                this.addOptimizationLog('Optimization session completed successfully!', 'success');
                 alert('Optimization completed successfully!');
+            } else {
+                this.addOptimizationLog('Optimization session ended', 'info');
             }
             
             $('.bunny-optimization-actions').show();
@@ -1191,6 +1207,8 @@
         cancelOptimization: function() {
             if (this.optimizationState && this.optimizationState.active) {
                 this.optimizationState.active = false;
+                
+                this.addOptimizationLog('Optimization cancelled by user', 'warning');
                 
                 $.ajax({
                     url: bunnyAjax.ajaxurl,
@@ -1384,12 +1402,77 @@
         },
         
         /**
+         * Add log entry to optimization log
+         */
+        addOptimizationLog: function(message, type, batchInfo) {
+            type = type || 'info';
+            var now = new Date();
+            var timeStr = now.toLocaleTimeString('en-US', { hour12: false });
+            
+            // Map types to emoji icons
+            var icons = {
+                'info': 'ℹ️',
+                'success': '✅', 
+                'warning': '⚠️',
+                'error': '❌',
+                'waiting': '⏳',
+                'processing': '🔄'
+            };
+            
+            var icon = icons[type] || 'ℹ️';
+            
+            // Add batch info to message if provided
+            if (batchInfo) {
+                message += ' (Batch ' + batchInfo.current + '/' + batchInfo.total + ', ' + batchInfo.images + ' images)';
+            }
+            
+            var logHtml = '<div class="bunny-log-entry bunny-log-' + type + '">' +
+                '<span class="bunny-log-icon">' + icon + '</span>' +
+                '<span class="bunny-log-message">' + message + '</span>' +
+                '<span class="bunny-log-time">' + timeStr + '</span>' +
+                '</div>';
+            
+            var $container = $('#optimization-log-container');
+            
+            // Remove initial placeholder log
+            $container.find('.bunny-log-entry').first().remove();
+            
+            // Add new log entry at the top
+            $container.prepend(logHtml);
+            
+            // Keep only last 10 entries
+            $container.children().slice(10).remove();
+            
+            // Auto-scroll to keep latest visible
+            $container.scrollTop(0);
+        },
+        
+        /**
+         * Clear optimization log
+         */
+        clearOptimizationLog: function() {
+            var $container = $('#optimization-log-container');
+            $container.empty();
+            
+            // Add initial placeholder
+            var now = new Date();
+            var timeStr = now.toLocaleTimeString('en-US', { hour12: false });
+            $container.append(
+                '<div class="bunny-log-entry bunny-log-info">' +
+                '<span class="bunny-log-icon">ℹ️</span>' +
+                '<span class="bunny-log-message">Optimization logs will appear here...</span>' +
+                '<span class="bunny-log-time">' + timeStr + '</span>' +
+                '</div>'
+            );
+        },
+
+        /**
          * Show optimization criteria message
          */
         showOptimizationCriteria: function() {
             var criteriaHtml = '<div class="bunny-optimization-criteria notice notice-info inline">';
             criteriaHtml += '<p><strong>Optimization Criteria:</strong> Only images in supported formats (JPEG, PNG, GIF, WebP, AVIF) ';
-            criteriaHtml += 'with file size <strong>exceeding 45KB</strong> will be optimized. ';
+            criteriaHtml += 'with file size <strong>exceeding 35KB</strong> will be optimized. ';
             criteriaHtml += 'Images below this threshold or in unsupported formats will be ignored.</p>';
             criteriaHtml += '</div>';
             
@@ -1412,6 +1495,36 @@
         
         // Update dashboard stats every 30 seconds
         setInterval(BunnyAdmin.updateDashboardStats, 30000);
+        
+        // Additional initialization for logs page (safety check)
+        if (window.location.href.indexOf('page=bunny-media-logs') !== -1) {
+            console.log('=== LOGS PAGE DETECTED - ADDITIONAL INIT ===');
+            
+            // Wait for DOM to be fully ready
+            setTimeout(function() {
+                // Direct binding as a fallback
+                var $exportBtn = $('#export-logs');
+                var $clearBtn = $('#clear-logs');
+                
+                if ($exportBtn.length > 0 && !$exportBtn.data('bunny-bound')) {
+                    console.log('Adding fallback export handler');
+                    $exportBtn.data('bunny-bound', true).on('click', function(e) {
+                        console.log('Fallback export handler triggered');
+                        e.preventDefault();
+                        BunnyAdmin.exportLogs(e);
+                    });
+                }
+                
+                if ($clearBtn.length > 0 && !$clearBtn.data('bunny-bound')) {
+                    console.log('Adding fallback clear handler');
+                    $clearBtn.data('bunny-bound', true).on('click', function(e) {
+                        console.log('Fallback clear handler triggered');
+                        e.preventDefault();
+                        BunnyAdmin.clearLogs(e);
+                    });
+                }
+            }, 500);
+        }
         
         // Make BunnyAdmin available globally for debugging
         window.BunnyAdmin = BunnyAdmin;
@@ -1466,6 +1579,109 @@
                     console.log('Response text:', xhr.responseText);
                 }
             });
+        };
+        
+        // Add logs-specific test functions
+        window.testExportLogs = function() {
+            console.log('Testing export logs manually...');
+            if (typeof bunnyAjax === 'undefined') {
+                console.error('bunnyAjax not available!');
+                return;
+            }
+            
+            var logType = 'all';
+            var logLevel = '';
+            
+            $.ajax({
+                url: bunnyAjax.ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'bunny_export_logs',
+                    nonce: bunnyAjax.nonce,
+                    log_type: logType,
+                    log_level: logLevel
+                },
+                success: function(response) {
+                    console.log('Export logs test response:', response);
+                    if (response.success) {
+                        console.log('✅ Export logs AJAX is working!');
+                        console.log('CSV data length:', response.data.csv_data.length);
+                    } else {
+                        console.log('❌ Export logs failed:', response.data);
+                    }
+                },
+                error: function(xhr, status, error) {
+                    console.error('Export logs test failed:', xhr, status, error);
+                    console.log('Response text:', xhr.responseText);
+                }
+            });
+        };
+        
+        window.testClearLogs = function() {
+            console.log('Testing clear logs manually (dry run)...');
+            if (typeof bunnyAjax === 'undefined') {
+                console.error('bunnyAjax not available!');
+                return;
+            }
+            
+            console.log('This would clear logs with type: all');
+            console.log('To actually test, call: testClearLogsReal()');
+        };
+        
+        window.testClearLogsReal = function() {
+            if (!confirm('This will actually clear logs. Continue?')) {
+                return;
+            }
+            
+            console.log('Testing clear logs manually...');
+            var logType = 'all';
+            
+            $.ajax({
+                url: bunnyAjax.ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'bunny_clear_logs',
+                    nonce: bunnyAjax.nonce,
+                    log_type: logType
+                },
+                success: function(response) {
+                    console.log('Clear logs test response:', response);
+                    if (response.success) {
+                        console.log('✅ Clear logs AJAX is working!');
+                        console.log('Message:', response.data.message);
+                    } else {
+                        console.log('❌ Clear logs failed:', response.data);
+                    }
+                },
+                error: function(xhr, status, error) {
+                    console.error('Clear logs test failed:', xhr, status, error);
+                    console.log('Response text:', xhr.responseText);
+                }
+            });
+        };
+        
+        // Add button click simulator
+        window.simulateButtonClicks = function() {
+            console.log('Simulating button clicks...');
+            
+            var $exportBtn = $('#export-logs');
+            var $clearBtn = $('#clear-logs');
+            
+            if ($exportBtn.length > 0) {
+                console.log('Simulating export button click...');
+                $exportBtn.trigger('click');
+            } else {
+                console.log('Export button not found!');
+            }
+            
+            setTimeout(function() {
+                if ($clearBtn.length > 0) {
+                    console.log('Simulating clear button click...');
+                    $clearBtn.trigger('click');
+                } else {
+                    console.log('Clear button not found!');
+                }
+            }, 1000);
         };
     });
     

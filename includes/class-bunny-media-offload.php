@@ -18,7 +18,6 @@ class Bunny_Media_Offload {
     public $uploader;
     public $admin;
     public $migration;
-    public $sync;
     public $settings;
     public $stats;
     public $logger;
@@ -63,7 +62,6 @@ class Bunny_Media_Offload {
         
         require_once BMO_PLUGIN_DIR . 'includes/class-bunny-uploader.php';
         require_once BMO_PLUGIN_DIR . 'includes/class-bunny-migration.php';
-        require_once BMO_PLUGIN_DIR . 'includes/class-bunny-sync.php';
         require_once BMO_PLUGIN_DIR . 'includes/class-bunny-stats.php';
         require_once BMO_PLUGIN_DIR . 'includes/class-bunny-wpml.php';
         require_once BMO_PLUGIN_DIR . 'includes/class-bunny-admin.php';
@@ -90,10 +88,9 @@ class Bunny_Media_Offload {
         $this->optimizer = new Bunny_Optimizer($this->api, $this->settings, $this->logger, $this->bmo_api);
         $this->uploader = new Bunny_Uploader($this->api, $this->settings, $this->logger);
         $this->migration = new Bunny_Migration($this->api, $this->settings, $this->logger);
-        $this->sync = new Bunny_Sync($this->api, $this->settings, $this->logger);
         $this->stats = new Bunny_Stats($this->api, $this->settings);
         $this->wpml = new Bunny_WPML($this->settings, $this->logger);
-        $this->admin = new Bunny_Admin($this->settings, $this->stats, $this->migration, $this->sync, $this->logger, $this->optimizer, $this->wpml);
+        $this->admin = new Bunny_Admin($this->settings, $this->stats, $this->migration, $this->logger, $this->optimizer, $this->wpml);
         
 
     }
@@ -138,6 +135,16 @@ class Bunny_Media_Offload {
                 array(),
                 BMO_PLUGIN_VERSION
             );
+
+            // Enqueue dedicated logs CSS file for the logs page
+            if (isset($_GET['page']) && $_GET['page'] === 'bunny-media-logs') {
+                wp_enqueue_style(
+                    'bunny-media-logs',
+                    BMO_PLUGIN_URL . 'assets/css/bunny-media-logs.css',
+                    array(),
+                    BMO_PLUGIN_VERSION
+                );
+            }
             
             wp_localize_script('bunny-media-offload-admin', 'bunnyAjax', array(
                 'ajaxurl' => admin_url('admin-ajax.php'),
@@ -184,7 +191,6 @@ class Bunny_Media_Offload {
      */
     public static function deactivate() {
         // Clear scheduled events
-        wp_clear_scheduled_hook('bunny_sync_check');
         
         // Clear rewrite rules
         flush_rewrite_rules();

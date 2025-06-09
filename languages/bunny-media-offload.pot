@@ -46,8 +46,7 @@ msgstr ""
 
 #: includes/class-bunny-admin.php:112
 #: includes/class-bunny-admin.php:117
-msgid "Sync & Recovery"
-msgstr ""
+
 
 #: includes/class-bunny-admin.php:125
 #: includes/class-bunny-admin.php:130

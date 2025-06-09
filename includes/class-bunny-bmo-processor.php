@@ -54,7 +54,8 @@ class Bunny_BMO_Processor {
         }
         
         $this->logger->log('info', 'Processing BMO API batch', array(
-            'image_count' => count($images)
+            'image_count' => count($images),
+            'image_ids' => $images
         ));
         
         try {
@@ -65,51 +66,106 @@ class Bunny_BMO_Processor {
             foreach ($images as $index => $attachment_id) {
                 // Validate attachment ID
                 if (!is_numeric($attachment_id) || $attachment_id <= 0) {
-                    $this->logger->log('warning', "Invalid attachment ID: {$attachment_id}");
+                    $this->logger->log('warning', "Invalid attachment ID: {$attachment_id}", array(
+                        'batch_index' => $index,
+                        'attachment_id' => $attachment_id
+                    ));
                     continue;
                 }
                 
                 // Check if attachment exists
                 $post = get_post($attachment_id);
                 if (!$post || $post->post_type !== 'attachment') {
-                    $this->logger->log('warning', "Attachment {$attachment_id} does not exist or is not an attachment");
+                    $this->logger->log('warning', "Attachment {$attachment_id} does not exist or is not an attachment", array(
+                        'batch_index' => $index,
+                        'post_exists' => !is_null($post),
+                        'post_type' => $post ? $post->post_type : 'null'
+                    ));
                     continue;
                 }
                 
                 // Check if it's an image
                 if (!wp_attachment_is_image($attachment_id)) {
                     $this->logger->log('warning', "Attachment {$attachment_id} is not an image", array(
-                        'post_mime_type' => $post->post_mime_type
+                        'batch_index' => $index,
+                        'post_mime_type' => $post->post_mime_type,
+                        'post_title' => $post->post_title
                     ));
                     continue;
+                }
+                
+                // Check file size - BMO API requires minimum 35KB
+                $file_path = get_attached_file($attachment_id);
+                if ($file_path && file_exists($file_path)) {
+                    $file_size = filesize($file_path);
+                    if ($file_size < 35840) { // 35KB = 35 * 1024 bytes
+                        $this->logger->log('info', "Skipping attachment {$attachment_id} - file size below 35KB minimum", array(
+                            'attachment_id' => $attachment_id,
+                            'file_size_bytes' => $file_size,
+                            'file_size_kb' => round($file_size / 1024, 1),
+                            'post_title' => $post->post_title,
+                            'reason' => 'Below BMO API minimum size requirement (35KB)'
+                        ));
+                        continue;
+                    }
                 }
                 
                 $image_url = $this->get_image_url($attachment_id);
                 if ($image_url) {
                     try {
                         $image_data = $this->bmo_api->prepare_image_data($attachment_id, $image_url);
-                        $bmo_images[] = $image_data;
-                        $image_mapping[] = $attachment_id;
+                        if ($image_data) {
+                            $bmo_images[] = $image_data;
+                            $image_mapping[] = $attachment_id;
+                            $this->logger->log('debug', "Successfully prepared image for API", array(
+                                'attachment_id' => $attachment_id,
+                                'image_url' => $image_url,
+                                'post_title' => $post->post_title
+                            ));
+                        } else {
+                            $this->logger->log('warning', "Image data preparation returned empty for attachment {$attachment_id}", array(
+                                'image_url' => $image_url,
+                                'post_title' => $post->post_title
+                            ));
+                        }
                     } catch (Exception $e) {
-                        $this->logger->log('warning', "Failed to prepare image data for attachment {$attachment_id}: " . $e->getMessage());
+                        $this->logger->log('warning', "Failed to prepare image data for attachment {$attachment_id}: " . $e->getMessage(), array(
+                            'image_url' => $image_url,
+                            'post_title' => $post->post_title,
+                            'exception_trace' => $e->getTraceAsString()
+                        ));
                     }
                 } else {
                     // Log which attachments are missing URLs
                     $file_path = get_attached_file($attachment_id);
                     $this->logger->log('warning', "No URL found for attachment {$attachment_id}", array(
+                        'batch_index' => $index,
                         'post_title' => $post->post_title ?: 'Unknown',
                         'post_mime_type' => $post->post_mime_type ?: 'Unknown',
                         'file_path' => $file_path,
-                        'file_exists' => $file_path ? file_exists($file_path) : false
+                        'file_exists' => $file_path ? file_exists($file_path) : false,
+                        'upload_dir_info' => wp_upload_dir()
                     ));
                 }
             }
             
             if (empty($bmo_images)) {
                 $error_msg = sprintf('No valid image URLs found in batch of %d images. Check logs for details on missing URLs.', count($images));
-                $this->logger->log('error', $error_msg);
+                $this->logger->log('error', $error_msg, array(
+                    'original_image_ids' => $images,
+                    'valid_images_count' => count($bmo_images),
+                    'image_mapping' => $image_mapping
+                ));
                 return $this->create_batch_error_result($images, $error_msg);
             }
+            
+            // Log what we're actually sending to BMO API
+            $this->logger->log('info', 'Sending images to BMO API', array(
+                'original_batch_size' => count($images),
+                'valid_images_count' => count($bmo_images),
+                'image_mapping' => $image_mapping,
+                'sample_image_data' => array_slice($bmo_images, 0, 2) // Log first 2 images for debugging
+            ));
             
             // Send to BMO API
             $result = $this->bmo_api->optimize_images($bmo_images, array(

@@ -111,7 +111,7 @@ class Bunny_Optimization_Controller {
         }
         
         // Get next batch of images
-        $images = $this->session_manager->get_next_batch($session_id, 10); // BMO API batch size
+        $images = $this->session_manager->get_next_batch($session_id, 20); // BMO API batch size
         
         $this->logger->log('info', 'Processing batch', array(
             'session_id' => $session_id,
@@ -136,6 +136,16 @@ class Bunny_Optimization_Controller {
         
         // Update session with results
         $session = $this->session_manager->get_session($session_id);
+        
+        $this->logger->log('info', 'Batch processing complete', array(
+            'session_id' => $session_id,
+            'requested_batch_size' => count($images),
+            'successful_optimizations' => $batch_result['successful'],
+            'failed_optimizations' => $batch_result['failed'],
+            'session_processed_before' => $session['processed'],
+            'session_total' => $session['total_images']
+        ));
+        
         $updates = array(
             'processed' => $session['processed'] + count($images),
             'successful' => $session['successful'] + $batch_result['successful'],
