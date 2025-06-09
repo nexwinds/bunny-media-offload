@@ -33,6 +33,7 @@ class Bunny_Admin {
         add_action('admin_menu', array($this, 'add_admin_menu'));
         add_action('admin_init', array($this, 'register_settings'));
         add_action('wp_ajax_bunny_test_connection', array($this, 'ajax_test_connection'));
+        add_action('wp_ajax_bunny_test_bmo_connection', array($this, 'ajax_test_bmo_connection'));
         add_action('wp_ajax_bunny_save_settings', array($this, 'ajax_save_settings'));
         add_action('wp_ajax_bunny_get_stats', array($this, 'ajax_get_stats'));
         add_action('wp_ajax_bunny_export_logs', array($this, 'ajax_export_logs'));
@@ -96,6 +97,15 @@ class Bunny_Admin {
             'manage_options',
             'bunny-media-offload-optimization',
             array($this, 'optimization_page')
+        );
+        
+        add_submenu_page(
+            'bunny-media-offload',
+            __('Test Connection', 'bunny-media-offload'),
+            __('Test Connection', 'bunny-media-offload'),
+            'manage_options',
+            'bunny-media-offload-test',
+            array($this, 'test_connection_page')
         );
         
         add_submenu_page(
@@ -1154,6 +1164,25 @@ class Bunny_Admin {
     }
     
     /**
+     * Test Connection page
+     */
+    public function test_connection_page() {
+        $settings = $this->settings->get_all();
+        
+        // Include the test connection components
+        require_once BMO_PLUGIN_DIR . 'includes/test-connection-components.php';
+        
+        ?>
+        <div class="wrap">
+            <h1><?php esc_html_e('Test Connection', 'bunny-media-offload'); ?></h1>
+            <p><?php esc_html_e('Test your API connections to ensure proper functionality.', 'bunny-media-offload'); ?></p>
+            
+            <?php bunny_render_complete_test_page($settings); ?>
+        </div>
+        <?php
+    }
+    
+    /**
      * AJAX: Test connection
      */
     public function ajax_test_connection() {
@@ -1170,6 +1199,36 @@ class Bunny_Admin {
             wp_send_json_error(array('message' => $result->get_error_message()));
         } else {
             wp_send_json_success(array('message' => esc_html__('Connection successful!', 'bunny-media-offload')));
+        }
+    }
+    
+    /**
+     * AJAX: Test BMO connection
+     */
+    public function ajax_test_bmo_connection() {
+        check_ajax_referer('bunny_ajax_nonce', 'nonce');
+        
+        if (!current_user_can('manage_options')) {
+            wp_die(esc_html__('Insufficient permissions.', 'bunny-media-offload'));
+        }
+        
+        // Get BMO API instance
+        $bmo = Bunny_Media_Offload::get_instance();
+        $logger = $bmo->logger;
+        $settings = $bmo->settings;
+        
+        // Create BMO API instance
+        $bmo_api = new Bunny_BMO_API($settings, $logger);
+        
+        $result = $bmo_api->test_connection();
+        
+        if ($result['success']) {
+            wp_send_json_success(array(
+                'message' => $result['message'],
+                'data' => isset($result['data']) ? $result['data'] : null
+            ));
+        } else {
+            wp_send_json_error(array('message' => $result['message']));
         }
     }
     
