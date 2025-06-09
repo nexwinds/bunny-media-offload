@@ -622,21 +622,7 @@ class Bunny_Admin {
                 </div>
             </div>
             
-            <div class="bunny-migration-status">
-                <h3><?php esc_html_e('Migration Status', 'bunny-media-offload'); ?></h3>
-                <p><?php 
-                    // translators: %1$d is the number of migrated files, %2$d is the total number of files, %3$s is the migration percentage
-                    printf(esc_html__('%1$d of %2$d files migrated (%3$s%%)', 'bunny-media-offload'), 
-                        esc_html($migration_stats['migrated_files']), 
-                        esc_html($migration_stats['total_attachments']),
-                        esc_html($migration_stats['migration_percentage'])
-                    ); 
-                ?></p>
-                <div class="bunny-progress-bar">
-                    <div class="bunny-progress-fill" style="width: <?php echo esc_attr($migration_stats['migration_percentage']); ?>%"></div>
-                </div>
-            </div>
-            
+
             <div class="bunny-migration-statistics">
                 <h3><?php esc_html_e('Migration Statistics', 'bunny-media-offload'); ?></h3>
                 <div class="bunny-stats-grid">
@@ -973,125 +959,220 @@ class Bunny_Admin {
         $log_type = isset($_GET['log_type']) ? sanitize_text_field(wp_unslash($_GET['log_type'])) : 'all';
         // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- GET parameters for admin filtering, nonce not required for read-only operations
         $log_level = isset($_GET['log_level']) ? sanitize_text_field(wp_unslash($_GET['log_level'])) : '';
-        $limit = 100;
+        // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- GET parameters for admin pagination, nonce not required for read-only operations
+        $paged = isset($_GET['paged']) ? absint($_GET['paged']) : 1;
         
-        // Get logs based on filters
-        $logs = $this->get_filtered_logs($log_type, $log_level, $limit);
+        $per_page = 25; // Show 25 logs per page
+        $offset = ($paged - 1) * $per_page;
+        
+        // Get logs based on filters and pagination
+        $logs = $this->get_filtered_logs($log_type, $log_level, $per_page, $offset);
+        $total_logs = $this->get_filtered_logs_count($log_type, $log_level);
         $optimization_stats = $this->get_optimization_log_stats();
         
         // Get simplified error counts for offload logs
         $offload_stats = $this->get_simple_log_stats('offload');
         
+        // Calculate pagination
+        $total_pages = ceil($total_logs / $per_page);
+        
         ?>
         <div class="wrap">
-            <div class="bunny-page-header">
-                <h1><?php esc_html_e('Activity Logs', 'bunny-media-offload'); ?></h1>
-                <p class="bunny-page-description"><?php esc_html_e('Monitor plugin activity and troubleshoot issues with detailed logging.', 'bunny-media-offload'); ?></p>
+            <h1 class="wp-heading-inline"><?php esc_html_e('Activity Logs', 'bunny-media-offload'); ?></h1>
+            
+            <div class="wp-header-end"></div>
+            
+            <!-- Log Statistics Summary -->
+            <div class="tablenav top">
+                <div class="alignleft actions">
+                    <span class="displaying-num">
+                        <?php if ($log_type === 'all' || $log_type === 'offload'): ?>
+                            <strong><?php esc_html_e('Media Offload:', 'bunny-media-offload'); ?></strong>
+                            <span class="bunny-count-error"><?php printf(esc_html__('%d errors', 'bunny-media-offload'), esc_html($offload_stats['error'])); ?></span>, 
+                            <span class="bunny-count-warning"><?php printf(esc_html__('%d warnings', 'bunny-media-offload'), esc_html($offload_stats['warning'])); ?></span>, 
+                            <span class="bunny-count-info"><?php printf(esc_html__('%d info', 'bunny-media-offload'), esc_html($offload_stats['info'])); ?></span>
+                            <?php if ($log_type === 'all'): ?> | <?php endif; ?>
+                        <?php endif; ?>
+                        
+                        <?php if ($log_type === 'all' || $log_type === 'optimization'): ?>
+                            <strong><?php esc_html_e('Image Optimization:', 'bunny-media-offload'); ?></strong>
+                            <span class="bunny-count-error"><?php printf(esc_html__('%d errors', 'bunny-media-offload'), esc_html($optimization_stats['error'])); ?></span>, 
+                            <span class="bunny-count-warning"><?php printf(esc_html__('%d warnings', 'bunny-media-offload'), esc_html($optimization_stats['warning'])); ?></span>, 
+                            <span class="bunny-count-info"><?php printf(esc_html__('%d info', 'bunny-media-offload'), esc_html($optimization_stats['info'])); ?></span>
+                        <?php endif; ?>
+                    </span>
+                </div>
+                
+                <div class="alignright actions">
+                    <button type="button" class="button" id="export-logs" data-log-type="<?php echo esc_attr($log_type); ?>" data-log-level="<?php echo esc_attr($log_level); ?>">
+                        <?php esc_html_e('Export Filtered Logs', 'bunny-media-offload'); ?>
+                    </button>
+                    <button type="button" class="button" id="clear-logs" data-log-type="<?php echo esc_attr($log_type); ?>">
+                        <?php esc_html_e('Clear Filtered Logs', 'bunny-media-offload'); ?>
+                    </button>
+                </div>
             </div>
             
-            <!-- Log Filters -->
-            <div class="bunny-logs-filters">
-                <form method="get" action="">
-                    <input type="hidden" name="page" value="bunny-media-logs" />
-                    
-                    <div class="bunny-filter-group">
-                        <label for="log_type"><?php esc_html_e('Log Type:', 'bunny-media-offload'); ?></label>
+            <!-- Filters -->
+            <div class="tablenav top">
+                <div class="alignleft actions">
+                    <form method="get" action="" style="display: inline-flex; align-items: center; gap: 8px;">
+                        <input type="hidden" name="page" value="bunny-media-logs" />
+                        
                         <select name="log_type" id="log_type">
-                            <option value="all" <?php selected($log_type, 'all'); ?>><?php esc_html_e('All Logs', 'bunny-media-offload'); ?></option>
+                            <option value="all" <?php selected($log_type, 'all'); ?>><?php esc_html_e('All log types', 'bunny-media-offload'); ?></option>
                             <option value="offload" <?php selected($log_type, 'offload'); ?>><?php esc_html_e('Media Offload', 'bunny-media-offload'); ?></option>
                             <option value="optimization" <?php selected($log_type, 'optimization'); ?>><?php esc_html_e('Image Optimization', 'bunny-media-offload'); ?></option>
                         </select>
-                    </div>
-                    
-                    <div class="bunny-filter-group">
-                        <label for="log_level"><?php esc_html_e('Log Level:', 'bunny-media-offload'); ?></label>
+                        
                         <select name="log_level" id="log_level">
-                            <option value="" <?php selected($log_level, ''); ?>><?php esc_html_e('All Levels', 'bunny-media-offload'); ?></option>
+                            <option value="" <?php selected($log_level, ''); ?>><?php esc_html_e('All log levels', 'bunny-media-offload'); ?></option>
                             <option value="info" <?php selected($log_level, 'info'); ?>><?php esc_html_e('Info', 'bunny-media-offload'); ?></option>
                             <option value="warning" <?php selected($log_level, 'warning'); ?>><?php esc_html_e('Warning', 'bunny-media-offload'); ?></option>
                             <option value="error" <?php selected($log_level, 'error'); ?>><?php esc_html_e('Error', 'bunny-media-offload'); ?></option>
                         </select>
-                    </div>
-                    
-                    <div class="bunny-filter-group">
-                        <button type="submit" class="button button-primary"><?php esc_html_e('Filter', 'bunny-media-offload'); ?></button>
-                        <a href="<?php echo esc_url(admin_url('admin.php?page=bunny-media-logs')); ?>" class="button"><?php esc_html_e('Reset', 'bunny-media-offload'); ?></a>
-                    </div>
-                </form>
-            </div>
-            
-            <div class="bunny-logs-header">
-                <div class="bunny-log-stats">
-                    <?php if ($log_type === 'all' || $log_type === 'offload'): ?>
-                        <div class="bunny-log-stat-group">
-                            <h4><?php esc_html_e('Media Offload', 'bunny-media-offload'); ?></h4>
-                            <span class="bunny-log-stat bunny-log-error"><?php esc_html_e('Errors:', 'bunny-media-offload'); ?> <?php echo esc_html($offload_stats['error']); ?></span>
-                            <span class="bunny-log-stat bunny-log-warning"><?php esc_html_e('Warnings:', 'bunny-media-offload'); ?> <?php echo esc_html($offload_stats['warning']); ?></span>
-                            <span class="bunny-log-stat bunny-log-info"><?php esc_html_e('Info:', 'bunny-media-offload'); ?> <?php echo esc_html($offload_stats['info']); ?></span>
-                        </div>
-                    <?php endif; ?>
-                    
-                    <?php if ($log_type === 'all' || $log_type === 'optimization'): ?>
-                        <div class="bunny-log-stat-group">
-                            <h4><?php esc_html_e('Image Optimization', 'bunny-media-offload'); ?></h4>
-                            <span class="bunny-log-stat bunny-log-error"><?php esc_html_e('Errors:', 'bunny-media-offload'); ?> <?php echo esc_html($optimization_stats['error']); ?></span>
-                            <span class="bunny-log-stat bunny-log-warning"><?php esc_html_e('Warnings:', 'bunny-media-offload'); ?> <?php echo esc_html($optimization_stats['warning']); ?></span>
-                            <span class="bunny-log-stat bunny-log-info"><?php esc_html_e('Info:', 'bunny-media-offload'); ?> <?php echo esc_html($optimization_stats['info']); ?></span>
-                        </div>
-                    <?php endif; ?>
+                        
+                        <?php submit_button(__('Filter', 'bunny-media-offload'), 'button', 'filter_action', false, array('id' => 'post-query-submit')); ?>
+                        
+                        <?php if ($log_type !== 'all' || !empty($log_level)): ?>
+                            <a href="<?php echo esc_url(admin_url('admin.php?page=bunny-media-logs')); ?>" class="button">
+                                <?php esc_html_e('Reset', 'bunny-media-offload'); ?>
+                            </a>
+                        <?php endif; ?>
+                    </form>
                 </div>
                 
-                <div class="bunny-log-actions">
-                    <button type="button" class="button" id="export-logs" data-log-type="<?php echo esc_attr($log_type); ?>" data-log-level="<?php echo esc_attr($log_level); ?>"><?php esc_html_e('Export Filtered Logs', 'bunny-media-offload'); ?></button>
-                    <button type="button" class="button" id="clear-logs" data-log-type="<?php echo esc_attr($log_type); ?>"><?php esc_html_e('Clear Filtered Logs', 'bunny-media-offload'); ?></button>
+                <div class="tablenav-pages">
+                    <span class="displaying-num">
+                        <?php 
+                        if ($total_logs > 0) {
+                            $start = $offset + 1;
+                            $end = min($offset + $per_page, $total_logs);
+                            printf(
+                                // translators: 1: start item number, 2: end item number, 3: total items
+                                esc_html__('%1$s–%2$s of %3$s items', 'bunny-media-offload'),
+                                esc_html(number_format_i18n($start)),
+                                esc_html(number_format_i18n($end)),
+                                esc_html(number_format_i18n($total_logs))
+                            );
+                        } else {
+                            esc_html_e('0 items', 'bunny-media-offload');
+                        }
+                        ?>
+                    </span>
+                    
+                    <?php if ($total_pages > 1): ?>
+                        <span class="pagination-links">
+                            <?php
+                            $paginate_links = paginate_links(array(
+                                'base' => add_query_arg('paged', '%#%'),
+                                'format' => '',
+                                'prev_text' => '‹',
+                                'next_text' => '›',
+                                'total' => $total_pages,
+                                'current' => $paged,
+                                'type' => 'plain'
+                            ));
+                            echo $paginate_links; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- paginate_links is safe
+                            ?>
+                        </span>
+                    <?php endif; ?>
                 </div>
             </div>
             
-            <div class="bunny-logs-table">
-                <table class="wp-list-table widefat fixed striped">
-                    <thead>
-                        <tr>
-                            <th><?php esc_html_e('Time', 'bunny-media-offload'); ?></th>
-                            <th><?php esc_html_e('Type', 'bunny-media-offload'); ?></th>
-                            <th><?php esc_html_e('Level', 'bunny-media-offload'); ?></th>
-                            <th><?php esc_html_e('Message', 'bunny-media-offload'); ?></th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php if (!empty($logs)): ?>
-                            <?php foreach ($logs as $log): ?>
-                                <?php 
-                                $log_category = $this->determine_log_category($log->message);
-                                ?>
-                                <tr class="bunny-log-<?php echo esc_attr($log->log_level); ?> bunny-log-type-<?php echo esc_attr($log_category); ?>">
-                                    <td><?php echo esc_html(Bunny_Utils::format_date($log->date_created)); ?></td>
-                                    <td>
-                                        <span class="bunny-log-type bunny-log-type-<?php echo esc_attr($log_category); ?>">
-                                            <?php echo esc_html($this->get_log_type_label($log_category)); ?>
-                                        </span>
-                                    </td>
-                                    <td><span class="bunny-log-level bunny-log-level-<?php echo esc_attr($log->log_level); ?>"><?php echo esc_html(ucfirst($log->log_level)); ?></span></td>
-                                    <td><?php echo esc_html($log->message); ?></td>
-                                </tr>
-                            <?php endforeach; ?>
-                        <?php else: ?>
-                            <tr>
-                                <td colspan="4" class="bunny-empty-state">
-                                    <div class="bunny-empty-icon">📄</div>
-                                    <p><?php esc_html_e('No logs found matching the selected filters.', 'bunny-media-offload'); ?></p>
-                                    <small><?php esc_html_e('Try adjusting your filter criteria or check back later.', 'bunny-media-offload'); ?></small>
+            <table class="wp-list-table widefat fixed striped logs">
+                <thead>
+                    <tr>
+                        <th scope="col" id="date" class="manage-column column-date"><?php esc_html_e('Date', 'bunny-media-offload'); ?></th>
+                        <th scope="col" id="type" class="manage-column column-type"><?php esc_html_e('Type', 'bunny-media-offload'); ?></th>
+                        <th scope="col" id="level" class="manage-column column-level"><?php esc_html_e('Level', 'bunny-media-offload'); ?></th>
+                        <th scope="col" id="message" class="manage-column column-message column-primary"><?php esc_html_e('Message', 'bunny-media-offload'); ?></th>
+                    </tr>
+                </thead>
+                
+                <tbody id="the-list">
+                    <?php if (!empty($logs)): ?>
+                        <?php foreach ($logs as $log): ?>
+                            <?php 
+                            $log_category = $this->determine_log_category($log->message);
+                            ?>
+                            <tr class="bunny-log-entry bunny-log-<?php echo esc_attr($log->log_level); ?> bunny-log-type-<?php echo esc_attr($log_category); ?>">
+                                <td class="date column-date">
+                                    <span title="<?php echo esc_attr(Bunny_Utils::format_date($log->date_created)); ?>">
+                                        <?php echo esc_html(Bunny_Utils::time_ago($log->date_created)); ?>
+                                    </span>
+                                </td>
+                                <td class="type column-type">
+                                    <span class="bunny-log-type bunny-log-type-<?php echo esc_attr($log_category); ?>">
+                                        <?php echo esc_html($this->get_log_type_label($log_category)); ?>
+                                    </span>
+                                </td>
+                                <td class="level column-level">
+                                    <span class="bunny-log-level bunny-log-level-<?php echo esc_attr($log->log_level); ?>">
+                                        <?php echo esc_html(ucfirst($log->log_level)); ?>
+                                    </span>
+                                </td>
+                                <td class="message column-message column-primary">
+                                    <?php echo esc_html($log->message); ?>
                                 </td>
                             </tr>
-                        <?php endif; ?>
-                    </tbody>
-                </table>
-            </div>
+                        <?php endforeach; ?>
+                    <?php else: ?>
+                        <tr class="no-items">
+                            <td class="colspanchange" colspan="4">
+                                <div style="text-align: center; padding: 40px 20px;">
+                                    <div style="font-size: 48px; color: #ddd; margin-bottom: 16px;">📄</div>
+                                    <p style="font-size: 16px; color: #666; margin-bottom: 8px;">
+                                        <?php esc_html_e('No logs found matching the selected filters.', 'bunny-media-offload'); ?>
+                                    </p>
+                                    <p style="font-size: 14px; color: #999; margin: 0;">
+                                        <?php esc_html_e('Try adjusting your filter criteria or check back later.', 'bunny-media-offload'); ?>
+                                    </p>
+                                </div>
+                            </td>
+                        </tr>
+                    <?php endif; ?>
+                </tbody>
+            </table>
             
-            <?php if (count($logs) >= $limit): ?>
-                <div class="bunny-logs-pagination">
-                    <p><?php esc_html_e('Showing the most recent 100 entries. Use filters to narrow down results or export for complete logs.', 'bunny-media-offload'); ?></p>
+            <div class="tablenav bottom">
+                <div class="tablenav-pages">
+                    <span class="displaying-num">
+                        <?php 
+                        if ($total_logs > 0) {
+                            $start = $offset + 1;
+                            $end = min($offset + $per_page, $total_logs);
+                            printf(
+                                // translators: 1: start item number, 2: end item number, 3: total items
+                                esc_html__('%1$s–%2$s of %3$s items', 'bunny-media-offload'),
+                                esc_html(number_format_i18n($start)),
+                                esc_html(number_format_i18n($end)),
+                                esc_html(number_format_i18n($total_logs))
+                            );
+                        } else {
+                            esc_html_e('0 items', 'bunny-media-offload');
+                        }
+                        ?>
+                    </span>
+                    
+                    <?php if ($total_pages > 1): ?>
+                        <span class="pagination-links">
+                            <?php
+                            $paginate_links = paginate_links(array(
+                                'base' => add_query_arg('paged', '%#%'),
+                                'format' => '',
+                                'prev_text' => '‹',
+                                'next_text' => '›',
+                                'total' => $total_pages,
+                                'current' => $paged,
+                                'type' => 'plain'
+                            ));
+                            echo $paginate_links; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- paginate_links is safe
+                            ?>
+                        </span>
+                    <?php endif; ?>
                 </div>
-            <?php endif; ?>
+            </div>
         </div>
         <?php
     }
@@ -1400,25 +1481,53 @@ class Bunny_Admin {
     }
     
     /**
-     * Get filtered logs based on type and level
+     * Get filtered logs based on type and level with pagination support
      */
-    private function get_filtered_logs($log_type, $log_level, $limit) {
-        $logs = $this->logger->get_logs($limit, 0, $log_level);
-        
+    private function get_filtered_logs($log_type, $log_level, $limit, $offset = 0) {
         if ($log_type === 'all') {
-            return $logs;
+            return $this->logger->get_logs($limit, $offset, $log_level);
         }
+        
+        // For filtered logs, we need to get a larger set and then filter
+        // This is not the most efficient but works for reasonable log volumes
+        $large_limit = 10000; // Get a large set to filter from
+        $all_logs = $this->logger->get_logs($large_limit, 0, $log_level);
         
         // Filter logs by type based on message content
         $filtered_logs = array();
-        foreach ($logs as $log) {
+        foreach ($all_logs as $log) {
             $category = $this->determine_log_category($log->message);
             if ($log_type === $category) {
                 $filtered_logs[] = $log;
             }
         }
         
-        return $filtered_logs;
+        // Apply pagination to filtered results
+        return array_slice($filtered_logs, $offset, $limit);
+    }
+    
+    /**
+     * Get count of filtered logs
+     */
+    private function get_filtered_logs_count($log_type, $log_level) {
+        if ($log_type === 'all') {
+            return $this->logger->count_logs($log_level);
+        }
+        
+        // For filtered logs, we need to count from a large set
+        $large_limit = 10000; // Get a large set to filter from
+        $all_logs = $this->logger->get_logs($large_limit, 0, $log_level);
+        
+        // Count logs by type based on message content
+        $count = 0;
+        foreach ($all_logs as $log) {
+            $category = $this->determine_log_category($log->message);
+            if ($log_type === $category) {
+                $count++;
+            }
+        }
+        
+        return $count;
     }
     
     /**

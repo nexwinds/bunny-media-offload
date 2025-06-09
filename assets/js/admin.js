@@ -95,14 +95,13 @@
          * Initialize logs functionality
          */
         initLogs: function() {
-            // Auto-refresh logs every 30 seconds
-            if ($('.bunny-logs-table').length > 0) {
-                setInterval(function() {
-                    location.reload();
-                }, 30000);
+            // Check if we're on the logs page
+            var isLogsPage = window.location.href.indexOf('page=bunny-media-logs') !== -1;
+            
+            if (!isLogsPage) {
+                return;
             }
             
-            // Enhanced debugging for logs buttons
             console.log('=== LOGS INITIALIZATION DEBUG ===');
             console.log('Logs page detected, checking buttons...');
             console.log('Export button found:', $('#export-logs').length > 0);
@@ -114,6 +113,7 @@
                 console.log('bunnyAjax.nonce:', bunnyAjax.nonce);
             } else {
                 console.error('bunnyAjax object is not available!');
+                return;
             }
             
             // Test if buttons exist and have data attributes
@@ -133,21 +133,16 @@
             $exportBtn.off('click.bunny').on('click.bunny', function(e) {
                 console.log('=== EXPORT BUTTON CLICKED ===');
                 console.log('Event object:', e);
+                e.preventDefault();
                 BunnyAdmin.exportLogs(e);
             });
             
             $clearBtn.off('click.bunny').on('click.bunny', function(e) {
                 console.log('=== CLEAR BUTTON CLICKED ===');
                 console.log('Event object:', e);
+                e.preventDefault();
                 BunnyAdmin.clearLogs(e);
             });
-            
-            // Test click events after a short delay
-            setTimeout(function() {
-                console.log('Testing button click events...');
-                console.log('Export button click events:', $._data($exportBtn[0], 'events'));
-                console.log('Clear button click events:', $._data($clearBtn[0], 'events'));
-            }, 1000);
             
             console.log('=== END LOGS INITIALIZATION ===');
         },

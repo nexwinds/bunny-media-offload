@@ -106,7 +106,7 @@ class Bunny_Media_Offload {
      * Enqueue admin scripts and styles
      */
     public function enqueue_admin_scripts($hook) {
-        if (strpos($hook, 'bunny-media-offload') !== false) {
+        if (strpos($hook, 'bunny-media-offload') !== false || strpos($hook, 'bunny-media-logs') !== false) {
             wp_enqueue_script(
                 'bunny-media-offload-admin',
                 BMO_PLUGIN_URL . 'assets/js/admin.js',

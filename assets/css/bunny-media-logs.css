@@ -1,147 +1,90 @@
-/* Bunny Media Logs Page Styles */
+/* Bunny Media Logs Page Styles - WordPress Upload.php Style */
 
-/* Log Filters */
-.bunny-logs-filters {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    margin-bottom: 24px;
-    padding: 20px;
-    background: #fff;
-    border: 1px solid #ddd;
-    border-radius: 8px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-}
-
-.bunny-logs-filters form {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    flex-wrap: wrap;
-    width: 100%;
-}
-
-.bunny-filter-group {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.bunny-filter-group label {
-    font-weight: 600;
-    color: #2c3e50;
-    white-space: nowrap;
-}
-
-.bunny-filter-group select {
-    padding: 6px 12px;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    background: #fff;
-    color: #333;
-    font-size: 14px;
-    min-width: 120px;
-}
-
-.bunny-filter-group select:focus {
-    outline: none;
-    border-color: #0073aa;
-    box-shadow: 0 0 3px rgba(0, 115, 170, 0.3);
-}
-
-.bunny-filter-submit {
-    padding: 8px 16px !important;
-    background: #0073aa !important;
-    color: #fff !important;
-    border: none !important;
-    border-radius: 4px !important;
-    cursor: pointer !important;
-    font-weight: 600 !important;
-    transition: background-color 0.2s ease !important;
-}
-
-.bunny-filter-submit:hover {
-    background: #005a87 !important;
-}
-
-/* Log Header */
-.bunny-logs-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 24px;
-    padding: 20px;
-    background: #fff;
-    border: 1px solid #ddd;
-    border-radius: 8px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-}
-
-.bunny-log-stats {
-    display: flex;
-    gap: 32px;
-    flex-wrap: wrap;
-}
-
-.bunny-log-stat-group {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
-.bunny-log-stat-group h4 {
-    margin: 0;
-    font-size: 14px;
-    font-weight: 600;
-    color: #2c3e50;
-}
-
-.bunny-log-stat {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 13px;
-    font-weight: 600;
-    padding: 4px 8px;
-    border-radius: 4px;
-    background: #f8f9fa;
-    margin-right: 8px;
-}
-
-.bunny-log-stat.bunny-log-error {
+/* WordPress-style statistics counts */
+.bunny-count-error {
     color: #d63638;
-    background: #ffeaea;
-}
-
-.bunny-log-stat.bunny-log-warning {
-    color: #b8860b;
-    background: #fff8dc;
-}
-
-.bunny-log-stat.bunny-log-info {
-    color: #0073aa;
-    background: #e8f4f8;
-}
-
-.bunny-log-actions {
-    display: flex;
-    gap: 12px;
-    align-items: center;
-}
-
-.bunny-log-actions .button {
-    padding: 8px 16px;
     font-weight: 600;
-    border-radius: 4px;
-    text-decoration: none;
-    cursor: pointer;
-    transition: all 0.2s ease;
 }
 
+.bunny-count-warning {
+    color: #dba617;
+    font-weight: 600;
+}
+
+.bunny-count-info {
+    color: #0073aa;
+    font-weight: 600;
+}
+
+/* Table styling improvements */
+.wp-list-table.logs {
+    margin-top: 0;
+}
+
+.wp-list-table.logs .column-date {
+    width: 15%;
+}
+
+.wp-list-table.logs .column-type {
+    width: 15%;
+}
+
+.wp-list-table.logs .column-level {
+    width: 10%;
+}
+
+.wp-list-table.logs .column-message {
+    width: 60%;
+}
+
+/* Pagination styling */
+.tablenav .pagination-links {
+    font-size: 12px;
+}
+
+.tablenav .pagination-links a,
+.tablenav .pagination-links span {
+    display: inline-block;
+    min-width: 17px;
+    border: 1px solid #ddd;
+    padding: 3px 5px;
+    margin: 1px;
+    border-radius: 3px;
+    text-align: center;
+    text-decoration: none;
+    font-size: 12px;
+    line-height: 18px;
+}
+
+.tablenav .pagination-links a:hover,
+.tablenav .pagination-links a:focus {
+    border-color: #2271b1;
+    color: #2271b1;
+}
+
+.tablenav .pagination-links .current {
+    background: #2271b1;
+    border-color: #2271b1;
+    color: #fff;
+}
+
+.tablenav .pagination-links .prev-page,
+.tablenav .pagination-links .next-page {
+    font-size: 16px;
+    line-height: 1;
+}
+
+.tablenav .pagination-links .disabled {
+    color: #a7aaad;
+    border-color: #ddd;
+    background: #f6f7f7;
+}
+
+/* Button styling for export/clear actions */
 #export-logs {
     background: #00a32a;
     color: #fff;
-    border: 1px solid #00a32a;
+    border-color: #00a32a;
 }
 
 #export-logs:hover {
@@ -152,58 +95,13 @@
 #clear-logs {
     background: #d63638;
     color: #fff;
-    border: 1px solid #d63638;
+    border-color: #d63638;
+    margin-left: 8px;
 }
 
 #clear-logs:hover {
     background: #b32d2e;
     border-color: #b32d2e;
-}
-
-/* Log Table */
-.bunny-logs-table {
-    background: #fff;
-    border: 1px solid #ddd;
-    border-radius: 8px;
-    overflow: hidden;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-    margin-bottom: 24px;
-}
-
-.bunny-logs-table table {
-    width: 100%;
-    border-collapse: collapse;
-    margin: 0;
-}
-
-.bunny-logs-table th {
-    background: #f8f9fa;
-    padding: 16px;
-    text-align: left;
-    font-weight: 600;
-    color: #2c3e50;
-    border-bottom: 2px solid #e9ecef;
-    font-size: 14px;
-}
-
-.bunny-logs-table td {
-    padding: 16px;
-    border-bottom: 1px solid #e9ecef;
-    vertical-align: top;
-    color: #495057;
-    font-size: 14px;
-}
-
-.bunny-logs-table tr:last-child td {
-    border-bottom: none;
-}
-
-.bunny-logs-table tr {
-    transition: background-color 0.2s ease;
-}
-
-.bunny-logs-table tr:hover {
-    background: #f8f9fa;
 }
 
 /* Log Level Styling */
@@ -262,20 +160,20 @@
 }
 
 /* Log Row Coloring */
-.bunny-log-error {
-    border-left: 4px solid #d63638;
+.bunny-log-entry.bunny-log-error {
+    border-left: 3px solid #d63638;
 }
 
-.bunny-log-warning {
-    border-left: 4px solid #dba617;
+.bunny-log-entry.bunny-log-warning {
+    border-left: 3px solid #dba617;
 }
 
-.bunny-log-info {
-    border-left: 4px solid #0073aa;
+.bunny-log-entry.bunny-log-info {
+    border-left: 3px solid #0073aa;
 }
 
-.bunny-log-debug {
-    border-left: 4px solid #646970;
+.bunny-log-entry.bunny-log-debug {
+    border-left: 3px solid #646970;
 }
 
 /* Empty State */
@@ -379,45 +277,40 @@
 
 /* Responsive Design */
 @media (max-width: 768px) {
-    .bunny-logs-filters {
-        flex-direction: column;
-        align-items: stretch;
-        gap: 12px;
+    .tablenav .alignleft,
+    .tablenav .alignright {
+        float: none;
+        text-align: left;
+        margin-bottom: 10px;
     }
     
-    .bunny-logs-filters form {
-        flex-direction: column;
-        gap: 12px;
+    .tablenav .alignleft form {
+        flex-wrap: wrap;
+        gap: 8px;
     }
     
-    .bunny-filter-group {
-        flex-direction: column;
-        align-items: stretch;
-        gap: 4px;
+    .wp-list-table.logs .column-date,
+    .wp-list-table.logs .column-type,
+    .wp-list-table.logs .column-level {
+        display: none;
     }
     
-    .bunny-logs-header {
-        flex-direction: column;
-        gap: 16px;
-        align-items: stretch;
+    .wp-list-table.logs .column-message {
+        width: 100%;
     }
     
-    .bunny-log-stats {
-        gap: 16px;
+    .bunny-log-entry {
+        position: relative;
     }
     
-    .bunny-log-actions {
-        flex-direction: column;
-        align-items: stretch;
-    }
-    
-    .bunny-logs-table {
-        overflow-x: auto;
-    }
-    
-    .bunny-logs-table th,
-    .bunny-logs-table td {
-        padding: 12px 8px;
-        font-size: 13px;
+    /* Show log metadata for mobile in the message column */
+    .bunny-log-entry .column-message::before {
+        content: attr(data-log-time) " • " attr(data-log-type) " • " attr(data-log-level);
+        display: block;
+        font-size: 12px;
+        color: #666;
+        margin-bottom: 8px;
+        padding-bottom: 4px;
+        border-bottom: 1px solid #eee;
     }
 } 
