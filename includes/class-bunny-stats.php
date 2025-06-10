@@ -31,10 +31,12 @@ class Bunny_Stats {
             return $cached_stats;
         }
         
-        // Use optimization stats as base, but apply migration-compatible filtering
+        // Use optimization stats as base - this ensures we're using the same criteria
+        // for both "Not Optimized" statistic and "Local Images Eligible"
         $optimization_stats = $this->optimizer ? $this->optimizer->get_detailed_optimization_stats() : array();
         
         // Get images needing optimization (legacy formats) from optimization stats
+        // This is the "Not Optimized" count and uses the same validation logic
         $local_eligible = $optimization_stats['local']['total_eligible'] ?? 0;
         
         // For "Ready for Migration", use migration logic to get accurate count
@@ -60,7 +62,7 @@ class Bunny_Stats {
         
         $stats = array(
             'total_images' => $total_images,
-            'local_eligible' => $local_eligible,
+            'local_eligible' => $local_eligible, // Same as "Not Optimized" - reuses BMO processor criteria
             'already_optimized' => $ready_for_migration, // Now uses migration-compatible count
             'images_migrated' => $images_migrated,
             'not_optimized_percent' => $not_optimized_percent,

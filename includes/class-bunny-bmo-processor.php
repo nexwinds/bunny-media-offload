@@ -43,8 +43,15 @@ class Bunny_BMO_Processor {
     
     /**
      * Process a batch of images via BMO API
+     * Implements BMO API batch processing pattern: max 20 images per request
      */
     public function process_batch($images) {
+        $this->logger->log('info', 'BMO processor - process_batch called', array(
+            'initial_images_count' => count($images),
+            'initial_images' => $images,
+            'images_data_type' => gettype($images)
+        ));
+        
         if (!$this->is_available()) {
             return $this->create_batch_error_result($images, 'BMO API not available');
         }
@@ -53,19 +60,36 @@ class Bunny_BMO_Processor {
             return $this->create_empty_batch_result();
         }
         
+        // Ensure we don't exceed BMO API batch limit of 20 images
+        if (count($images) > 20) {
+            $images = array_slice($images, 0, 20);
+            $this->logger->log('warning', 'Batch size exceeded 20 images, truncating to BMO API limit', array(
+                'original_count' => count($images),
+                'truncated_count' => 20
+            ));
+        }
+        
         $this->logger->log('info', 'Processing BMO API batch', array(
             'image_count' => count($images),
-            'image_ids' => $images
+            'image_ids' => $images,
+            'api_batch_size' => 20
         ));
         
         try {
             // Prepare images for BMO API
             $bmo_images = array();
             $image_mapping = array();
+            $validation_results = array();
             
             foreach ($images as $index => $attachment_id) {
-                // Validate attachment ID
+                $this->logger->log('debug', "Preparing image {$index} for BMO API", array(
+                    'attachment_id' => $attachment_id,
+                    'index' => $index
+                ));
+                
+                // Validate attachment ID format (basic safety check)
                 if (!is_numeric($attachment_id) || $attachment_id <= 0) {
+                    $validation_results[] = "Invalid attachment ID: {$attachment_id}";
                     $this->logger->log('warning', "Invalid attachment ID: {$attachment_id}", array(
                         'batch_index' => $index,
                         'attachment_id' => $attachment_id
@@ -73,43 +97,17 @@ class Bunny_BMO_Processor {
                     continue;
                 }
                 
-                // Check if attachment exists
+                // Quick existence check (trust session manager's pre-filtering for detailed validation)
                 $post = get_post($attachment_id);
-                if (!$post || $post->post_type !== 'attachment') {
-                    $this->logger->log('warning', "Attachment {$attachment_id} does not exist or is not an attachment", array(
-                        'batch_index' => $index,
-                        'post_exists' => !is_null($post),
-                        'post_type' => $post ? $post->post_type : 'null'
+                if (!$post) {
+                    $validation_results[] = "Attachment {$attachment_id} no longer exists";
+                    $this->logger->log('warning', "Attachment {$attachment_id} no longer exists", array(
+                        'attachment_id' => $attachment_id
                     ));
                     continue;
                 }
                 
-                // Check if it's an image
-                if (!wp_attachment_is_image($attachment_id)) {
-                    $this->logger->log('warning', "Attachment {$attachment_id} is not an image", array(
-                        'batch_index' => $index,
-                        'post_mime_type' => $post->post_mime_type,
-                        'post_title' => $post->post_title
-                    ));
-                    continue;
-                }
-                
-                // Check file size - BMO API requires minimum 35KB
-                $file_path = get_attached_file($attachment_id);
-                if ($file_path && file_exists($file_path)) {
-                    $file_size = filesize($file_path);
-                    if ($file_size < 35840) { // 35KB = 35 * 1024 bytes
-                        $this->logger->log('info', "Skipping attachment {$attachment_id} - file size below 35KB minimum", array(
-                            'attachment_id' => $attachment_id,
-                            'file_size_bytes' => $file_size,
-                            'file_size_kb' => round($file_size / 1024, 1),
-                            'post_title' => $post->post_title,
-                            'reason' => 'Below BMO API minimum size requirement (35KB)'
-                        ));
-                        continue;
-                    }
-                }
-                
+                // Get image URL and prepare for BMO API (this is the main validation step)
                 $image_url = $this->get_image_url($attachment_id);
                 if ($image_url) {
                     try {
@@ -117,36 +115,60 @@ class Bunny_BMO_Processor {
                         if ($image_data) {
                             $bmo_images[] = $image_data;
                             $image_mapping[] = $attachment_id;
-                            $this->logger->log('debug', "Successfully prepared image for API", array(
+                            $validation_results[] = "Attachment {$attachment_id} - prepared for BMO API";
+                            $this->logger->log('debug', "Successfully prepared image for BMO API", array(
                                 'attachment_id' => $attachment_id,
                                 'image_url' => $image_url,
                                 'post_title' => $post->post_title
                             ));
                         } else {
-                            $this->logger->log('warning', "Image data preparation returned empty for attachment {$attachment_id}", array(
+                            $validation_results[] = "Attachment {$attachment_id} - BMO API data preparation failed";
+                            $this->logger->log('warning', "BMO API data preparation failed for attachment {$attachment_id}", array(
                                 'image_url' => $image_url,
                                 'post_title' => $post->post_title
                             ));
                         }
                     } catch (Exception $e) {
-                        $this->logger->log('warning', "Failed to prepare image data for attachment {$attachment_id}: " . $e->getMessage(), array(
+                        $validation_results[] = "Attachment {$attachment_id} - BMO API preparation error: " . $e->getMessage();
+                        $this->logger->log('warning', "BMO API preparation error for attachment {$attachment_id}: " . $e->getMessage(), array(
                             'image_url' => $image_url,
                             'post_title' => $post->post_title,
                             'exception_trace' => $e->getTraceAsString()
                         ));
                     }
                 } else {
-                    // Log which attachments are missing URLs
-                    $file_path = get_attached_file($attachment_id);
-                    $this->logger->log('warning', "No URL found for attachment {$attachment_id}", array(
-                        'batch_index' => $index,
-                        'post_title' => $post->post_title ?: 'Unknown',
-                        'post_mime_type' => $post->post_mime_type ?: 'Unknown',
-                        'file_path' => $file_path,
-                        'file_exists' => $file_path ? file_exists($file_path) : false,
-                        'upload_dir_info' => wp_upload_dir()
+                    $validation_results[] = "Attachment {$attachment_id} - URL not accessible (may be on CDN)";
+                    $this->logger->log('info', "No accessible URL for attachment {$attachment_id} (likely on CDN)", array(
+                        'attachment_id' => $attachment_id,
+                        'post_title' => $post->post_title ?: 'Unknown'
                     ));
                 }
+            }
+            
+            $this->logger->log('info', 'Batch validation completed', array(
+                'original_batch_size' => count($images),
+                'valid_images_count' => count($bmo_images),
+                'image_mapping' => $image_mapping,
+                'validation_results' => $validation_results
+            ));
+            
+            // Also log URL failures to JavaScript console for easier debugging
+            $url_failures = array_filter($validation_results, function($result) {
+                return strpos($result, 'URL not accessible') !== false || strpos($result, 'BMO API preparation') !== false;
+            });
+            
+            if (!empty($url_failures)) {
+                // Add to global JavaScript variable for console debugging
+                echo "<script>
+                    window.bunnyDebugInfo = window.bunnyDebugInfo || {};
+                    window.bunnyDebugInfo.lastBatchURLFailures = " . json_encode($url_failures) . ";
+                    console.group('🔍 BMO URL Generation Debug');
+                    console.warn('URL generation failures for this batch:');
+                    " . json_encode($url_failures) . ".forEach(function(failure, index) {
+                        console.log((index + 1) + '. ' + failure);
+                    });
+                    console.groupEnd();
+                </script>";
             }
             
             if (empty($bmo_images)) {
@@ -154,29 +176,42 @@ class Bunny_BMO_Processor {
                 $this->logger->log('error', $error_msg, array(
                     'original_image_ids' => $images,
                     'valid_images_count' => count($bmo_images),
-                    'image_mapping' => $image_mapping
+                    'image_mapping' => $image_mapping,
+                    'validation_results' => $validation_results
                 ));
                 return $this->create_batch_error_result($images, $error_msg);
             }
             
             // Log what we're actually sending to BMO API
-            $this->logger->log('info', 'Sending images to BMO API', array(
+            $this->logger->log('info', 'Sending BMO API batch request', array(
                 'original_batch_size' => count($images),
                 'valid_images_count' => count($bmo_images),
                 'image_mapping' => $image_mapping,
-                'sample_image_data' => array_slice($bmo_images, 0, 2) // Log first 2 images for debugging
+                'api_endpoint' => 'BMO API /v1/images/wp/optimize',
+                'batch_mode' => count($bmo_images) > 1 ? 'true' : 'false'
             ));
             
-            // Send to BMO API
+            // Send to BMO API with proper batch configuration
             $result = $this->bmo_api->optimize_images($bmo_images, array(
                 'format' => $this->settings->get('optimization_format', 'auto'),
-                'quality' => $this->settings->get('optimization_quality', 85)
+                'quality' => $this->settings->get('optimization_quality', 85),
+                'batch' => count($bmo_images) > 1, // Enable batch mode for multiple images
+                'userThresholdKb' => 150 // BMO API threshold for AVIF/WebP compression
             ));
             
             if ($result && isset($result['success']) && $result['success']) {
+                $this->logger->log('info', 'BMO API batch completed successfully', array(
+                    'batch_size' => count($bmo_images),
+                    'credits_used' => $result['creditsUsed'] ?? 'unknown'
+                ));
                 return $this->process_batch_results($result, $image_mapping);
             } else {
                 $error_msg = isset($result['error']) ? $result['error'] : 'BMO API call failed';
+                $this->logger->log('error', 'BMO API batch failed', array(
+                    'batch_size' => count($bmo_images),
+                    'error' => $error_msg,
+                    'result' => $result
+                ));
                 return $this->create_batch_error_result($images, $error_msg);
             }
             
@@ -471,6 +506,7 @@ class Bunny_BMO_Processor {
             // Check if this image is migrated (on CDN)
             if (isset($migrated_ids_lookup[$attachment_id])) {
                 // Skip - already counted in migrated_count
+                // CDN images are not processed for local optimization, so they don't count as "skipped"
                 continue;
             }
             
@@ -514,6 +550,9 @@ class Bunny_BMO_Processor {
             'skipped_reasons' => $skipped_reasons
         ));
         
+        // Get optimization criteria information
+        $criteria_info = $this->get_optimization_criteria_info();
+        
         $stats = array(
             'local' => array(
                 'total_eligible' => $local_eligible_count,
@@ -528,13 +567,35 @@ class Bunny_BMO_Processor {
             'already_optimized' => $already_optimized_count,
             'images_migrated' => $migrated_count,
             'batch_size' => 10, // Fixed BMO API batch size
-            'api_type' => 'BMO API (External)'
+            'api_type' => 'BMO API (External)',
+            'criteria_info' => $criteria_info
         );
         
         // Cache for 5 minutes
         wp_cache_set($cache_key, $stats, 'bunny_media_offload', 5 * MINUTE_IN_SECONDS);
         
         return $stats;
+    }
+    
+    /**
+     * Get optimization criteria information for display purposes
+     */
+    public function get_optimization_criteria_info() {
+        return array(
+            'supported_formats' => array(
+                'conversion_targets' => array('JPEG', 'PNG', 'GIF'),
+                'recompression_targets' => array('WebP', 'AVIF'),
+                'excluded_formats' => array('SVG', 'ICO', 'BMP')
+            ),
+            'size_requirements' => array(
+                'minimum_size' => '35KB',
+                'minimum_bytes' => 35840,
+                'reason' => 'BMO API requirement for efficient processing'
+            ),
+            'exclusion_criteria' => array(
+                'already_on_cdn' => 'Images already migrated to CDN are not processed for local optimization'
+            )
+        );
     }
     
     /**
@@ -559,12 +620,16 @@ class Bunny_BMO_Processor {
             );
         }
         
-        // Check file existence
+        // Check file existence and URL accessibility
+        // These issues typically indicate the image is on CDN or has been moved
         $file_path = get_attached_file($attachment_id);
-        if (!$file_path || !file_exists($file_path)) {
+        $has_local_file = $file_path && file_exists($file_path);
+        $image_url = wp_get_attachment_url($attachment_id);
+        
+        if (!$has_local_file) {
             return array(
                 'valid' => false,
-                'reason' => 'File not found on server'
+                'reason' => 'Image not available locally (likely on CDN)'
             );
         }
         
@@ -577,8 +642,7 @@ class Bunny_BMO_Processor {
             );
         }
         
-        // Check if we can get a valid URL
-        $image_url = wp_get_attachment_url($attachment_id);
+        // Try to get a valid URL for BMO API processing
         if (!$image_url) {
             // Try alternative methods
             $upload_dir = wp_upload_dir();
@@ -592,7 +656,7 @@ class Bunny_BMO_Processor {
             if (!$image_url || !filter_var($image_url, FILTER_VALIDATE_URL)) {
                 return array(
                     'valid' => false,
-                    'reason' => 'Cannot generate valid URL'
+                    'reason' => 'Image not available locally (likely on CDN)'
                 );
             }
         }
@@ -604,101 +668,91 @@ class Bunny_BMO_Processor {
     }
     
     /**
-     * Get image URL with fallback methods
+     * Get image URL with fallback methods - aggressive approach
      */
     private function get_image_url($attachment_id) {
         $this->logger->log('debug', "Attempting to get URL for attachment {$attachment_id}");
         
-        // First try the standard WordPress function
+        // Try 1: Standard WordPress function
         $image_url = wp_get_attachment_url($attachment_id);
-        
-        if ($image_url) {
-            // Validate the URL is accessible
-            if ($this->validate_image_url($image_url)) {
-                $this->logger->log('debug', "Standard wp_get_attachment_url successful for attachment {$attachment_id}", array(
-                    'url' => $image_url
-                ));
-                return $image_url;
-            } else {
-                $this->logger->log('warning', "URL from wp_get_attachment_url is not accessible for attachment {$attachment_id}", array(
-                    'url' => $image_url
-                ));
-            }
-        } else {
-            $this->logger->log('warning', "wp_get_attachment_url returned empty for attachment {$attachment_id}");
+        if ($image_url && filter_var($image_url, FILTER_VALIDATE_URL)) {
+            $this->logger->log('debug', "Standard wp_get_attachment_url successful for attachment {$attachment_id}", array(
+                'url' => $image_url
+            ));
+            return $image_url;
         }
         
-        // Try getting the file path and constructing URL manually
+        // Try 2: Manual URL construction from file path
         $file_path = get_attached_file($attachment_id);
-        if ($file_path && file_exists($file_path)) {
+        if ($file_path) {
             $upload_dir = wp_upload_dir();
-            
-            $this->logger->log('debug', "File path found for attachment {$attachment_id}", array(
-                'file_path' => $file_path,
-                'upload_basedir' => $upload_dir['basedir'],
-                'upload_baseurl' => $upload_dir['baseurl']
-            ));
             
             // Check if file is in uploads directory
             if (strpos($file_path, $upload_dir['basedir']) === 0) {
                 $relative_path = str_replace($upload_dir['basedir'], '', $file_path);
                 $image_url = $upload_dir['baseurl'] . $relative_path;
-                
-                // Ensure we use the correct directory separator for URLs
                 $image_url = str_replace('\\', '/', $image_url);
                 
-                if ($this->validate_image_url($image_url)) {
+                if (filter_var($image_url, FILTER_VALIDATE_URL)) {
                     $this->logger->log('debug', "Manual URL construction successful for attachment {$attachment_id}", array(
                         'url' => $image_url,
                         'relative_path' => $relative_path
                     ));
                     return $image_url;
-                } else {
-                    $this->logger->log('warning', "Manually constructed URL is not accessible for attachment {$attachment_id}", array(
-                        'url' => $image_url
-                    ));
                 }
-            } else {
-                $this->logger->log('warning', "File path is not in uploads directory for attachment {$attachment_id}", array(
-                    'file_path' => $file_path,
-                    'uploads_dir' => $upload_dir['basedir']
-                ));
             }
-        } else {
-            $this->logger->log('warning', "File path not found or doesn't exist for attachment {$attachment_id}", array(
-                'file_path' => $file_path,
-                'file_exists' => $file_path ? file_exists($file_path) : false
-            ));
         }
         
-        // Last resort: try getting from post meta
+        // Try 3: From post meta
         $meta_file = get_post_meta($attachment_id, '_wp_attached_file', true);
         if ($meta_file) {
             $upload_dir = wp_upload_dir();
-            $image_url = $upload_dir['baseurl'] . '/' . $meta_file;
-            
-            // Ensure we use the correct directory separator for URLs
+            $image_url = $upload_dir['baseurl'] . '/' . ltrim($meta_file, '/');
             $image_url = str_replace('\\', '/', $image_url);
             
-            if ($this->validate_image_url($image_url)) {
+            if (filter_var($image_url, FILTER_VALIDATE_URL)) {
                 $this->logger->log('debug', "Post meta URL successful for attachment {$attachment_id}", array(
                     'url' => $image_url,
                     'meta_file' => $meta_file
                 ));
                 return $image_url;
-            } else {
-                $this->logger->log('warning', "Post meta URL is not accessible for attachment {$attachment_id}", array(
-                    'url' => $image_url,
-                    'meta_file' => $meta_file
-                ));
             }
-        } else {
-            $this->logger->log('warning', "No _wp_attached_file meta found for attachment {$attachment_id}");
         }
         
-        // Log complete failure with all available debug info
+        // Try 4: Alternative attachment URL methods
+        $sizes = get_intermediate_image_sizes();
+        array_unshift($sizes, 'full'); // Add 'full' size to the beginning
+        
+        foreach ($sizes as $size) {
+            $image_url = wp_get_attachment_image_url($attachment_id, $size);
+            if ($image_url && filter_var($image_url, FILTER_VALIDATE_URL)) {
+                $this->logger->log('debug', "Alternative size URL successful for attachment {$attachment_id}", array(
+                    'url' => $image_url,
+                    'size' => $size
+                ));
+                return $image_url;
+            }
+        }
+        
+        // Try 5: Get original file URL from attachment metadata
+        $attachment_meta = wp_get_attachment_metadata($attachment_id);
+        if ($attachment_meta && isset($attachment_meta['file'])) {
+            $upload_dir = wp_upload_dir();
+            $image_url = $upload_dir['baseurl'] . '/' . ltrim($attachment_meta['file'], '/');
+            $image_url = str_replace('\\', '/', $image_url);
+            
+            if (filter_var($image_url, FILTER_VALIDATE_URL)) {
+                $this->logger->log('debug', "Attachment metadata URL successful for attachment {$attachment_id}", array(
+                    'url' => $image_url,
+                    'metadata_file' => $attachment_meta['file']
+                ));
+                return $image_url;
+            }
+        }
+        
+        // Log complete failure with comprehensive debug info
         $post = get_post($attachment_id);
-        $this->logger->log('error', "Failed to get valid URL for attachment {$attachment_id}", array(
+        $debug_info = array(
             'attachment_id' => $attachment_id,
             'post_exists' => !is_null($post),
             'post_type' => $post ? $post->post_type : null,
@@ -706,33 +760,26 @@ class Bunny_BMO_Processor {
             'post_title' => $post ? $post->post_title : null,
             'wp_get_attachment_url' => wp_get_attachment_url($attachment_id),
             'get_attached_file' => get_attached_file($attachment_id),
+            'file_exists' => $file_path ? file_exists($file_path) : false,
             'wp_attached_file_meta' => get_post_meta($attachment_id, '_wp_attached_file', true),
+            'attachment_metadata' => wp_get_attachment_metadata($attachment_id),
             'upload_dir_info' => wp_upload_dir()
-        ));
+        );
+        
+        $this->logger->log('error', "Failed to get valid URL for attachment {$attachment_id}", $debug_info);
+        
+        // Also add to JavaScript debug info
+        echo "<script>
+            window.bunnyDebugInfo = window.bunnyDebugInfo || {};
+            window.bunnyDebugInfo.urlFailures = window.bunnyDebugInfo.urlFailures || [];
+            window.bunnyDebugInfo.urlFailures.push(" . json_encode($debug_info) . ");
+            console.group('🔍 URL Generation Failure Details');
+            console.error('Failed to generate URL for attachment {$attachment_id}');
+            console.table(" . json_encode($debug_info) . ");
+            console.groupEnd();
+        </script>";
         
         return false;
-    }
-    
-    /**
-     * Validate if an image URL is accessible
-     */
-    private function validate_image_url($url) {
-        // Basic URL format validation
-        if (!filter_var($url, FILTER_VALIDATE_URL)) {
-            return false;
-        }
-        
-        // Check if it's a local file that exists
-        if (strpos($url, home_url()) === 0) {
-            $upload_dir = wp_upload_dir();
-            $file_path = str_replace($upload_dir['baseurl'], $upload_dir['basedir'], $url);
-            $file_path = str_replace('/', DIRECTORY_SEPARATOR, $file_path);
-            
-            return file_exists($file_path);
-        }
-        
-        // For external URLs, assume they're valid (we'll let BMO API handle validation)
-        return true;
     }
     
     /**

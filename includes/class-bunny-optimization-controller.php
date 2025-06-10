@@ -139,7 +139,8 @@ class Bunny_Optimization_Controller {
             
             wp_send_json_success(array_merge($progress, array(
                 'message' => __('Optimization completed.', 'bunny-media-offload'),
-                'recent_processed' => array()
+                'recent_processed' => array(),
+                'completed' => true
             )));
             return;
         }
@@ -147,20 +148,24 @@ class Bunny_Optimization_Controller {
         // Process batch via BMO API
         $batch_result = $this->bmo_processor->process_batch($images);
         
-        // Update session with results
+        // Update session with results - only count images that were actually processed
         $session = $this->session_manager->get_session($session_id);
         
         $this->logger->log('info', 'Batch processing complete', array(
             'session_id' => $session_id,
             'requested_batch_size' => count($images),
+            'actually_processed' => count($batch_result['processed_results']),
             'successful_optimizations' => $batch_result['successful'],
             'failed_optimizations' => $batch_result['failed'],
             'session_processed_before' => $session['processed'],
             'session_total' => $session['total_images']
         ));
         
+        // Update session progress based on actual processed images, not requested batch size
+        $actually_processed = count($batch_result['processed_results']);
+        
         $updates = array(
-            'processed' => $session['processed'] + count($images),
+            'processed' => $session['processed'] + $actually_processed,
             'successful' => $session['successful'] + $batch_result['successful'],
             'failed' => $session['failed'] + $batch_result['failed'],
             'errors' => array_merge($session['errors'], $batch_result['errors'])
@@ -178,9 +183,28 @@ class Bunny_Optimization_Controller {
         // Get updated progress
         $progress = $this->session_manager->get_progress($session_id);
         
+        // Check if there are more images that can be processed
+        $remaining_images = $this->session_manager->get_next_batch($session_id, 20);
+        $has_more_processable = !empty($remaining_images);
+        
+        // Mark as completed if no more images can be processed
+        if (!$has_more_processable) {
+            $this->session_manager->update_session($session_id, array('status' => 'completed'));
+            $progress['completed'] = true;
+        }
+        
         // Prepare response
         $response = array_merge($progress, array(
-            'recent_processed' => $this->format_recent_processed($batch_result['processed_results'])
+            'recent_processed' => $this->format_recent_processed($batch_result['processed_results']),
+            'batch_info' => array(
+                'current_batch' => ceil($progress['processed'] / 20),
+                'total_batches' => ceil($progress['total'] / 20),
+                'images_in_batch' => $actually_processed, // Use actual processed count
+                'api_batch_size' => 20,
+                'requested_batch_size' => count($images),
+                'validation_passed' => $actually_processed,
+                'has_more_processable' => $has_more_processable
+            )
         ));
         
         if ($progress['completed']) {
@@ -196,6 +220,14 @@ class Bunny_Optimization_Controller {
                 $progress['processed'],
                 $progress['successful'],
                 $progress['failed']
+            );
+        } else {
+            $response['message'] = sprintf(
+                __('Batch %1$d/%2$d completed: %3$d images processed (%4$d passed validation)', 'bunny-media-offload'),
+                ceil($progress['processed'] / 20),
+                ceil($progress['total'] / 20),
+                $actually_processed,
+                $actually_processed
             );
         }
         

@@ -852,14 +852,6 @@ class Bunny_Admin {
 
                     </div>
                     
-                    <p class="description">
-                        <?php if ($detailed_stats['batch_size']): ?>
-                            <?php 
-                            // translators: %d is the number of images processed per batch
-                            echo sprintf(esc_html__('Processing %d images per batch. Each optimization runs independently.', 'bunny-media-offload'), esc_html($detailed_stats['batch_size'])); ?>
-                        <?php endif; ?>
-                    </p>
-                    
                     <div class="bunny-cancel-section bunny-status-hidden">
                         <button type="button" class="button button-secondary" id="cancel-optimization">
                             <span class="dashicons dashicons-no"></span>
@@ -936,6 +928,73 @@ class Bunny_Admin {
                     <ul id="optimization-error-list"></ul>
                 </div>
             </div>
+            
+            <!-- Optimization Criteria Information -->
+            <?php if (isset($detailed_stats['criteria_info'])): ?>
+            <div class="bunny-criteria-section" style="margin-top: 24px;">
+                <h3><?php esc_html_e('Optimization Criteria', 'bunny-media-offload'); ?></h3>
+                <div class="bunny-criteria-info" style="background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px; padding: 16px; margin-bottom: 16px;">
+                    
+                    <div class="bunny-criteria-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px;">
+                        
+                        <!-- Supported Formats -->
+                        <div class="bunny-criteria-card">
+                            <h4 style="margin: 0 0 8px 0; color: #495057;">
+                                <span class="dashicons dashicons-format-image" style="font-size: 16px; vertical-align: middle;"></span>
+                                <?php esc_html_e('Supported Formats', 'bunny-media-offload'); ?>
+                            </h4>
+                            <div style="font-size: 13px; line-height: 1.4;">
+                                <p style="margin: 0 0 6px 0;">
+                                    <strong><?php esc_html_e('Will be converted:', 'bunny-media-offload'); ?></strong>
+                                    <span style="color: #6c757d;"><?php echo esc_html(implode(', ', $detailed_stats['criteria_info']['supported_formats']['conversion_targets'])); ?></span>
+                                </p>
+                                <p style="margin: 0 0 6px 0;">
+                                    <strong><?php esc_html_e('Will be recompressed:', 'bunny-media-offload'); ?></strong>
+                                    <span style="color: #6c757d;"><?php echo esc_html(implode(', ', $detailed_stats['criteria_info']['supported_formats']['recompression_targets'])); ?></span>
+                                </p>
+                                <p style="margin: 0;">
+                                    <strong><?php esc_html_e('Not supported:', 'bunny-media-offload'); ?></strong>
+                                    <span style="color: #6c757d;"><?php echo esc_html(implode(', ', $detailed_stats['criteria_info']['supported_formats']['excluded_formats'])); ?></span>
+                                </p>
+                            </div>
+                        </div>
+                        
+                        <!-- Size Requirements -->
+                        <div class="bunny-criteria-card">
+                            <h4 style="margin: 0 0 8px 0; color: #495057;">
+                                <span class="dashicons dashicons-chart-area" style="font-size: 16px; vertical-align: middle;"></span>
+                                <?php esc_html_e('Size Requirements', 'bunny-media-offload'); ?>
+                            </h4>
+                            <div style="font-size: 13px; line-height: 1.4;">
+                                <p style="margin: 0 0 6px 0;">
+                                    <strong><?php esc_html_e('Minimum file size:', 'bunny-media-offload'); ?></strong>
+                                    <span style="color: #6c757d;"><?php echo esc_html($detailed_stats['criteria_info']['size_requirements']['minimum_size']); ?></span>
+                                </p>
+                                <p style="margin: 0; color: #6c757d; font-style: italic;">
+                                    <?php echo esc_html($detailed_stats['criteria_info']['size_requirements']['reason']); ?>
+                                </p>
+                            </div>
+                        </div>
+                        
+                        <!-- Exclusion Criteria -->
+                        <div class="bunny-criteria-card">
+                            <h4 style="margin: 0 0 8px 0; color: #495057;">
+                                <span class="dashicons dashicons-dismiss" style="font-size: 16px; vertical-align: middle;"></span>
+                                <?php esc_html_e('Exclusions', 'bunny-media-offload'); ?>
+                            </h4>
+                            <div style="font-size: 13px; line-height: 1.4;">
+                                <ul style="margin: 0; padding-left: 16px;">
+                                    <?php foreach ($detailed_stats['criteria_info']['exclusion_criteria'] as $reason): ?>
+                                        <li style="margin-bottom: 4px; color: #6c757d;"><?php echo esc_html($reason); ?></li>
+                                    <?php endforeach; ?>
+                                </ul>
+                            </div>
+                        </div>
+                        
+                    </div>
+                </div>
+            </div>
+            <?php endif; ?>
         </div>
         <?php
     }

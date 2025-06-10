@@ -25,6 +25,14 @@ class Bunny_Optimization_Session {
         try {
             $session_id = 'opt_' . time() . '_' . wp_generate_password(8, false);
             
+            $this->logger->log('info', 'Creating optimization session', array(
+                'session_id' => $session_id,
+                'total_images' => count($images),
+                'first_10_images' => array_slice($images, 0, 10),
+                'images_data_type' => gettype($images),
+                'first_image_type' => count($images) > 0 ? gettype($images[0]) : 'none'
+            ));
+            
             $session_data = array(
                 'id' => $session_id,
                 'total_images' => count($images),
@@ -45,8 +53,10 @@ class Bunny_Optimization_Session {
                 return false;
             }
             
-            $this->logger->log('info', "Created optimization session: " . $session_id, array(
-                'total_images' => count($images)
+            $this->logger->log('info', "Created optimization session successfully", array(
+                'session_id' => $session_id,
+                'total_images' => count($images),
+                'transient_saved' => $transient_set
             ));
             
             return $session_data;
@@ -110,15 +120,33 @@ class Bunny_Optimization_Session {
         $session = $this->get_session($session_id);
         
         if (!$session) {
+            $this->logger->log('error', 'Session not found in get_next_batch', array(
+                'session_id' => $session_id,
+                'requested_batch_size' => $batch_size
+            ));
             return array();
         }
         
         $start_index = $session['processed'];
-        return array_slice($session['images'], $start_index, $batch_size);
+        $batch = array_slice($session['images'], $start_index, $batch_size);
+        
+        $this->logger->log('info', 'get_next_batch called', array(
+            'session_id' => $session_id,
+            'requested_batch_size' => $batch_size,
+            'session_total_images' => $session['total_images'],
+            'session_processed' => $session['processed'],
+            'start_index' => $start_index,
+            'remaining_images' => $session['total_images'] - $session['processed'],
+            'batch_returned_count' => count($batch),
+            'batch_images' => $batch
+        ));
+        
+        return $batch;
     }
     
     /**
      * Check if session is completed
+     * A session is completed when all processable images have been handled
      */
     public function is_completed($session_id) {
         $session = $this->get_session($session_id);
@@ -127,7 +155,26 @@ class Bunny_Optimization_Session {
             return true;
         }
         
-        return $session['processed'] >= $session['total_images'] || $session['status'] === 'completed';
+        // Check if explicitly marked as completed
+        if ($session['status'] === 'completed') {
+            return true;
+        }
+        
+        // Check if we've processed all images in the session
+        if ($session['processed'] >= $session['total_images']) {
+            return true;
+        }
+        
+        // Check if we've reached the end of available images to process
+        // This handles cases where some images fail validation
+        $remaining_batch = array_slice($session['images'], $session['processed'], 20);
+        if (empty($remaining_batch)) {
+            // No more images to process, mark as completed
+            $this->update_session($session_id, array('status' => 'completed'));
+            return true;
+        }
+        
+        return false;
     }
     
     /**
@@ -205,6 +252,7 @@ class Bunny_Optimization_Session {
     
     /**
      * Get optimizable attachments
+     * Uses same validation as BMO processor to ensure consistency
      */
     public function get_optimizable_attachments($limit = 100) {
         global $wpdb;
@@ -295,47 +343,58 @@ class Bunny_Optimization_Session {
         
         $results = $wpdb->get_col($wpdb->prepare($sql, $limit));
         
-        // Filter out attachments that don't have valid file paths or URLs
+        $this->logger->log('info', 'Raw query results from database', array(
+            'total_found' => count($results),
+            'first_10_results' => array_slice($results, 0, 10),
+            'limit' => $limit
+        ));
+        
+        // Pre-filter using the same validation as BMO processor to ensure consistency
         $valid_attachments = array();
         $skipped_attachments = array();
+        $validation_stats = array();
         
         foreach ($results as $attachment_id) {
             $validation_result = $this->validate_attachment_for_optimization($attachment_id);
             
             if ($validation_result['valid']) {
                 $valid_attachments[] = $attachment_id;
+                $validation_stats['valid'] = ($validation_stats['valid'] ?? 0) + 1;
+                $this->logger->log('debug', "Session validation passed for attachment {$attachment_id}", array(
+                    'attachment_id' => $attachment_id,
+                    'reason' => 'Meets all optimization criteria'
+                ));
             } else {
                 $skipped_attachments[] = array(
                     'id' => $attachment_id,
                     'reason' => $validation_result['reason']
                 );
+                $reason = $validation_result['reason'];
+                $validation_stats[$reason] = ($validation_stats[$reason] ?? 0) + 1;
+                $this->logger->log('debug', "Session validation failed for attachment {$attachment_id}", array(
+                    'attachment_id' => $attachment_id,
+                    'reason' => $validation_result['reason']
+                ));
             }
         }
         
-        $this->logger->log('info', 'Found optimizable attachments', array(
+        $this->logger->log('info', 'Session manager validation completed', array(
             'total_found' => count($results),
             'valid_attachments' => count($valid_attachments),
             'skipped_attachments' => count($skipped_attachments),
-            'sample_valid_ids' => array_slice($valid_attachments, 0, 10),
-            'sample_skipped' => array_slice($skipped_attachments, 0, 5),
-            'queue_table_exists' => $table_exists
+            'validation_stats' => $validation_stats,
+            'valid_attachment_ids' => $valid_attachments,
+            'detailed_skipped_reasons' => array_map(function($item) {
+                return "ID {$item['id']}: {$item['reason']}";
+            }, array_slice($skipped_attachments, 0, 5)) // Show first 5 for debugging
         ));
         
-        // Apply WPML filter
-        $filtered_results = apply_filters('bunny_optimization_attachments', $valid_attachments);
-        
-        if (count($filtered_results) !== count($valid_attachments)) {
-            $this->logger->log('info', 'WPML filter modified attachment list', array(
-                'original_count' => count($valid_attachments),
-                'filtered_count' => count($filtered_results)
-            ));
-        }
-        
-        return $filtered_results;
+        return $valid_attachments;
     }
     
     /**
      * Validate attachment for optimization eligibility
+     * This should align with the database query filtering logic
      */
     private function validate_attachment_for_optimization($attachment_id) {
         // Check if post exists
@@ -347,80 +406,81 @@ class Bunny_Optimization_Session {
             );
         }
         
-        // Check if it's an image
-        if (!wp_attachment_is_image($attachment_id)) {
+        // Check if it's an image attachment
+        if ($post->post_type !== 'attachment' || !wp_attachment_is_image($attachment_id)) {
             return array(
                 'valid' => false,
                 'reason' => 'Not an image attachment'
             );
         }
         
-        // Check if image is already migrated
+        // Check if it's a supported format (basic check)
+        $mime_type = $post->post_mime_type;
+        $supported_types = array('image/jpeg', 'image/jpg', 'image/png', 'image/gif');
+        if (!in_array($mime_type, $supported_types)) {
+            return array(
+                'valid' => false,
+                'reason' => 'Unsupported image format'
+            );
+        }
+        
+        // Check if recently optimized (align with database query)
+        $last_optimized = get_post_meta($attachment_id, '_bunny_last_optimized', true);
+        if ($last_optimized) {
+            $one_day_ago = time() - DAY_IN_SECONDS;
+            if (strtotime($last_optimized) > $one_day_ago) {
+                return array(
+                    'valid' => false,
+                    'reason' => 'Recently optimized (within 24 hours)'
+                );
+            }
+        }
+        
+        // Check if image is on CDN (align with database query)
         global $wpdb;
-        $is_migrated = $wpdb->get_var($wpdb->prepare("
+        $is_on_cdn = $wpdb->get_var($wpdb->prepare("
             SELECT COUNT(*) 
             FROM {$wpdb->prefix}bunny_offloaded_files 
             WHERE attachment_id = %d AND is_synced = 1
         ", $attachment_id));
         
-        if ($is_migrated > 0) {
+        if ($is_on_cdn > 0) {
             return array(
                 'valid' => false,
                 'reason' => 'Image already migrated to CDN'
             );
         }
         
-        // Check if it's already in modern format (shouldn't be optimized, should be migrated)
-        $mime_type = get_post_mime_type($attachment_id);
-        $modern_formats = array('image/webp', 'image/avif', 'image/svg+xml');
-        if (in_array($mime_type, $modern_formats)) {
-            return array(
-                'valid' => false,
-                'reason' => 'Already in optimal format (should be migrated instead)'
-            );
-        }
-        
-        // Check if file exists
+        // Check basic file requirements (more lenient than BMO processor)
         $file_path = get_attached_file($attachment_id);
-        if (!$file_path || !file_exists($file_path)) {
+        if (!$file_path) {
             return array(
                 'valid' => false,
-                'reason' => 'File path not found or file does not exist'
+                'reason' => 'No file path found'
             );
         }
         
-        // Check file size (must be at least 35KB for BMO API)
+        // Check file exists locally
+        if (!file_exists($file_path)) {
+            return array(
+                'valid' => false,
+                'reason' => 'File not found locally'
+            );
+        }
+        
+        // Check minimum file size (35KB for BMO API)
         $file_size = filesize($file_path);
         if ($file_size < 35840) { // 35KB = 35 * 1024 bytes
             return array(
                 'valid' => false,
-                'reason' => 'File size below 35KB minimum requirement'
+                'reason' => 'File size below 35KB minimum'
             );
         }
         
-        // Check if we can get a valid URL
-        $image_url = wp_get_attachment_url($attachment_id);
-        if (!$image_url) {
-            // Try alternative methods
-            $upload_dir = wp_upload_dir();
-            $meta_file = get_post_meta($attachment_id, '_wp_attached_file', true);
-            
-            if ($meta_file) {
-                $image_url = $upload_dir['baseurl'] . '/' . $meta_file;
-                $image_url = str_replace('\\', '/', $image_url);
-            }
-            
-            if (!$image_url || !filter_var($image_url, FILTER_VALIDATE_URL)) {
-                return array(
-                    'valid' => false,
-                    'reason' => 'Cannot generate valid URL for attachment'
-                );
-            }
-        }
-        
+        // Image passes all session-level validation
         return array(
             'valid' => true,
-            'reason' => 'Passed all validation checks'
+            'reason' => 'Passed all session validation checks'
         );
     }
     

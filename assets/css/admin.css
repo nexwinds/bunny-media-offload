@@ -1923,4 +1923,307 @@ select[name*="batch_size"] {
 
 .bunny-donut-segment {
     animation: bunny-chart-appear 1s ease-out 0.5s both;
+}
+
+/* BMO Optimization Module Styles */
+.bunny-optimization-module {
+    background: #fff;
+    border: 1px solid #ccd0d4;
+    border-radius: 4px;
+    padding: 20px;
+    margin: 20px 0;
+}
+
+.bunny-optimization-progress {
+    margin: 20px 0;
+}
+
+.bunny-progress-bar {
+    width: 100%;
+    height: 24px;
+    background: #f1f1f1;
+    border-radius: 12px;
+    overflow: hidden;
+    position: relative;
+}
+
+.bunny-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #00a32a 0%, #4caf50 100%);
+    transition: width 0.3s ease;
+    border-radius: 12px;
+}
+
+.bunny-progress-text {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: #333;
+    font-weight: 600;
+    font-size: 12px;
+    z-index: 1;
+}
+
+.bunny-optimization-status {
+    margin: 10px 0;
+    padding: 10px;
+    border-radius: 4px;
+    background: #f8f9fa;
+    border-left: 4px solid #0073aa;
+}
+
+.bunny-optimization-log {
+    max-height: 200px;
+    overflow-y: auto;
+    background: #1e1e1e;
+    color: #fff;
+    padding: 15px;
+    border-radius: 4px;
+    font-family: 'Courier New', Consolas, monospace;
+    font-size: 12px;
+    line-height: 1.4;
+    margin: 15px 0;
+}
+
+.log-entry {
+    margin: 2px 0;
+    padding: 2px 0;
+}
+
+.log-entry.log-success {
+    color: #4caf50;
+}
+
+.log-entry.log-error {
+    color: #f44336;
+}
+
+.log-entry.log-warning {
+    color: #ff9800;
+}
+
+.log-entry.log-info {
+    color: #2196f3;
+}
+
+.bunny-batch-info {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin: 10px 0;
+    padding: 10px;
+    background: #f8f9fa;
+    border-radius: 4px;
+    font-size: 13px;
+}
+
+.bunny-batch-stats {
+    display: flex;
+    gap: 20px;
+}
+
+.bunny-batch-stat {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.bunny-batch-stat .icon {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+.bunny-batch-stat.processing .icon {
+    background: #2196f3;
+    animation: pulse 2s infinite;
+}
+
+.bunny-batch-stat.success .icon {
+    background: #4caf50;
+}
+
+.bunny-batch-stat.failed .icon {
+    background: #f44336;
+}
+
+@keyframes pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.5; }
+    100% { opacity: 1; }
+}
+
+.bunny-optimization-controls {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    margin: 15px 0;
+}
+
+.bunny-optimize-btn {
+    background: #0073aa;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    transition: all 0.3s ease;
+}
+
+.bunny-optimize-btn:hover:not(:disabled) {
+    background: #005a87;
+    transform: translateY(-1px);
+}
+
+.bunny-optimize-btn:disabled {
+    background: #ccc;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.bunny-cancel-btn {
+    background: #dc3545;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: background 0.3s ease;
+}
+
+.bunny-cancel-btn:hover {
+    background: #c82333;
+}
+
+/* BMO API Status Indicators */
+.bmo-status-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.bmo-status-indicator.connected {
+    background: #d4edda;
+    color: #155724;
+    border: 1px solid #c3e6cb;
+}
+
+.bmo-status-indicator.disconnected {
+    background: #f8d7da;
+    color: #721c24;
+    border: 1px solid #f5c6cb;
+}
+
+.bmo-status-indicator.processing {
+    background: #d1ecf1;
+    color: #0c5460;
+    border: 1px solid #bee5eb;
+}
+
+.bmo-status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: currentColor;
+}
+
+/* Progress animations */
+.bunny-progress-fill.animate {
+    animation: progressPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes progressPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.8; }
+}
+
+/* Console-style logging */
+.bunny-optimization-log::-webkit-scrollbar {
+    width: 8px;
+}
+
+.bunny-optimization-log::-webkit-scrollbar-track {
+    background: #2d2d2d;
+}
+
+.bunny-optimization-log::-webkit-scrollbar-thumb {
+    background: #555;
+    border-radius: 4px;
+}
+
+.bunny-optimization-log::-webkit-scrollbar-thumb:hover {
+    background: #777;
+}
+
+/* Recent processed images */
+.bunny-recent-processed {
+    margin: 15px 0;
+}
+
+.bunny-recent-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    margin: 4px 0;
+    border-radius: 4px;
+    font-size: 13px;
+}
+
+.bunny-recent-item.success {
+    background: #d4edda;
+    color: #155724;
+    border-left: 4px solid #28a745;
+}
+
+.bunny-recent-item.error {
+    background: #f8d7da;
+    color: #721c24;
+    border-left: 4px solid #dc3545;
+}
+
+.bunny-recent-filename {
+    font-weight: 600;
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.bunny-recent-savings {
+    font-size: 11px;
+    opacity: 0.8;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    .bunny-optimization-controls {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .bunny-batch-info {
+        flex-direction: column;
+        gap: 10px;
+    }
+    
+    .bunny-batch-stats {
+        justify-content: center;
+        flex-wrap: wrap;
+    }
+    
+    .bunny-recent-item {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 5px;
+    }
 } 

@@ -107,10 +107,19 @@ class Bunny_Media_Offload {
      */
     public function enqueue_admin_scripts($hook) {
         if (strpos($hook, 'bunny-media-offload') !== false || strpos($hook, 'bunny-media-logs') !== false) {
+            // Enqueue modular optimization module first
+            wp_enqueue_script(
+                'bunny-optimization-module',
+                BMO_PLUGIN_URL . 'assets/js/bunny-optimization.js',
+                array('jquery'),
+                BMO_PLUGIN_VERSION,
+                true
+            );
+            
             wp_enqueue_script(
                 'bunny-media-offload-admin',
                 BMO_PLUGIN_URL . 'assets/js/admin.js',
-                array('jquery'),
+                array('jquery', 'bunny-optimization-module'), // Make admin.js depend on optimization module
                 BMO_PLUGIN_VERSION,
                 true
             );
@@ -146,7 +155,8 @@ class Bunny_Media_Offload {
                 );
             }
             
-            wp_localize_script('bunny-media-offload-admin', 'bunnyAjax', array(
+            // Localize scripts for both optimization module and admin
+            $ajax_data = array(
                 'ajaxurl' => admin_url('admin-ajax.php'),
                 'nonce' => wp_create_nonce('bunny_ajax_nonce'),
                 'strings' => array(
@@ -158,8 +168,18 @@ class Bunny_Media_Offload {
                     'optimizing' => __('Optimizing images...', 'bunny-media-offload'),
                     'optimization_complete' => __('Optimization completed!', 'bunny-media-offload'),
                     'optimization_failed' => __('Optimization failed!', 'bunny-media-offload'),
+                ),
+                'bmo_config' => array(
+                    'batch_size' => 20,          // BMO API maximum batch size
+                    'max_queue' => 100,          // Maximum internal queue size  
+                    'processing_delay' => 1000,  // Delay between batches (ms)
+                    'retry_attempts' => 3,       // Retry attempts for failed batches
+                    'strategy' => 'FIFO'         // Processing strategy (First In, First Out)
                 )
-            ));
+            );
+            
+            wp_localize_script('bunny-optimization-module', 'bunnyAjax', $ajax_data);
+            wp_localize_script('bunny-media-offload-admin', 'bunnyAjax', $ajax_data);
         }
     }
     

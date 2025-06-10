@@ -155,36 +155,14 @@
             console.log('Initializing optimization functionality');
             console.log('Available optimization buttons:', $('.bunny-optimize-button').length);
             
-            // Handle direct optimization button clicks
-            $(document).on('click', '.bunny-optimize-button', function(e) {
-                e.preventDefault();
-                
-                console.log('Optimization button clicked, checking state...');
-                console.log('Button disabled:', $(this).prop('disabled'));
-                console.log('Button element:', this);
-                
-                if ($(this).prop('disabled')) {
-                    console.log('Button is disabled, returning early');
-                    return;
-                }
-                
-                var target = $(this).data('target');
-                
-                console.log('Direct optimization button clicked:', target);
-                console.log('AJAX URL:', bunnyAjax.ajaxurl);
-                console.log('AJAX Nonce:', bunnyAjax.nonce);
-                
-                if (target) {
-                    BunnyAdmin.startStepOptimization(target);
-                } else {
-                    console.error('No target found on button');
-                    alert('Invalid optimization target.');
-                }
-            });
+            // Optimization is now handled by the modular BunnyOptimization system
+            // Remove duplicate event handlers to prevent double triggering
             
             $(document).on('click', '#cancel-optimization', function(e) {
                 e.preventDefault();
-                BunnyAdmin.cancelOptimization();
+                if (window.bunnyOptimizationInstance) {
+                    window.bunnyOptimizationInstance.cancelOptimization();
+                }
             });
             
             // Handle diagnostic button clicks
@@ -602,509 +580,92 @@
         },
         
         /**
-         * Start step-by-step optimization
+         * Run diagnostics for optimization issues
          */
-        startStepOptimization: function(target) {
+        runOptimizationDiagnostics: function() {
             var self = this;
             
-            console.log('Starting step optimization for target:', target);
+            // Show loading state
+            var $button = $('.bunny-diagnostic-button');
+            var originalText = $button.html();
+            $button.prop('disabled', true).html('<span class="dashicons dashicons-update-alt" style="animation: rotate 1s linear infinite;"></span> Running diagnostics...');
+            
+            // Clear any existing diagnostics results
+            $('#diagnostics-results').remove();
             
             $.ajax({
                 url: bunnyAjax.ajaxurl,
                 type: 'POST',
                 data: {
-                    action: 'bunny_start_step_optimization',
-                    nonce: bunnyAjax.nonce,
-                    optimization_target: target
+                    action: 'bunny_run_optimization_diagnostics',
+                    nonce: bunnyAjax.nonce
                 },
                 success: function(response) {
-                    console.log('=== OPTIMIZATION RESPONSE DEBUG ===');
-                    console.log('Full response:', response);
-                    console.log('Response type:', typeof response);
-                    console.log('Response success property:', response.success);
-                    console.log('Response data:', response.data);
-                    console.log('Response data type:', typeof response.data);
-                    
-                    // Try to stringify the response for better visibility
-                    try {
-                        console.log('Response JSON:', JSON.stringify(response, null, 2));
-                    } catch (e) {
-                        console.log('Could not stringify response:', e);
-                    }
-                    console.log('=== END DEBUG ===');
+                    $button.prop('disabled', false).html(originalText);
                     
                     if (response.success) {
-                        if (!response.data.session_id) {
-                            console.error('No session ID in response:', response.data);
-                            alert('Failed to start optimization: No session ID received.');
-                            return;
-                        }
-                        
-                        self.optimizationState = {
-                            active: true,
-                            sessionId: response.data.session_id,
-                            totalImages: response.data.total_images,
-                            target: target
-                        };
-                        
-                        console.log('Optimization state set:', self.optimizationState);
-                        
-                        // Show optimization progress interface
-                        self.initOptimizationInterface();
-                        
-                        // Initialize speed tracking
-                        self.initOptimizationSpeedTracking();
-                        
-                        // Start processing
-                        self.processOptimizationBatch(self.optimizationState.sessionId);
+                        self.displayDiagnosticsResults(response.data);
                     } else {
-                        console.error('Optimization failed:', response);
-                        var message = 'Unknown error occurred';
-                        
-                        if (response.data) {
-                            if (typeof response.data === 'string') {
-                                message = response.data;
-                            } else if (response.data.message) {
-                                message = response.data.message;
-                            } else {
-                                message = 'Server returned error without message';
-                            }
-                        } else {
-                            message = 'Server returned error without data';
-                        }
-                        
-                        alert('Failed to start optimization: ' + message);
+                        alert('Diagnostics failed: ' + (response.data || 'Unknown error'));
                     }
                 },
                 error: function(xhr, status, error) {
-                    console.error('AJAX error details:', {
-                        xhr: xhr,
-                        status: status,
-                        error: error,
-                        responseText: xhr.responseText
-                    });
-                    alert('Failed to start optimization: AJAX error');
+                    $button.prop('disabled', false).html(originalText);
+                    console.error('Diagnostics AJAX error:', error);
+                    alert('Diagnostics failed due to network error.');
                 }
             });
         },
         
         /**
-         * Initialize optimization interface
+         * Display diagnostics results
          */
-        initOptimizationInterface: function() {
-            $('#optimization-progress').show();
-            $('.bunny-optimization-actions').hide();
-            $('.bunny-cancel-section').show();
+        displayDiagnosticsResults: function(data) {
+            var html = '<div id="diagnostics-results" class="notice notice-info" style="margin-top: 20px; padding: 15px;">';
+            html += '<h3>🔍 Optimization Diagnostics Results</h3>';
             
-            // Initialize progress bar
-            $('#optimization-progress-bar').css('width', '0%');
-            $('#optimization-progress-text').text('0%');
-            $('#optimization-status-text').text('Starting optimization...');
+            // Summary
+            html += '<div style="margin-bottom: 15px;">';
+            html += '<h4>Summary</h4>';
+            html += '<ul>';
+            html += '<li><strong>Total attachments found:</strong> ' + data.total_attachments + '</li>';
+            html += '<li><strong>Valid for optimization:</strong> ' + data.valid_attachments + '</li>';
+            html += '<li><strong>Problematic attachments:</strong> ' + data.problematic_attachments + '</li>';
+            html += '</ul>';
+            html += '</div>';
             
-            // Show current image processing section
-            $('#current-image-processing').show();
-            $('#recent-processed').show();
-            $('#optimization-log').show();
-            
-            // Clear and initialize log
-            this.clearOptimizationLog();
-            this.addOptimizationLog('Optimization session started', 'info');
-            
-            // Clear any previous processing data
-            $('#processed-images-list').empty();
-            $('#current-image-thumb').attr('src', '').hide();
-            $('#current-image-name').text('Preparing...');
-            
-            // Initialize process steps for target type
-            var target = this.optimizationState.target;
-            if (target === 'cloud') {
-                $('#local-process').hide();
-                $('#cloud-download').show();
-                $('#cloud-process').show();
-                $('#cloud-upload').show();
-                
-                // Reset cloud process steps
-                $('#cloud-download, #cloud-process, #cloud-upload').removeClass('active completed error');
-            } else {
-                $('#local-process').show();
-                $('#cloud-download').hide();
-                $('#cloud-process').hide();
-                $('#cloud-upload').hide();
-                
-                // Reset local process steps
-                $('#local-process').removeClass('active completed error');
-            }
-        },
-        
-        /**
-         * Process optimization batch
-         */
-        processOptimizationBatch: function(sessionId) {
-            var self = this;
-            
-            if (!this.optimizationState.active) {
-                return;
-            }
-            
-            // Log batch processing start
-            this.addOptimizationLog('Processing batch of images...', 'processing');
-            
-            $.ajax({
-                url: bunnyAjax.ajaxurl,
-                type: 'POST',
-                data: {
-                    action: 'bunny_optimization_batch',
-                    nonce: bunnyAjax.nonce,
-                    session_id: sessionId
-                },
-                success: function(response) {
-                    console.log('Batch processing response:', response);
-                    
-                    if (response.success) {
-                        var data = response.data;
-                        
-                        // Log batch completion with enhanced statistics
-                        var batchInfo = {
-                            current: Math.ceil(data.processed / 20),
-                            total: Math.ceil(data.total / 20),
-                            images: data.recent_processed ? data.recent_processed.length : 0,
-                            successful: data.successful,
-                            failed: data.failed
-                        };
-                        
-                        var statusMessage = `Batch ${batchInfo.current}/${batchInfo.total} complete: ${batchInfo.images} images processed`;
-                        if (batchInfo.successful > 0 || batchInfo.failed > 0) {
-                            statusMessage += ` (${batchInfo.successful} optimized, ${batchInfo.failed} failed)`;
-                        }
-                        self.addOptimizationLog(statusMessage, 'success', batchInfo);
-                        
-                        // Update progress bar
-                        $('#optimization-progress-bar').css('width', data.progress + '%');
-                        $('#optimization-progress-text').text(Math.round(data.progress) + '%');
-                        
-                        // Update status text
-                        $('#optimization-status-text').text(
-                            'Processed: ' + data.processed + '/' + data.total + 
-                            ' (' + data.successful + ' successful, ' + data.failed + ' failed)'
-                        );
-                        
-                        // Update speed statistics
-                        self.updateOptimizationSpeed(data.processed, data.total);
-                        
-                        // Update current image being processed
-                        if (data.current_image) {
-                            self.updateCurrentImage(data.current_image);
-                        }
-                        
-                        // Update current step information
-                        if (data.current_step) {
-                            self.updateCurrentStep(data.current_step);
-                        }
-                        
-                        // Add recently processed images
-                        if (data.recent_processed && data.recent_processed.length > 0) {
-                            self.addRecentlyProcessed(data.recent_processed);
-                        }
-                        
-                        // Handle errors
-                        if (data.errors && data.errors.length > 0) {
-                            self.displayOptimizationErrors(data.errors);
-                            self.addOptimizationLog('Encountered ' + data.errors.length + ' errors in current batch', 'error');
-                        }
-                        
-                        if (!data.completed && self.optimizationState.active) {
-                            // Log waiting period
-                            self.addOptimizationLog('Waiting 3 seconds before next batch...', 'waiting');
-                            
-                            // Continue processing after 3 seconds
-                            setTimeout(function() {
-                                self.processOptimizationBatch(sessionId);
-                            }, 3000);
-                        } else {
-                            self.completeOptimization(data.completed);
-                        }
-                    } else {
-                        console.error('Batch processing failed:', response);
-                        var message = response.data && response.data.message ? response.data.message : 'Unknown batch error';
-                        self.addOptimizationLog('Batch processing failed: ' + message, 'error');
-                        self.handleOptimizationError(message);
+            // Issues found
+            if (data.issues && data.issues.length > 0) {
+                html += '<div style="margin-bottom: 15px;">';
+                html += '<h4>Issues Found</h4>';
+                html += '<ul>';
+                data.issues.forEach(function(issue) {
+                    html += '<li><strong>Attachment ID ' + issue.id + ':</strong> ' + issue.reason;
+                    if (issue.title) {
+                        html += ' (<em>' + issue.title + '</em>)';
                     }
-                },
-                error: function(xhr, status, error) {
-                    console.error('Batch processing AJAX error:', {
-                        xhr: xhr,
-                        status: status,
-                        error: error,
-                        responseText: xhr.responseText
-                    });
-                    self.addOptimizationLog('Network error during batch processing: ' + error, 'error');
-                    self.handleOptimizationError('Optimization batch failed due to network error.');
-                }
-            });
-        },
-        
-        /**
-         * Update current image being processed
-         */
-        updateCurrentImage: function(imageData) {
-            if (imageData && imageData.thumbnail && imageData.name) {
-                $('#current-image-thumb').attr('src', imageData.thumbnail).show();
-                $('#current-image-name').text(imageData.name);
-                
-                // Update process steps based on current status
-                var target = this.optimizationState.target;
-                
-                if (target === 'cloud') {
-                    this.updateCloudProcessSteps(imageData.status);
-                } else {
-                    this.updateLocalProcessSteps(imageData.status);
-                }
-            } else {
-                // Hide current image section if no data
-                $('#current-image-thumb').hide();
-                $('#current-image-name').text('Processing...');
-            }
-        },
-        
-        /**
-         * Update local process steps
-         */
-        updateLocalProcessSteps: function(status) {
-            // Reset all steps
-            $('#local-process').removeClass('active completed error');
-            
-            switch(status) {
-                case 'processing':
-                    $('#local-process').addClass('active');
-                    $('#local-process-text').text('Processing...');
-                    break;
-                case 'converting':
-                    $('#local-process').addClass('active');
-                    $('#local-process-text').text('Converting to AVIF...');
-                    break;
-                case 'compressing':
-                    $('#local-process').addClass('active');
-                    $('#local-process-text').text('Compressing...');
-                    break;
-                case 'completed':
-                    $('#local-process').addClass('completed');
-                    $('#local-process-text').text('Completed');
-                    break;
-                case 'error':
-                    $('#local-process').addClass('error');
-                    $('#local-process-text').text('Error');
-                    break;
-            }
-        },
-        
-        /**
-         * Update current step information
-         */
-        updateCurrentStep: function(stepData) {
-            if (!stepData) return;
-            
-            var target = this.optimizationState.target;
-            
-            if (target === 'cloud') {
-                this.updateCloudProcessSteps(stepData.step);
-            } else {
-                this.updateLocalProcessSteps(stepData.step);
-            }
-            
-            // Update step message if available
-            if (stepData.message) {
-                if (target === 'cloud') {
-                    switch(stepData.step) {
-                        case 'downloading':
-                            $('#download-process-text').text(stepData.message);
-                            break;
-                        case 'converting':
-                        case 'processing':
-                            $('#cloud-process-text').text(stepData.message);
-                            break;
-                        case 'uploading':
-                            $('#upload-process-text').text(stepData.message);
-                            break;
-                    }
-                } else {
-                    $('#local-process-text').text(stepData.message);
-                }
-            }
-        },
-        
-        /**
-         * Update cloud process steps
-         */
-        updateCloudProcessSteps: function(status) {
-            // Reset all steps
-            $('#cloud-download, #cloud-process, #cloud-upload').removeClass('active completed error');
-            
-            switch(status) {
-                case 'downloading':
-                    $('#cloud-download').addClass('active');
-                    $('#download-process-text').text('Downloading...');
-                    break;
-                case 'processing':
-                case 'converting':
-                    $('#cloud-download').addClass('completed');
-                    $('#cloud-process').addClass('active');
-                    $('#download-process-text').text('Downloaded');
-                    if (status === 'converting') {
-                        $('#cloud-process-text').text('Converting to AVIF...');
-                    } else {
-                        $('#cloud-process-text').text('Processing...');
-                    }
-                    break;
-                case 'compressing':
-                    $('#cloud-download').addClass('completed');
-                    $('#cloud-process').addClass('active');
-                    $('#download-process-text').text('Downloaded');
-                    $('#cloud-process-text').text('Compressing...');
-                    break;
-                case 'uploading':
-                    $('#cloud-download').addClass('completed');
-                    $('#cloud-process').addClass('completed');
-                    $('#cloud-upload').addClass('active');
-                    $('#download-process-text').text('Downloaded');
-                    $('#cloud-process-text').text('Optimized');
-                    $('#upload-process-text').text('Uploading...');
-                    break;
-                case 'completed':
-                    $('#cloud-download').addClass('completed');
-                    $('#cloud-process').addClass('completed');
-                    $('#cloud-upload').addClass('completed');
-                    $('#download-process-text').text('Downloaded');
-                    $('#cloud-process-text').text('Optimized');
-                    $('#upload-process-text').text('Uploaded');
-                    break;
-                case 'error':
-                    $('#cloud-download, #cloud-process, #cloud-upload').addClass('error');
-                    $('#download-process-text').text('Error');
-                    $('#cloud-process-text').text('Error');
-                    $('#upload-process-text').text('Error');
-                    break;
-            }
-        },
-        
-        /**
-         * Add recently processed images
-         */
-        addRecentlyProcessed: function(recentImages) {
-            var $list = $('#processed-images-list');
-            
-            recentImages.forEach(function(image) {
-                var resultClass = image.success ? 'success' : 'error';
-                var resultText = image.success ? 'Optimized successfully' : 'Optimization failed';
-                var actionText = image.action || 'Converted to AVIF';
-                
-                // Add size reduction info if available
-                if (image.success && image.size_reduction && image.size_reduction > 0) {
-                    resultText += ' (-' + image.size_reduction + '%)';
-                }
-                
-                var $item = $('<div class="bunny-processed-item ' + resultClass + '">' +
-                    '<div class="bunny-processed-thumb">' +
-                        '<img src="' + image.thumbnail + '" alt="' + image.name + '" onerror="this.style.display=\'none\'" />' +
-                    '</div>' +
-                    '<div class="bunny-processed-info">' +
-                        '<div class="bunny-processed-name">' + image.name + '</div>' +
-                        '<div class="bunny-processed-action">' + actionText + '</div>' +
-                    '</div>' +
-                    '<div class="bunny-processed-result ' + resultClass + '">' + resultText + '</div>' +
-                '</div>');
-                
-                // Add to top of list
-                $list.prepend($item);
-                
-                // Keep only last 5 items
-                $list.children().slice(5).remove();
-            });
-        },
-        
-        /**
-         * Display optimization errors
-         */
-        displayOptimizationErrors: function(errors) {
-            var $errorList = $('#optimization-error-list');
-            $errorList.empty();
-            
-            errors.forEach(function(error) {
-                $errorList.append('<li>' + error + '</li>');
-            });
-            
-            $('#optimization-errors').show();
-        },
-        
-        /**
-         * Handle optimization error
-         */
-        handleOptimizationError: function(message) {
-            this.optimizationState.active = false;
-            $('#optimization-status-text').text('Error: ' + message);
-            this.addOptimizationLog('Optimization session failed: ' + message, 'error');
-            $('.bunny-optimization-actions').show();
-            $('.bunny-cancel-section').hide();
-            $('#optimization-progress').hide();
-            $('#current-image-processing').hide();
-            $('#recent-processed').hide();
-            alert('Optimization failed: ' + message);
-        },
-        
-        /**
-         * Complete optimization
-         */
-        completeOptimization: function(completed) {
-            this.optimizationState.active = false;
-            
-            if (completed) {
-                $('#optimization-status-text').text('Optimization completed successfully!');
-                this.addOptimizationLog('Optimization session completed successfully!', 'success');
-                alert('Optimization completed successfully!');
-            } else {
-                this.addOptimizationLog('Optimization session ended', 'info');
-            }
-            
-            $('.bunny-optimization-actions').show();
-            $('.bunny-cancel-section').hide();
-            $('#optimization-progress').hide();
-            $('#current-image-processing').hide();
-            $('#recent-processed').hide();
-            
-            // Refresh the page to update statistics
-            setTimeout(function() {
-                location.reload();
-            }, 2000);
-        },
-        
-        /**
-         * Cancel optimization
-         */
-        cancelOptimization: function() {
-            if (this.optimizationState && this.optimizationState.active) {
-                this.optimizationState.active = false;
-                
-                this.addOptimizationLog('Optimization cancelled by user', 'warning');
-                
-                $.ajax({
-                    url: bunnyAjax.ajaxurl,
-                    type: 'POST',
-                    data: {
-                        action: 'bunny_cancel_optimization',
-                        nonce: bunnyAjax.nonce,
-                        session_id: this.optimizationState.sessionId
-                    },
-                    success: function(response) {
-                        // Handle cancellation response if needed
-                    }
+                    html += '</li>';
                 });
-                
-                $('#optimization-status-text').text('Optimization cancelled.');
-                $('.bunny-optimization-actions').show();
-                $('.bunny-cancel-section').hide();
-                $('#optimization-progress').hide();
-                $('#current-image-processing').hide();
-                $('#recent-processed').hide();
+                html += '</ul>';
+                html += '</div>';
             }
+            
+            // Recommendations
+            if (data.recommendations && data.recommendations.length > 0) {
+                html += '<div>';
+                html += '<h4>Recommendations</h4>';
+                html += '<ul>';
+                data.recommendations.forEach(function(rec) {
+                    html += '<li>' + rec + '</li>';
+                });
+                html += '</ul>';
+                html += '</div>';
+            }
+            
+            html += '</div>';
+            
+            // Insert after the optimization section
+            $('.bunny-optimization-section').after(html);
         },
         
         /**
@@ -1220,231 +781,6 @@
                     }
                 }
             });
-        },
-        
-        /**
-         * Initialize optimization speed tracking
-         */
-        initOptimizationSpeedTracking: function() {
-            this.optimizationState.startTime = Date.now();
-            this.optimizationState.lastUpdate = Date.now();
-            this.optimizationState.lastProcessed = 0;
-            
-            // Add speed display if not exists
-            if ($('#optimization-speed').length === 0) {
-                var speedHtml = '<div class="bunny-optimization-stats">';
-                speedHtml += '<div class="bunny-stat-item"><span class="label">Speed:</span> <span id="optimization-speed">0 files/min</span></div>';
-                speedHtml += '<div class="bunny-stat-item"><span class="label">Time Elapsed:</span> <span id="optimization-time">00:00</span></div>';
-                speedHtml += '</div>';
-                
-                $('#optimization-progress').append(speedHtml);
-            }
-        },
-        
-        /**
-         * Update optimization speed statistics
-         */
-        updateOptimizationSpeed: function(processed, total) {
-            if (!this.optimizationState.startTime) return;
-            
-            var now = Date.now();
-            var elapsed = (now - this.optimizationState.startTime) / 1000; // in seconds
-            var elapsedMinutes = elapsed / 60;
-            
-            // Calculate overall speed
-            var overallSpeed = elapsedMinutes > 0 ? Math.round(processed / elapsedMinutes) : 0;
-            
-            // Calculate recent speed (last 30 seconds)
-            var timeSinceLastUpdate = (now - this.optimizationState.lastUpdate) / 1000;
-            var recentProcessed = processed - this.optimizationState.lastProcessed;
-            var recentSpeed = 0;
-            
-            if (timeSinceLastUpdate >= 30) { // Update recent speed every 30 seconds
-                recentSpeed = timeSinceLastUpdate > 0 ? Math.round((recentProcessed / timeSinceLastUpdate) * 60) : 0;
-                this.optimizationState.lastUpdate = now;
-                this.optimizationState.lastProcessed = processed;
-            }
-            
-            // Display speed (use recent speed if available, otherwise overall speed)
-            var displaySpeed = recentSpeed > 0 ? recentSpeed : overallSpeed;
-            $('#optimization-speed').text(displaySpeed + ' files/min');
-            
-            // Format and display elapsed time
-            var minutes = Math.floor(elapsed / 60);
-            var seconds = Math.floor(elapsed % 60);
-            var timeStr = String(minutes).padStart(2, '0') + ':' + String(seconds).padStart(2, '0');
-            $('#optimization-time').text(timeStr);
-        },
-        
-        /**
-         * Add log entry to optimization log
-         */
-        addOptimizationLog: function(message, type, batchInfo) {
-            type = type || 'info';
-            var now = new Date();
-            var timeStr = now.toLocaleTimeString('en-US', { hour12: false });
-            
-            // Map types to emoji icons
-            var icons = {
-                'info': 'ℹ️',
-                'success': '✅', 
-                'warning': '⚠️',
-                'error': '❌',
-                'waiting': '⏳',
-                'processing': '🔄'
-            };
-            
-            var icon = icons[type] || 'ℹ️';
-            
-            // Add batch info to message if provided
-            if (batchInfo) {
-                message += ' (Batch ' + batchInfo.current + '/' + batchInfo.total + ', ' + batchInfo.images + ' images)';
-            }
-            
-            var logHtml = '<div class="bunny-log-entry bunny-log-' + type + '">' +
-                '<span class="bunny-log-icon">' + icon + '</span>' +
-                '<span class="bunny-log-message">' + message + '</span>' +
-                '<span class="bunny-log-time">' + timeStr + '</span>' +
-                '</div>';
-            
-            var $container = $('#optimization-log-container');
-            
-            // Remove initial placeholder log
-            $container.find('.bunny-log-entry').first().remove();
-            
-            // Add new log entry at the top
-            $container.prepend(logHtml);
-            
-            // Keep only last 10 entries
-            $container.children().slice(10).remove();
-            
-            // Auto-scroll to keep latest visible
-            $container.scrollTop(0);
-        },
-        
-        /**
-         * Clear optimization log
-         */
-        clearOptimizationLog: function() {
-            var $container = $('#optimization-log-container');
-            $container.empty();
-            
-            // Add initial placeholder
-            var now = new Date();
-            var timeStr = now.toLocaleTimeString('en-US', { hour12: false });
-            $container.append(
-                '<div class="bunny-log-entry bunny-log-info">' +
-                '<span class="bunny-log-icon">ℹ️</span>' +
-                '<span class="bunny-log-message">Optimization logs will appear here...</span>' +
-                '<span class="bunny-log-time">' + timeStr + '</span>' +
-                '</div>'
-            );
-        },
-
-        /**
-         * Show optimization criteria message
-         */
-        showOptimizationCriteria: function() {
-            var criteriaHtml = '<div class="bunny-optimization-criteria notice notice-info inline">';
-            criteriaHtml += '<p><strong>Optimization Criteria:</strong> Only images in supported formats (JPEG, PNG, GIF, WebP, AVIF) ';
-            criteriaHtml += 'with file size <strong>exceeding 35KB</strong> will be optimized. ';
-            criteriaHtml += 'Images below this threshold or in unsupported formats will be ignored.</p>';
-            criteriaHtml += '</div>';
-            
-            // Remove existing criteria message
-            $('.bunny-optimization-criteria').remove();
-            
-            // Add criteria message before optimization actions
-            $('.bunny-optimization-actions').before(criteriaHtml);
-        },
-        
-        /**
-         * Run diagnostics for optimization issues
-         */
-        runOptimizationDiagnostics: function() {
-            var self = this;
-            
-            // Show loading state
-            var $button = $('.bunny-diagnostic-button');
-            var originalText = $button.html();
-            $button.prop('disabled', true).html('<span class="dashicons dashicons-update-alt" style="animation: rotate 1s linear infinite;"></span> Running diagnostics...');
-            
-            // Clear any existing diagnostics results
-            $('#diagnostics-results').remove();
-            
-            $.ajax({
-                url: bunnyAjax.ajaxurl,
-                type: 'POST',
-                data: {
-                    action: 'bunny_run_optimization_diagnostics',
-                    nonce: bunnyAjax.nonce
-                },
-                success: function(response) {
-                    $button.prop('disabled', false).html(originalText);
-                    
-                    if (response.success) {
-                        self.displayDiagnosticsResults(response.data);
-                    } else {
-                        alert('Diagnostics failed: ' + (response.data || 'Unknown error'));
-                    }
-                },
-                error: function(xhr, status, error) {
-                    $button.prop('disabled', false).html(originalText);
-                    console.error('Diagnostics AJAX error:', error);
-                    alert('Diagnostics failed due to network error.');
-                }
-            });
-        },
-        
-        /**
-         * Display diagnostics results
-         */
-        displayDiagnosticsResults: function(data) {
-            var html = '<div id="diagnostics-results" class="notice notice-info" style="margin-top: 20px; padding: 15px;">';
-            html += '<h3>🔍 Optimization Diagnostics Results</h3>';
-            
-            // Summary
-            html += '<div style="margin-bottom: 15px;">';
-            html += '<h4>Summary</h4>';
-            html += '<ul>';
-            html += '<li><strong>Total attachments found:</strong> ' + data.total_attachments + '</li>';
-            html += '<li><strong>Valid for optimization:</strong> ' + data.valid_attachments + '</li>';
-            html += '<li><strong>Problematic attachments:</strong> ' + data.problematic_attachments + '</li>';
-            html += '</ul>';
-            html += '</div>';
-            
-            // Issues found
-            if (data.issues && data.issues.length > 0) {
-                html += '<div style="margin-bottom: 15px;">';
-                html += '<h4>Issues Found</h4>';
-                html += '<ul>';
-                data.issues.forEach(function(issue) {
-                    html += '<li><strong>Attachment ID ' + issue.id + ':</strong> ' + issue.reason;
-                    if (issue.title) {
-                        html += ' (<em>' + issue.title + '</em>)';
-                    }
-                    html += '</li>';
-                });
-                html += '</ul>';
-                html += '</div>';
-            }
-            
-            // Recommendations
-            if (data.recommendations && data.recommendations.length > 0) {
-                html += '<div>';
-                html += '<h4>Recommendations</h4>';
-                html += '<ul>';
-                data.recommendations.forEach(function(rec) {
-                    html += '<li>' + rec + '</li>';
-                });
-                html += '</ul>';
-                html += '</div>';
-            }
-            
-            html += '</div>';
-            
-            // Insert after the optimization section
-            $('.bunny-optimization-section').after(html);
         }
     };
     
