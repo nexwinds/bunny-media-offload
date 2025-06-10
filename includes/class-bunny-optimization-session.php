@@ -499,4 +499,20 @@ class Bunny_Optimization_Session {
         
         $this->logger->log('info', 'Cleaned up old optimization sessions');
     }
+    
+    /**
+     * Get session status
+     * 
+     * @param string $session_id Session ID
+     * @return string Session status
+     */
+    public function get_status($session_id) {
+        $session = $this->get_session($session_id);
+        
+        if (!$session) {
+            return 'not_found';
+        }
+        
+        return $session['status'];
+    }
 } 

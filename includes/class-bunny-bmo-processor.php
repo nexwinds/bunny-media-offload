@@ -42,11 +42,11 @@ class Bunny_BMO_Processor {
     }
     
     /**
-     * Process a batch of images via BMO API - simplified version
+     * Process a batch of images via BMO API - simplified version with proper filtering
      */
     public function process_batch($images) {
         $this->logger->log('info', 'BMO processor - simplified process_batch called', array(
-            'image_count' => count($images)
+            'initial_image_count' => count($images)
         ));
         
         if (!$this->is_available()) {
@@ -57,30 +57,75 @@ class Bunny_BMO_Processor {
             return $this->create_empty_batch_result();
         }
         
-        // Limit batch size (reduce from 20 to 5 to avoid timeouts)
-        if (count($images) > 5) {
-            $images = array_slice($images, 0, 5);
-            $this->logger->log('info', 'Limiting batch size to 5 images to prevent timeouts');
-        }
-        
         try {
-            // Quick validation and URL preparation
-            $bmo_images = array();
-            $image_mapping = array();
+            // First pass: filter and validate all images
+            $valid_images = array();
+            $skipped_images = array();
+            $skipped_reasons = array();
             
             foreach ($images as $attachment_id) {
                 // Basic validation
                 if (!is_numeric($attachment_id) || !get_post($attachment_id)) {
+                    $skipped_images[] = $attachment_id;
+                    $skipped_reasons[] = 'Invalid attachment ID or post not found';
                     continue;
                 }
                 
                 // Get URL
                 $image_url = $this->get_image_url($attachment_id);
                 if (!$image_url) {
+                    $skipped_images[] = $attachment_id;
+                    $skipped_reasons[] = 'Image URL not accessible (likely on CDN)';
                     continue;
                 }
                 
-                // Prepare for BMO API
+                $valid_images[] = $attachment_id;
+            }
+            
+            $this->logger->log('info', 'Image filtering completed', array(
+                'total_images' => count($images),
+                'valid_images' => count($valid_images),
+                'skipped_images' => count($skipped_images)
+            ));
+            
+            // Create results for skipped images
+            $processed_results = array();
+            foreach ($skipped_images as $index => $attachment_id) {
+                $image_data = $this->get_image_data_for_ui($attachment_id);
+                $processed_results[] = array(
+                    'attachment_id' => $attachment_id,
+                    'name' => $image_data['name'],
+                    'thumbnail' => $image_data['thumbnail'],
+                    'success' => false,
+                    'action' => $skipped_reasons[$index] ?? 'Skipped - validation failed',
+                    'size_reduction' => 0,
+                    'result_data' => null
+                );
+            }
+            
+            // If no valid images, return results for skipped images
+            if (empty($valid_images)) {
+                return array(
+                    'successful' => 0,
+                    'failed' => count($skipped_images),
+                    'errors' => $skipped_reasons,
+                    'processed_results' => $processed_results,
+                    'api_response' => null
+                );
+            }
+            
+            // Limit batch size for BMO API (max 3 images per batch to prevent timeouts)
+            if (count($valid_images) > 3) {
+                $valid_images = array_slice($valid_images, 0, 3);
+                $this->logger->log('info', 'Limiting BMO API batch to 3 images to prevent timeouts');
+            }
+            
+            // Second pass: prepare valid images for BMO API
+            $bmo_images = array();
+            $image_mapping = array();
+            
+            foreach ($valid_images as $attachment_id) {
+                $image_url = $this->get_image_url($attachment_id);
                 try {
                     $image_data = $this->bmo_api->prepare_image_data($attachment_id, $image_url);
                     if ($image_data) {
@@ -94,14 +139,20 @@ class Bunny_BMO_Processor {
             }
             
             if (empty($bmo_images)) {
-                return $this->create_batch_error_result($images, 'No valid images found for optimization');
+                return array(
+                    'successful' => 0,
+                    'failed' => count($images),
+                    'errors' => array('No images could be prepared for BMO API'),
+                    'processed_results' => $processed_results,
+                    'api_response' => null
+                );
             }
             
             $this->logger->log('info', 'Sending to BMO API', array(
                 'image_count' => count($bmo_images)
             ));
             
-            // Send to BMO API with timeout handling
+            // Send to BMO API with optimization options
             $result = $this->bmo_api->optimize_images($bmo_images, array(
                 'format' => $this->settings->get('optimization_format', 'auto'),
                 'quality' => $this->settings->get('optimization_quality', 85),
@@ -110,10 +161,22 @@ class Bunny_BMO_Processor {
             
             if ($result && isset($result['success']) && $result['success']) {
                 $this->logger->log('info', 'BMO API completed successfully');
-                return $this->process_batch_results($result, $image_mapping);
+                $api_results = $this->process_batch_results($result, $image_mapping);
+                
+                // Merge API results with skipped images
+                $api_results['processed_results'] = array_merge($processed_results, $api_results['processed_results']);
+                $api_results['failed'] += count($skipped_images);
+                
+                return $api_results;
             } else {
                 $error_msg = isset($result['error']) ? $result['error'] : 'BMO API failed';
-                return $this->create_batch_error_result($images, $error_msg);
+                return array(
+                    'successful' => 0,
+                    'failed' => count($images),
+                    'errors' => array($error_msg),
+                    'processed_results' => $processed_results,
+                    'api_response' => $result
+                );
             }
             
         } catch (Exception $e) {

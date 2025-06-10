@@ -54,6 +54,7 @@ class Bunny_BMO_API {
             'images' => $images,
             'batch' => count($images) > 1,
             'supportsAVIF' => $this->browser_supports_avif(),
+            'userThresholdKb' => 150, // Add default threshold for AVIF/WEBP optimization
         );
         
         // Add format and quality options
@@ -72,13 +73,17 @@ class Bunny_BMO_API {
             'batch' => $request_data['batch']
         ));
         
-        // Make API request with reduced timeout to prevent long hangs
+        // Make API request with improved configuration to prevent timeouts
         $response = wp_remote_post($endpoint, array(
-            'timeout' => 30, // Reduced from 60 to 30 seconds
+            'timeout' => 120, // Increased timeout for large image processing
+            'httpversion' => '1.1',
+            'blocking' => true,
+            'sslverify' => true,
             'headers' => array(
                 'x-api-key' => $api_key,
                 'Content-Type' => 'application/json',
-                'User-Agent' => 'Bunny-Media-Offload/' . BMO_PLUGIN_VERSION
+                'User-Agent' => 'Bunny-Media-Offload/' . BMO_PLUGIN_VERSION,
+                'Accept' => 'application/json'
             ),
             'body' => json_encode($request_data)
         ));
@@ -123,6 +128,13 @@ class Bunny_BMO_API {
      * Optimize single image
      */
     public function optimize_single_image($image_url, $options = array()) {
+        // Validate parameters
+        if (empty($image_url)) {
+            throw new Exception('Image URL is required for optimization.');
+        }
+        
+        $this->logger->log('info', 'Optimizing single image', array('url' => $image_url));
+        
         $image_data = array(
             'imageUrl' => $image_url
         );
@@ -132,7 +144,71 @@ class Bunny_BMO_API {
             $image_data['quality'] = intval($options['quality']);
         }
         
-        return $this->optimize_images(array($image_data), $options);
+        // Create a single-image request
+        $request_data = array(
+            'images' => array($image_data),
+            'batch' => false,
+            'supportsAVIF' => $this->browser_supports_avif(),
+            'userThresholdKb' => 150
+        );
+        
+        // Add format if specified
+        if (isset($options['format'])) {
+            $request_data['format'] = $options['format'];
+        }
+        
+        $endpoint = $this->get_api_endpoint();
+        
+        $this->logger->log('info', 'Sending single image to BMO API', array(
+            'endpoint' => $endpoint,
+            'region' => $this->settings->get('bmo_api_region', 'us')
+        ));
+        
+        // Make API request with individual timeout
+        $response = wp_remote_post($endpoint, array(
+            'timeout' => 45, // 45 second timeout for individual image
+            'httpversion' => '1.1',
+            'blocking' => true,
+            'sslverify' => true,
+            'headers' => array(
+                'x-api-key' => $this->settings->get('bmo_api_key'),
+                'Content-Type' => 'application/json',
+                'User-Agent' => 'Bunny-Media-Offload/' . BMO_PLUGIN_VERSION,
+                'Accept' => 'application/json'
+            ),
+            'body' => json_encode($request_data)
+        ));
+        
+        if (is_wp_error($response)) {
+            throw new Exception('BMO API request failed: ' . $response->get_error_message());
+        }
+        
+        $status_code = wp_remote_retrieve_response_code($response);
+        $body = wp_remote_retrieve_body($response);
+        
+        if ($status_code !== 200) {
+            $error_data = json_decode($body, true);
+            $error_message = isset($error_data['error']) ? $error_data['error'] : 'Unknown API error';
+            throw new Exception("BMO API error ({$status_code}): {$error_message}");
+        }
+        
+        $result = json_decode($body, true);
+        
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            throw new Exception('Invalid JSON response from BMO API');
+        }
+        
+        if (!isset($result['success']) || !$result['success']) {
+            $error_message = isset($result['error']) ? $result['error'] : 'Optimization failed';
+            throw new Exception("BMO API optimization failed: {$error_message}");
+        }
+        
+        $this->logger->log('info', 'BMO API single image optimization completed', array(
+            'credits_used' => $result['creditsUsed'] ?? 0,
+            'credits_remaining' => $result['creditsRemaining'] ?? 0
+        ));
+        
+        return $result;
     }
     
     /**

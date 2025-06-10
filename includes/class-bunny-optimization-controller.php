@@ -33,6 +33,10 @@ class Bunny_Optimization_Controller {
         add_action('wp_ajax_bunny_optimization_batch', array($this, 'ajax_optimization_batch'));
         add_action('wp_ajax_bunny_cancel_optimization', array($this, 'ajax_cancel_optimization'));
         
+        // New single image optimization handlers
+        add_action('wp_ajax_bunny_get_images_to_optimize', array($this, 'ajax_get_images_to_optimize'));
+        add_action('wp_ajax_bunny_optimize_single_image', array($this, 'ajax_optimize_single_image'));
+        
         // Cleanup hook
         add_action('bunny_cleanup_sessions', array($this, 'cleanup_old_sessions'));
     }
@@ -123,8 +127,9 @@ class Bunny_Optimization_Controller {
             return;
         }
         
-        // Get next batch of images
-        $images = $this->session_manager->get_next_batch($session_id, 20); // BMO API batch size
+        // Get next batch of images - reduce batch size to 3 to prevent timeouts
+        $batch_size = 3; // Reduced from 20 to 3 to avoid timeouts
+        $images = $this->session_manager->get_next_batch($session_id, $batch_size);
         
         $this->logger->log('info', 'Processing batch', array(
             'session_id' => $session_id,
@@ -145,8 +150,56 @@ class Bunny_Optimization_Controller {
             return;
         }
         
-        // Process batch via BMO API
-        $batch_result = $this->bmo_processor->process_batch($images);
+        // Implement retry logic
+        $max_retries = 2;
+        $retry_count = 0;
+        $batch_result = null;
+        $last_error = null;
+        
+        while ($retry_count <= $max_retries) {
+            try {
+                // Process batch via BMO API
+                $batch_result = $this->bmo_processor->process_batch($images);
+                break; // Success, exit retry loop
+            } catch (Exception $e) {
+                $retry_count++;
+                $last_error = $e->getMessage();
+                $this->logger->log('warning', "Batch processing failed (attempt {$retry_count}/{$max_retries}): {$last_error}");
+                
+                if ($retry_count <= $max_retries) {
+                    // Wait before retrying
+                    sleep(2);
+                }
+            }
+        }
+        
+        // If all retries failed
+        if ($retry_count > $max_retries && $batch_result === null) {
+            $error_message = "Failed to process batch after {$max_retries} attempts. Last error: {$last_error}";
+            $this->logger->log('error', $error_message);
+            
+            // Create a basic error result
+            $batch_result = array(
+                'successful' => 0,
+                'failed' => count($images),
+                'errors' => array($error_message),
+                'processed_results' => array()
+            );
+            
+            // Add individual image errors
+            foreach ($images as $attachment_id) {
+                $image_data = $this->bmo_processor->get_image_data_for_ui($attachment_id);
+                $batch_result['processed_results'][] = array(
+                    'attachment_id' => $attachment_id,
+                    'name' => $image_data['name'],
+                    'thumbnail' => $image_data['thumbnail'],
+                    'success' => false,
+                    'action' => "Processing error: {$last_error}",
+                    'size_reduction' => 0,
+                    'result_data' => null
+                );
+            }
+        }
         
         // Update session with results - only count images that were actually processed
         $session = $this->session_manager->get_session($session_id);
@@ -184,7 +237,7 @@ class Bunny_Optimization_Controller {
         $progress = $this->session_manager->get_progress($session_id);
         
         // Check if there are more images that can be processed
-        $remaining_images = $this->session_manager->get_next_batch($session_id, 20);
+        $remaining_images = $this->session_manager->get_next_batch($session_id, $batch_size);
         $has_more_processable = !empty($remaining_images);
         
         // Mark as completed if no more images can be processed
@@ -197,10 +250,10 @@ class Bunny_Optimization_Controller {
         $response = array_merge($progress, array(
             'recent_processed' => $this->format_recent_processed($batch_result['processed_results']),
             'batch_info' => array(
-                'current_batch' => ceil($progress['processed'] / 20),
-                'total_batches' => ceil($progress['total'] / 20),
+                'current_batch' => ceil($progress['processed'] / $batch_size),
+                'total_batches' => ceil($progress['total'] / $batch_size),
                 'images_in_batch' => $actually_processed, // Use actual processed count
-                'api_batch_size' => 20,
+                'api_batch_size' => $batch_size,
                 'requested_batch_size' => count($images),
                 'validation_passed' => $actually_processed,
                 'has_more_processable' => $has_more_processable
@@ -224,8 +277,8 @@ class Bunny_Optimization_Controller {
         } else {
             $response['message'] = sprintf(
                 __('Batch %1$d/%2$d completed: %3$d images processed (%4$d passed validation)', 'bunny-media-offload'),
-                ceil($progress['processed'] / 20),
-                ceil($progress['total'] / 20),
+                ceil($progress['processed'] / $batch_size),
+                ceil($progress['total'] / $batch_size),
                 $actually_processed,
                 $actually_processed
             );
@@ -273,18 +326,27 @@ class Bunny_Optimization_Controller {
     }
     
     /**
-     * Format recent processed results for UI
+     * Format recent processed results for UI - with safe field access
      */
     private function format_recent_processed($processed_results) {
         $formatted = array();
         
+        if (!is_array($processed_results)) {
+            return $formatted;
+        }
+        
         foreach ($processed_results as $result) {
+            // Skip invalid results
+            if (!is_array($result)) {
+                continue;
+            }
+            
             $formatted[] = array(
-                'name' => $result['name'],
-                'thumbnail' => $result['thumbnail'],
-                'success' => $result['success'],
-                'action' => $result['action'],
-                'size_reduction' => $result['size_reduction']
+                'name' => isset($result['name']) ? $result['name'] : 'Unknown image',
+                'thumbnail' => isset($result['thumbnail']) ? $result['thumbnail'] : '',
+                'success' => isset($result['success']) ? $result['success'] : false,
+                'action' => isset($result['action']) ? $result['action'] : 'Unknown status',
+                'size_reduction' => isset($result['size_reduction']) ? $result['size_reduction'] : 0
             );
         }
         
@@ -386,5 +448,233 @@ class Bunny_Optimization_Controller {
     private function is_image($file_path) {
         $file_type = wp_check_filetype($file_path);
         return strpos($file_type['type'], 'image/') === 0;
+    }
+    
+    /**
+     * Get images that need optimization via AJAX
+     */
+    public function ajax_get_images_to_optimize() {
+        check_ajax_referer('bunny_ajax_nonce', 'nonce');
+        
+        if (!current_user_can('manage_options')) {
+            wp_die(esc_html__('Insufficient permissions.', 'bunny-media-offload'));
+        }
+        
+        $session_id = isset($_POST['session_id']) ? sanitize_text_field(wp_unslash($_POST['session_id'])) : '';
+        $limit = isset($_POST['limit']) ? intval($_POST['limit']) : 10;
+        
+        if (!$session_id) {
+            wp_send_json_error(array('message' => 'Session ID required.'));
+            return;
+        }
+        
+        // Check if session is cancelled or completed
+        if ($this->session_manager->is_cancelled($session_id) || $this->session_manager->is_completed($session_id)) {
+            wp_send_json_success(array('images' => array()));
+            return;
+        }
+        
+        // Get next batch of images
+        $images = $this->session_manager->get_next_batch($session_id, $limit);
+        
+        wp_send_json_success(array(
+            'images' => $images,
+            'count' => count($images),
+            'session_status' => $this->session_manager->get_status($session_id)
+        ));
+    }
+    
+    /**
+     * Process a single image via AJAX
+     */
+    public function ajax_optimize_single_image() {
+        check_ajax_referer('bunny_ajax_nonce', 'nonce');
+        
+        if (!current_user_can('manage_options')) {
+            wp_die(esc_html__('Insufficient permissions.', 'bunny-media-offload'));
+        }
+        
+        $session_id = isset($_POST['session_id']) ? sanitize_text_field(wp_unslash($_POST['session_id'])) : '';
+        $image_id = isset($_POST['image_id']) ? intval($_POST['image_id']) : 0;
+        
+        if (!$session_id || !$image_id) {
+            wp_send_json_error(array('message' => 'Session ID and image ID required.'));
+            return;
+        }
+        
+        // Check if session is cancelled or completed
+        if ($this->session_manager->is_cancelled($session_id)) {
+            wp_send_json_error(array('message' => 'Optimization was cancelled.'));
+            return;
+        }
+        
+        if ($this->session_manager->is_completed($session_id)) {
+            wp_send_json_error(array('message' => 'Optimization already completed.'));
+            return;
+        }
+        
+        $this->logger->log('info', 'Processing single image', array(
+            'session_id' => $session_id,
+            'image_id' => $image_id
+        ));
+        
+        try {
+            // Process single image with BMO processor
+            $result = $this->process_single_image($image_id);
+            
+            // Update session progress
+            $session = $this->session_manager->get_session($session_id);
+            $updates = array(
+                'processed' => $session['processed'] + 1,
+                'successful' => $session['successful'] + ($result['success'] ? 1 : 0),
+                'failed' => $session['failed'] + ($result['success'] ? 0 : 1)
+            );
+            
+            if (!$result['success'] && !empty($result['error'])) {
+                $updates['errors'] = array_merge($session['errors'], array($result['error']));
+            }
+            
+            $this->session_manager->update_session($session_id, $updates);
+            
+            // Return success with image result
+            wp_send_json_success($result);
+            
+        } catch (Exception $e) {
+            $error_message = $e->getMessage();
+            $this->logger->log('error', 'Single image optimization error', array(
+                'session_id' => $session_id,
+                'image_id' => $image_id,
+                'error' => $error_message
+            ));
+            
+            // Update session with error
+            $session = $this->session_manager->get_session($session_id);
+            $updates = array(
+                'processed' => $session['processed'] + 1,
+                'failed' => $session['failed'] + 1,
+                'errors' => array_merge($session['errors'], array($error_message))
+            );
+            $this->session_manager->update_session($session_id, $updates);
+            
+            wp_send_json_error(array(
+                'message' => $error_message,
+                'image_id' => $image_id
+            ));
+        }
+    }
+    
+    /**
+     * Process a single image
+     * 
+     * @param int $image_id Image ID to process
+     * @return array Processing result
+     */
+    private function process_single_image($image_id) {
+        // Get image data
+        $image_data = $this->bmo_processor->get_image_data_for_ui($image_id);
+        
+        try {
+            // Validate the image
+            $validation = $this->bmo_processor->validate_attachment_for_optimization($image_id);
+            
+            if (!$validation['valid']) {
+                return array(
+                    'success' => false,
+                    'image_id' => $image_id,
+                    'name' => $image_data['name'],
+                    'thumbnail' => $image_data['thumbnail'],
+                    'action' => $validation['reason'],
+                    'error' => "Image {$image_data['name']} validation failed: {$validation['reason']}"
+                );
+            }
+            
+            // Get image URL
+            $image_url = $this->bmo_processor->get_image_url($image_id);
+            
+            if (!$image_url) {
+                return array(
+                    'success' => false,
+                    'image_id' => $image_id,
+                    'name' => $image_data['name'],
+                    'thumbnail' => $image_data['thumbnail'],
+                    'action' => 'Image URL not available',
+                    'error' => "Image {$image_data['name']} URL not available"
+                );
+            }
+            
+            // Prepare image data for BMO API
+            $bmo_image_data = $this->bmo_api->prepare_image_data($image_id, $image_url);
+            
+            // Process with BMO API
+            $api_result = $this->bmo_api->optimize_single_image($image_url, array(
+                'format' => $this->settings->get('optimization_format', 'auto'),
+                'quality' => $this->settings->get('optimization_quality', 85)
+            ));
+            
+            // Check if optimized successfully
+            if (!isset($api_result['success']) || !$api_result['success']) {
+                $error = isset($api_result['error']) ? $api_result['error'] : 'Unknown API error';
+                return array(
+                    'success' => false,
+                    'image_id' => $image_id,
+                    'name' => $image_data['name'],
+                    'thumbnail' => $image_data['thumbnail'],
+                    'action' => "API error: {$error}",
+                    'error' => "BMO API error for {$image_data['name']}: {$error}"
+                );
+            }
+            
+            // Get single result from API response
+            $result_data = isset($api_result['results']) ? $api_result['results'] : $api_result;
+            
+            if (is_array($result_data)) {
+                $result_data = $result_data[0];
+            }
+            
+            // Check if image was skipped
+            if (isset($result_data['skipped']) && $result_data['skipped']) {
+                $reason = isset($result_data['reason']) ? $result_data['reason'] : 'Already optimized';
+                return array(
+                    'success' => true,
+                    'image_id' => $image_id,
+                    'name' => $image_data['name'],
+                    'thumbnail' => $image_data['thumbnail'],
+                    'action' => "Skipped: {$reason}",
+                    'size_reduction' => 0,
+                    'skipped' => true,
+                    'reason' => $reason
+                );
+            }
+            
+            // Calculate size reduction
+            $size_reduction = 0;
+            if (isset($result_data['data']['compressionRatio'])) {
+                $size_reduction = $result_data['data']['compressionRatio'];
+            }
+            
+            // Update attachment metadata
+            $this->bmo_processor->update_attachment_meta($image_id, $result_data);
+            
+            // Return success result
+            return array(
+                'success' => true,
+                'image_id' => $image_id,
+                'name' => $image_data['name'],
+                'thumbnail' => $image_data['thumbnail'],
+                'action' => 'Optimized via BMO API',
+                'size_reduction' => $size_reduction,
+                'skipped' => false
+            );
+            
+        } catch (Exception $e) {
+            return array(
+                'success' => false,
+                'image_id' => $image_id,
+                'name' => $image_data['name'],
+                'thumbnail' => $image_data['thumbnail'],
+                'action' => "Error: {$e->getMessage()}",
+                'error' => "Error processing {$image_data['name']}: {$e->getMessage()}"
+            );
+        }
     }
 } 
