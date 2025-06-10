@@ -29,21 +29,43 @@ class Bunny_Stats {
             return $cached_stats;
         }
         
-        // For "Ready for Migration", use migration logic to get accurate count
-        // This ensures the count matches what migration can actually process
-        $ready_for_migration = 0;
-        if ($this->migration) {
-            $migration_stats = $this->migration->get_migration_stats();
-            $ready_for_migration = $migration_stats['pending_files'] ?? 0;
-        }
+        global $wpdb;
         
-        // Get count of eligible local files
-        $local_eligible = $this->count_eligible_local_files();
+        // Get total image count first
+        $total_query = "SELECT COUNT(*) FROM {$wpdb->posts} 
+                        WHERE post_type = 'attachment' 
+                        AND post_mime_type LIKE 'image/%'
+                        AND post_status = 'inherit'";
         
-        // Get migrated count
-        $images_migrated = $this->count_cdn_images_by_url();
+        $total_images = (int) $wpdb->get_var($total_query);
         
-        $total_images = $local_eligible + $ready_for_migration + $images_migrated;
+        // Get count of images already migrated to CDN
+        $cdn_table = $wpdb->prefix . 'bunny_offloaded_files';
+        $migrated_query = "SELECT COUNT(*) FROM {$cdn_table} 
+                           WHERE is_synced = 1";
+        
+        $images_migrated = (int) $wpdb->get_var($migrated_query);
+        
+        // Get count of images ready for migration (meets format criteria but not yet migrated)
+        // These include AVIF, SVG, and WebP images that are below the size threshold
+        $ready_mime_types = array('image/avif', 'image/webp', 'image/svg+xml');
+        $mime_placeholders = implode(',', array_fill(0, count($ready_mime_types), '%s'));
+        
+        $ready_query = $wpdb->prepare(
+            "SELECT COUNT(*) FROM {$wpdb->posts} p
+            LEFT JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id AND pm.meta_key = '_wp_attached_file'
+            WHERE p.post_type = 'attachment'
+            AND p.post_mime_type IN ($mime_placeholders)
+            AND p.post_status = 'inherit'
+            AND p.ID NOT IN (SELECT attachment_id FROM {$cdn_table} WHERE is_synced = 1)",
+            $ready_mime_types
+        );
+        
+        $ready_for_migration = (int) $wpdb->get_var($ready_query);
+        
+        // Local files that need optimization are those that aren't ready for migration and aren't migrated
+        $local_eligible = $total_images - $ready_for_migration - $images_migrated;
+        if ($local_eligible < 0) $local_eligible = 0;
         
         // Calculate percentages
         $not_optimized_percent = $total_images > 0 ? round(($local_eligible / $total_images) * 100, 1) : 0;

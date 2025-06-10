@@ -447,6 +447,14 @@
         refreshOptimizationStats: function() {
             var self = this;
             
+            // If unified stats module is available, use it instead
+            if (window.BunnyStats) {
+                // Trigger the unified stats refresh
+                window.BunnyStats.fetchStats();
+                return;
+            }
+            
+            // Fallback to original implementation if the unified module isn't loaded
             $.ajax({
                 url: bunnyAjax.ajaxurl,
                 type: 'POST',
@@ -466,6 +474,14 @@
                         if ($('.bunny-circular-chart').length) {
                             self.refreshStatsChart(response.data);
                         }
+                        
+                        // Also refresh the general stats if available
+                        if (typeof BunnyAdmin !== 'undefined' && BunnyAdmin.updateDashboardStats) {
+                            BunnyAdmin.updateDashboardStats();
+                        }
+                        
+                        // Notify any listeners that stats have been updated
+                        $(document).trigger('bunny_stats_updated', response.data);
                     }
                 }
             });

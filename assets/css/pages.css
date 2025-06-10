@@ -453,4 +453,128 @@
 /* Utility Classes */
 .bunny-button-hidden {
     display: none !important;
+}
+
+/* Migration Log Styles - Match Optimization log styles */
+.bunny-migration-log {
+    background: #fff;
+    border: 1px solid #ccd0d4;
+    border-radius: 4px;
+    padding: 20px;
+    margin-top: 20px;
+}
+
+.bunny-migration-log h4 {
+    margin: 0 0 15px 0;
+    font-size: 16px;
+    color: #333;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.bunny-migration-log h4::before {
+    content: "📝";
+    font-size: 18px;
+}
+
+#migration-log-container {
+    max-height: 300px;
+    overflow-y: auto;
+    background: #f8f9fa;
+    border: 1px solid #e1e5e9;
+    border-radius: 4px;
+    padding: 10px;
+    font-family: 'Courier New', Consolas, monospace;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+/* Progress bar enhancement */
+#migration-progress {
+    margin-top: 20px;
+    background: #fff;
+    border: 1px solid #ccd0d4;
+    border-radius: 4px;
+    padding: 20px;
+}
+
+#migration-progress h3 {
+    margin: 0 0 15px 0;
+    font-size: 16px;
+    color: #333;
+}
+
+.bunny-progress-bar {
+    background: #f0f0f1;
+    border-radius: 3px;
+    height: 20px;
+    margin-bottom: 15px;
+    overflow: hidden;
+    box-shadow: inset 0 1px 3px rgba(0,0,0,0.1);
+    position: relative;
+}
+
+.bunny-progress-fill {
+    background: linear-gradient(45deg, #0073aa 25%, #005177 25%, #005177 50%, #0073aa 50%, #0073aa 75%, #005177 75%, #005177);
+    background-size: 20px 20px;
+    height: 100%;
+    transition: width 0.5s ease;
+    animation: bunny-progress-stripes 1s linear infinite;
+}
+
+@keyframes bunny-progress-stripes {
+    0% { background-position: 0 0; }
+    100% { background-position: 20px 0; }
+}
+
+#migration-status-text {
+    margin: 10px 0;
+    font-size: 14px;
+    color: #555;
+}
+
+/* Migration error list styling */
+#migration-errors {
+    margin-top: 15px;
+    padding: 15px;
+    background: #fef8f8;
+    border: 1px solid #f5c2c7;
+    border-radius: 4px;
+}
+
+#migration-errors h4 {
+    margin-top: 0;
+    color: #842029;
+}
+
+#migration-error-list {
+    margin: 10px 0 0 20px;
+    color: #842029;
+}
+
+/* Ensure consistent button styling */
+#cancel-migration {
+    background: #dc3545;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: background 0.3s ease;
+}
+
+#cancel-migration:hover {
+    background: #c82333;
+}
+
+/* Hide button class */
+.bunny-button-hidden {
+    display: none !important;
+}
+
+/* Hide status class */
+.bunny-status-hidden {
+    display: none !important;
 } 

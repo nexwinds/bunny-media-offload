@@ -6,18 +6,6 @@
     
     var BunnyAdmin = {
         
-        migrationState: {
-            active: false,
-            sessionId: null,
-            concurrentLimit: 4,
-            totalFiles: 0,
-            processedFiles: 0,
-            successfulFiles: 0,
-            failedFiles: 0,
-            currentBatch: [],
-            errors: []
-        },
-        
         optimizationState: {
             active: false,
             sessionId: null,
@@ -29,9 +17,12 @@
          */
         init: function() {
             this.bindEvents();
-            this.initMigration();
             this.initLogs();
             this.initOptimization();
+            this.initTroubleshooting();
+            
+            // Refresh stats on page load for consistent display
+            this.refreshAllStats();
         },
         
         /**
@@ -64,32 +55,15 @@
         },
         
         /**
-         * Initialize migration functionality
+         * Initialize troubleshooting functionality
          */
-        initMigration: function() {
-            $(document).on('click', '#start-migration', function(e) {
-                e.preventDefault();
-                
-                // Check if migration button is disabled
-                if ($(this).prop('disabled')) {
-                    return;
-                }
-                
-                BunnyAdmin.startMigration();
-            });
-            
-            $(document).on('click', '#cancel-migration', function(e) {
-                e.preventDefault();
-                BunnyAdmin.cancelMigration();
-            });
-            
+        initTroubleshooting: function() {
+            // Regenerate thumbnails
             $(document).on('click', '#regenerate-thumbnails', function(e) {
                 e.preventDefault();
                 BunnyAdmin.regenerateThumbnails();
             });
         },
-        
-
         
         /**
          * Initialize logs functionality
@@ -238,227 +212,86 @@
         },
         
         /**
-         * Start migration with enhanced animation
+         * Show notification
          */
-        startMigration: function() {
-            var self = this;
+        showNotice: function(message, type) {
+            var $notice = $('<div class="notice notice-' + type + ' is-dismissible"><p>' + message + '</p></div>');
+            var $notices = $('.bunny-notices');
             
-            $.ajax({
-                url: bunnyAjax.ajaxurl,
-                type: 'POST',
-                data: {
-                    action: 'bunny_start_migration',
-                    nonce: bunnyAjax.nonce
-                },
-                success: function(response) {
-                    if (response.success) {
-                        self.migrationState.active = true;
-                        self.migrationState.sessionId = response.data.migration_id;
-                        self.migrationState.totalFiles = response.data.total_files;
-                        self.migrationState.concurrentLimit = response.data.concurrent_limit || 4;
-                        
-                        // Show migration progress interface
-                        self.initMigrationInterface();
-                        
-                        // Start processing
-                        self.processMigrationBatch(self.migrationState.sessionId);
-                    } else {
-                        alert('Failed to start migration: ' + response.data.message);
-                    }
-                },
-                error: function() {
-                    alert('Failed to start migration.');
-                }
-            });
-        },
-        
-        /**
-         * Initialize migration interface with animation
-         */
-        initMigrationInterface: function() {
-            $('#migration-progress').show();
-            $('#start-migration').hide();
-            $('#cancel-migration').show();
-            
-            // Add basic stats without animation
-            var statsHtml = '<div class="bunny-migration-stats">';
-            statsHtml += '<div class="bunny-stat-item"><span class="label">Total Files:</span> <span id="total-files">' + this.migrationState.totalFiles + '</span></div>';
-            statsHtml += '<div class="bunny-stat-item"><span class="label">Processed:</span> <span id="processed-files">0</span></div>';
-            statsHtml += '<div class="bunny-stat-item"><span class="label">Successful:</span> <span id="successful-files">0</span></div>';
-            statsHtml += '<div class="bunny-stat-item"><span class="label">Failed:</span> <span id="failed-files">0</span></div>';
-            statsHtml += '<div class="bunny-stat-item"><span class="label">Speed:</span> <span id="processing-speed">0 files/min</span></div>';
-            statsHtml += '</div>';
-            
-            $('#migration-progress').prepend(statsHtml);
-            
-            // Initialize speed tracking
-            this.migrationState.startTime = Date.now();
-        },
-        
-        /**
-         * Process migration batch with animation
-         */
-        processMigrationBatch: function(migrationId) {
-            var self = this;
-            
-            if (!this.migrationState.active) {
-                return;
+            if ($notices.length === 0) {
+                $notices = $('<div class="bunny-notices"></div>');
+                $('.wrap > h1').after($notices);
             }
             
-            $.ajax({
-                url: bunnyAjax.ajaxurl,
-                type: 'POST',
-                data: {
-                    action: 'bunny_migration_batch',
-                    nonce: bunnyAjax.nonce,
-                    migration_id: migrationId
-                },
-                success: function(response) {
-                    if (response.success) {
-                        var data = response.data;
-                        
-                        // Update migration state
-                        self.migrationState.processedFiles = data.processed;
-                        self.migrationState.successfulFiles = data.successful;
-                        self.migrationState.failedFiles = data.failed;
-                        
-                        // Update progress bar
-                        $('#migration-progress-bar').css('width', data.progress + '%');
-                        
-                        // Update stats
-                        self.updateMigrationStats();
-                        
-                        // Update status text with actual numbers processed
-                        // Use the original total from the backend, but if completed, show processed/processed
-                        var displayTotal = data.completed ? data.processed : data.total;
-                        $('#migration-status-text').text(
-                            'Migration Progress Processed: ' + data.processed + '/' + displayTotal + 
-                            ' (' + data.successful + ' successful, ' + data.failed + ' failed)'
-                        );
-                        
-
-                        
-                        // Handle errors
-                        if (data.errors && data.errors.length > 0) {
-                            self.displayMigrationErrors(data.errors);
-                        }
-                        
-                        if (!data.completed && self.migrationState.active) {
-                            // Continue processing with delay to show animation
-                            setTimeout(function() {
-                                self.processMigrationBatch(migrationId);
-                            }, 1500);
-                        } else {
-                            // Complete migration
-                            self.completeMigration(data.completed);
-                        }
-                    } else {
-                        self.handleMigrationError(response.data.message);
-                    }
-                },
-                error: function() {
-                    self.handleMigrationError('Migration batch failed.');
-                }
-            });
-        },
-        
-
-        
-        /**
-         * Update migration statistics in real-time
-         */
-        updateMigrationStats: function() {
-            $('#processed-files').text(this.migrationState.processedFiles);
-            $('#successful-files').text(this.migrationState.successfulFiles);
-            $('#failed-files').text(this.migrationState.failedFiles);
+            $notices.append($notice);
             
-            // Calculate and display processing speed
-            var elapsed = (Date.now() - this.migrationState.startTime) / 1000 / 60; // minutes
-            var speed = elapsed > 0 ? Math.round(this.migrationState.processedFiles / elapsed) : 0;
-            $('#processing-speed').text(speed + ' files/min');
-        },
-        
-        /**
-         * Display migration errors
-         */
-        displayMigrationErrors: function(errors) {
-            if (errors.length > 0) {
-                $('#migration-errors').show();
-                var errorList = $('#migration-error-list');
-                
-                errors.forEach(function(error) {
-                    errorList.append('<li>' + error + '</li>');
+            // Add dismiss button
+            $notice.append('<button type="button" class="notice-dismiss"><span class="screen-reader-text">Dismiss this notice.</span></button>');
+            
+            // Handle dismiss click
+            $notice.find('.notice-dismiss').on('click', function() {
+                $(this).closest('.notice').fadeOut(300, function() {
+                    $(this).remove();
                 });
-            }
-        },
-        
-        /**
-         * Handle migration error
-         */
-        handleMigrationError: function(message) {
-            alert('Migration failed: ' + message);
-            this.resetMigrationInterface();
-        },
-        
-        /**
-         * Complete migration
-         */
-        completeMigration: function(completed) {
-            if (completed) {
-                setTimeout(function() {
-                    alert('Migration completed successfully!');
-                }, 1000);
-            }
+            });
             
-            this.resetMigrationInterface();
+            // Auto-dismiss after 5 seconds
+            setTimeout(function() {
+                $notice.fadeOut(300, function() {
+                    $(this).remove();
+                });
+            }, 5000);
         },
         
         /**
-         * Cancel migration
+         * Export logs
          */
-        cancelMigration: function() {
-            if (!this.migrationState.active) {
-                return;
-            }
+        exportLogs: function(e) {
+            e.preventDefault();
+            console.log('exportLogs function called');
             
-            var self = this;
+            var $button = $(e.target);
+            var logType = $button.data('log-type') || 'all';
+            var logLevel = $button.data('log-level') || '';
+            
+            console.log('Button:', $button);
+            console.log('Log type:', logType);
+            console.log('Log level:', logLevel);
+            console.log('bunnyAjax:', bunnyAjax);
+            
+            // Show loading state
+            $button.prop('disabled', true).text('Exporting...');
             
             $.ajax({
                 url: bunnyAjax.ajaxurl,
                 type: 'POST',
                 data: {
-                    action: 'bunny_cancel_migration',
+                    action: 'bunny_export_logs',
                     nonce: bunnyAjax.nonce,
-                    migration_id: this.migrationState.sessionId
+                    log_type: logType,
+                    log_level: logLevel
                 },
                 success: function(response) {
+                    console.log('Export logs response:', response);
                     if (response.success) {
-                        alert('Migration cancelled.');
+                        // Create download link
+                        var blob = new Blob([response.data.content], { type: 'text/csv' });
+                        var link = document.createElement('a');
+                        link.href = window.URL.createObjectURL(blob);
+                        link.download = response.data.filename;
+                        link.click();
+                    } else {
+                        alert('Failed to export logs: ' + response.data.message);
                     }
-                    self.resetMigrationInterface();
                 },
                 error: function() {
-                    alert('Failed to cancel migration.');
-                    self.resetMigrationInterface();
+                    alert('Failed to export logs.');
+                },
+                complete: function() {
+                    $button.prop('disabled', false).text('Export Filtered Logs');
                 }
             });
         },
-        
-        /**
-         * Reset migration interface
-         */
-        resetMigrationInterface: function() {
-            this.migrationState.active = false;
-            this.migrationState.sessionId = null;
-            
-            $('#start-migration').show();
-            $('#cancel-migration').hide();
-            
-            // Remove stats
-            $('.bunny-migration-stats').remove();
-        },
-        
-        
         
         /**
          * Clear logs
@@ -499,198 +332,16 @@
                         alert(response.data.message);
                         location.reload();
                     } else {
-                        alert('Failed to clear logs: ' + (response.data.message || 'Unknown error'));
+                        alert('Failed to clear logs: ' + response.data.message);
                     }
                 },
-                error: function(xhr, status, error) {
-                    console.error('Clear logs error:', xhr, status, error);
-                    alert('Failed to clear logs due to an error.');
+                error: function() {
+                    alert('Failed to clear logs.');
                 },
                 complete: function() {
                     $button.prop('disabled', false).text('Clear Filtered Logs');
                 }
             });
-        },
-        
-        /**
-         * Export logs
-         */
-        exportLogs: function(e) {
-            e.preventDefault();
-            console.log('exportLogs function called');
-            
-            var $button = $(e.target);
-            var logType = $button.data('log-type') || 'all';
-            var logLevel = $button.data('log-level') || '';
-            
-            console.log('Button:', $button);
-            console.log('Log type:', logType);
-            console.log('Log level:', logLevel);
-            console.log('bunnyAjax:', bunnyAjax);
-            
-            // Show loading state
-            $button.prop('disabled', true).text('Exporting...');
-            
-            $.ajax({
-                url: bunnyAjax.ajaxurl,
-                type: 'POST',
-                data: {
-                    action: 'bunny_export_logs',
-                    nonce: bunnyAjax.nonce,
-                    log_type: logType,
-                    log_level: logLevel
-                },
-                success: function(response) {
-                    console.log('Export logs response:', response);
-                    if (response.success) {
-                        // Create download link
-                        var blob = new Blob([response.data.csv_data], { type: 'text/csv' });
-                        var url = window.URL.createObjectURL(blob);
-                        var a = document.createElement('a');
-                        a.href = url;
-                        
-                        var filename = 'bunny-logs';
-                        if (logType !== 'all') {
-                            filename += '-' + logType.toLowerCase();
-                        }
-                        if (logLevel) {
-                            filename += '-' + logLevel.toLowerCase();
-                        }
-                        filename += '-' + new Date().toISOString().split('T')[0] + '.csv';
-                        
-                        a.download = filename;
-                        document.body.appendChild(a);
-                        a.click();
-                        document.body.removeChild(a);
-                        window.URL.revokeObjectURL(url);
-                        
-                        alert('Logs exported successfully!');
-                    } else {
-                        alert('Export failed: ' + (response.data.message || 'Unknown error'));
-                    }
-                },
-                error: function(xhr, status, error) {
-                    console.error('Export logs error:', xhr, status, error);
-                    alert('Failed to export logs due to an error.');
-                },
-                complete: function() {
-                    $button.prop('disabled', false).text('Export Filtered Logs');
-                }
-            });
-        },
-        
-        /**
-         * Run diagnostics for optimization issues
-         */
-        runOptimizationDiagnostics: function() {
-            var self = this;
-            
-            // Show loading state
-            var $button = $('.bunny-diagnostic-button');
-            var originalText = $button.html();
-            $button.prop('disabled', true).html('<span class="dashicons dashicons-update-alt" style="animation: rotate 1s linear infinite;"></span> Running diagnostics...');
-            
-            // Clear any existing diagnostics results
-            $('#diagnostics-results').remove();
-            
-            $.ajax({
-                url: bunnyAjax.ajaxurl,
-                type: 'POST',
-                data: {
-                    action: 'bunny_run_optimization_diagnostics',
-                    nonce: bunnyAjax.nonce
-                },
-                success: function(response) {
-                    $button.prop('disabled', false).html(originalText);
-                    
-                    if (response.success) {
-                        self.displayDiagnosticsResults(response.data);
-                    } else {
-                        alert('Diagnostics failed: ' + (response.data || 'Unknown error'));
-                    }
-                },
-                error: function(xhr, status, error) {
-                    $button.prop('disabled', false).html(originalText);
-                    console.error('Diagnostics AJAX error:', error);
-                    alert('Diagnostics failed due to network error.');
-                }
-            });
-        },
-        
-        /**
-         * Display diagnostics results
-         */
-        displayDiagnosticsResults: function(data) {
-            var html = '<div id="diagnostics-results" class="notice notice-info" style="margin-top: 20px; padding: 15px;">';
-            html += '<h3>🔍 Optimization Diagnostics Results</h3>';
-            
-            // Summary
-            html += '<div style="margin-bottom: 15px;">';
-            html += '<h4>Summary</h4>';
-            html += '<ul>';
-            html += '<li><strong>Total attachments found:</strong> ' + data.total_attachments + '</li>';
-            html += '<li><strong>Valid for optimization:</strong> ' + data.valid_attachments + '</li>';
-            html += '<li><strong>Problematic attachments:</strong> ' + data.problematic_attachments + '</li>';
-            html += '</ul>';
-            html += '</div>';
-            
-            // Issues found
-            if (data.issues && data.issues.length > 0) {
-                html += '<div style="margin-bottom: 15px;">';
-                html += '<h4>Issues Found</h4>';
-                html += '<ul>';
-                data.issues.forEach(function(issue) {
-                    html += '<li><strong>Attachment ID ' + issue.id + ':</strong> ' + issue.reason;
-                    if (issue.title) {
-                        html += ' (<em>' + issue.title + '</em>)';
-                    }
-                    html += '</li>';
-                });
-                html += '</ul>';
-                html += '</div>';
-            }
-            
-            // Recommendations
-            if (data.recommendations && data.recommendations.length > 0) {
-                html += '<div>';
-                html += '<h4>Recommendations</h4>';
-                html += '<ul>';
-                data.recommendations.forEach(function(rec) {
-                    html += '<li>' + rec + '</li>';
-                });
-                html += '</ul>';
-                html += '</div>';
-            }
-            
-            html += '</div>';
-            
-            // Insert after the optimization section
-            $('.bunny-optimization-section').after(html);
-        },
-        
-        /**
-         * Show admin notice
-         */
-        showNotice: function(message, type) {
-            type = type || 'info';
-            
-            var $notice = $('<div class="bunny-notice bunny-notice-' + type + '">' + message + '</div>');
-            
-            // Remove existing notices
-            $('.bunny-notice').remove();
-            
-            // Add new notice
-            $('.wrap h1').after($notice);
-            
-            // Auto-hide success notices
-            if (type === 'success') {
-                setTimeout(function() {
-                    $notice.fadeOut();
-                }, 5000);
-            }
-            
-            // Scroll to top
-            $('html, body').animate({ scrollTop: 0 }, 'fast');
         },
         
         /**
@@ -751,6 +402,13 @@
                 return;
             }
             
+            // If the unified stats module is available, use it instead
+            if (window.BunnyStats) {
+                window.BunnyStats.fetchStats();
+                return;
+            }
+            
+            // Fallback to original implementation
             $.ajax({
                 url: bunnyAjax.ajaxurl,
                 type: 'POST',
@@ -818,6 +476,99 @@
         onOptimizationError: function(data) {
             console.log('Optimization error:', data);
             this.updateOptimizationUI(false);
+        },
+
+        /**
+         * Run optimization diagnostics
+         */
+        runOptimizationDiagnostics: function() {
+            $.ajax({
+                url: bunnyAjax.ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'bunny_run_optimization_diagnostics',
+                    nonce: bunnyAjax.nonce
+                },
+                success: function(response) {
+                    if (response.success) {
+                        var results = response.data.results;
+                        var html = '<div class="bunny-diagnostic-results">';
+                        
+                        // BMO API Status
+                        html += '<h3>BMO API Connection</h3>';
+                        html += '<div class="bunny-diagnostic-item">';
+                        html += '<span class="bunny-diagnostic-label">API Status:</span> ';
+                        html += '<span class="bunny-diagnostic-value ';
+                        html += results.bmo_api_connected ? 'bunny-diagnostic-success">Connected' : 'bunny-diagnostic-error">Not Connected';
+                        html += '</span></div>';
+                        
+                        // API Key
+                        html += '<div class="bunny-diagnostic-item">';
+                        html += '<span class="bunny-diagnostic-label">API Key:</span> ';
+                        html += '<span class="bunny-diagnostic-value ';
+                        html += results.bmo_api_key ? 'bunny-diagnostic-success">Configured' : 'bunny-diagnostic-error">Not Configured';
+                        html += '</span></div>';
+                        
+                        // Display details
+                        if (results.details) {
+                            html += '<h3>Diagnostic Details</h3>';
+                            html += '<pre class="bunny-diagnostic-details">' + results.details + '</pre>';
+                        }
+                        
+                        html += '</div>';
+                        
+                        // Show results in a modal or container
+                        if ($('#optimization-diagnostic-results').length === 0) {
+                            $('.bunny-optimization-dashboard').prepend('<div id="optimization-diagnostic-results"></div>');
+                        }
+                        
+                        $('#optimization-diagnostic-results').html(html).show();
+                    } else {
+                        alert('Diagnostics failed: ' + response.data.message);
+                    }
+                },
+                error: function() {
+                    alert('Failed to run diagnostics due to a network error.');
+                }
+            });
+        },
+        
+        /**
+         * Refresh all statistics on page load to ensure consistency
+         */
+        refreshAllStats: function() {
+            // Only refresh if we're on an admin page for this plugin
+            if (window.location.href.indexOf('page=bunny-media-offload') !== -1) {
+                // If the unified stats module is available, use it
+                if (window.BunnyStats) {
+                    window.BunnyStats.fetchStats();
+                    return;
+                }
+                
+                // Fallback to original implementation
+                $.ajax({
+                    url: bunnyAjax.ajaxurl,
+                    type: 'POST',
+                    data: {
+                        action: 'bunny_refresh_all_stats',
+                        nonce: bunnyAjax.nonce
+                    },
+                    success: function(response) {
+                        if (response.success) {
+                            // Update dashboard stats and other UI elements
+                            BunnyAdmin.updateDashboardStats();
+                            
+                            // Refresh optimization stats if on optimization page
+                            if (window.location.href.indexOf('optimization') !== -1 && 
+                                typeof window.bunnyOptimizationInstance !== 'undefined') {
+                                window.bunnyOptimizationInstance.refreshOptimizationStats();
+                            }
+                            
+                            console.log('Statistics refreshed successfully');
+                        }
+                    }
+                });
+            }
         }
     };
     
@@ -870,161 +621,6 @@
         
         // Make BunnyAdmin available globally for debugging
         window.BunnyAdmin = BunnyAdmin;
-        
-        // Add a debug helper function
-        window.debugOptimization = function(target) {
-            target = target || 'local';
-            console.log('Debug: Testing optimization for target:', target);
-            BunnyAdmin.startStepOptimization(target);
-        };
-        
-        // Add AJAX connectivity test
-        window.testAjax = function() {
-            console.log('Testing AJAX connectivity...');
-            $.ajax({
-                url: bunnyAjax.ajaxurl,
-                type: 'POST',
-                data: {
-                    action: 'bunny_test_connection',
-                    nonce: bunnyAjax.nonce
-                },
-                success: function(response) {
-                    console.log('AJAX test response:', response);
-                },
-                error: function(xhr, status, error) {
-                    console.error('AJAX test failed:', xhr, status, error);
-                }
-            });
-        };
-        
-        // Add optimization-specific AJAX test
-        window.testOptimizationAjax = function() {
-            console.log('Testing optimization AJAX...');
-            $.ajax({
-                url: bunnyAjax.ajaxurl,
-                type: 'POST',
-                data: {
-                    action: 'bunny_test_optimization',
-                    nonce: bunnyAjax.nonce
-                },
-                success: function(response) {
-                    console.log('Optimization AJAX test response:', response);
-                    if (response.success) {
-                        console.log('✅ Optimization AJAX is working!');
-                        console.log('Settings enabled:', response.data.settings_enabled);
-                    } else {
-                        console.log('❌ Optimization AJAX failed:', response.data);
-                    }
-                },
-                error: function(xhr, status, error) {
-                    console.error('Optimization AJAX test failed:', xhr, status, error);
-                    console.log('Response text:', xhr.responseText);
-                }
-            });
-        };
-        
-        // Add logs-specific test functions
-        window.testExportLogs = function() {
-            console.log('Testing export logs manually...');
-            if (typeof bunnyAjax === 'undefined') {
-                console.error('bunnyAjax not available!');
-                return;
-            }
-            
-            var logType = 'all';
-            var logLevel = '';
-            
-            $.ajax({
-                url: bunnyAjax.ajaxurl,
-                type: 'POST',
-                data: {
-                    action: 'bunny_export_logs',
-                    nonce: bunnyAjax.nonce,
-                    log_type: logType,
-                    log_level: logLevel
-                },
-                success: function(response) {
-                    console.log('Export logs test response:', response);
-                    if (response.success) {
-                        console.log('✅ Export logs AJAX is working!');
-                        console.log('CSV data length:', response.data.csv_data.length);
-                    } else {
-                        console.log('❌ Export logs failed:', response.data);
-                    }
-                },
-                error: function(xhr, status, error) {
-                    console.error('Export logs test failed:', xhr, status, error);
-                    console.log('Response text:', xhr.responseText);
-                }
-            });
-        };
-        
-        window.testClearLogs = function() {
-            console.log('Testing clear logs manually (dry run)...');
-            if (typeof bunnyAjax === 'undefined') {
-                console.error('bunnyAjax not available!');
-                return;
-            }
-            
-            console.log('This would clear logs with type: all');
-            console.log('To actually test, call: testClearLogsReal()');
-        };
-        
-        window.testClearLogsReal = function() {
-            if (!confirm('This will actually clear logs. Continue?')) {
-                return;
-            }
-            
-            console.log('Testing clear logs manually...');
-            var logType = 'all';
-            
-            $.ajax({
-                url: bunnyAjax.ajaxurl,
-                type: 'POST',
-                data: {
-                    action: 'bunny_clear_logs',
-                    nonce: bunnyAjax.nonce,
-                    log_type: logType
-                },
-                success: function(response) {
-                    console.log('Clear logs test response:', response);
-                    if (response.success) {
-                        console.log('✅ Clear logs AJAX is working!');
-                        console.log('Message:', response.data.message);
-                    } else {
-                        console.log('❌ Clear logs failed:', response.data);
-                    }
-                },
-                error: function(xhr, status, error) {
-                    console.error('Clear logs test failed:', xhr, status, error);
-                    console.log('Response text:', xhr.responseText);
-                }
-            });
-        };
-        
-        // Add button click simulator
-        window.simulateButtonClicks = function() {
-            console.log('Simulating button clicks...');
-            
-            var $exportBtn = $('#export-logs');
-            var $clearBtn = $('#clear-logs');
-            
-            if ($exportBtn.length > 0) {
-                console.log('Simulating export button click...');
-                $exportBtn.trigger('click');
-            } else {
-                console.log('Export button not found!');
-            }
-            
-            setTimeout(function() {
-                if ($clearBtn.length > 0) {
-                    console.log('Simulating clear button click...');
-                    $clearBtn.trigger('click');
-                } else {
-                    console.log('Clear button not found!');
-                }
-            }, 1000);
-        };
     });
     
 })(jQuery); 

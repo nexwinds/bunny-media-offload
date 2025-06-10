@@ -27,31 +27,36 @@ class Bunny_Admin {
     }
     
     /**
-     * Initialize hooks
+     * Initialize WordPress hooks
      */
     private function init_hooks() {
-        // Add menu items and settings
+        // Add menu items
         add_action('admin_menu', array($this, 'add_admin_menu'));
+        
+        // Register settings
         add_action('admin_init', array($this, 'register_settings'));
         
-        // Handle AJAX requests
+        // Register scripts and styles
+        add_action('admin_enqueue_scripts', array($this, 'register_admin_scripts'));
+        
+        // AJAX handlers
         add_action('wp_ajax_bunny_test_connection', array($this, 'ajax_test_connection'));
         add_action('wp_ajax_bunny_test_bmo_connection', array($this, 'ajax_test_bmo_connection'));
         add_action('wp_ajax_bunny_save_settings', array($this, 'ajax_save_settings'));
         add_action('wp_ajax_bunny_get_stats', array($this, 'ajax_get_stats'));
+        add_action('wp_ajax_bunny_refresh_stats', array($this, 'ajax_refresh_stats'));
+        add_action('wp_ajax_bunny_refresh_all_stats', array($this, 'ajax_refresh_all_stats'));
         add_action('wp_ajax_bunny_export_logs', array($this, 'ajax_export_logs'));
         add_action('wp_ajax_bunny_clear_logs', array($this, 'ajax_clear_logs'));
         add_action('wp_ajax_bunny_regenerate_thumbnails', array($this, 'ajax_regenerate_thumbnails'));
-        add_action('wp_ajax_bunny_start_migration', array($this, 'ajax_start_migration'));
-        add_action('wp_ajax_bunny_migration_batch', array($this, 'ajax_migration_batch'));
-        add_action('wp_ajax_bunny_cancel_migration', array($this, 'ajax_cancel_migration'));
-        add_action('wp_ajax_bunny_get_logs', array($this, 'ajax_get_logs'));
+        add_action('wp_ajax_bunny_get_optimization_stats', array($this, 'ajax_get_optimization_stats'));
+        add_action('wp_ajax_bunny_run_optimization_diagnostics', array($this, 'ajax_run_optimization_diagnostics'));
         
-        // Optimization-related AJAX hooks (added by Bunny_Optimization class)
-        if ($this->optimizer) {
-            add_action('wp_ajax_bunny_get_optimization_stats', array($this, 'ajax_get_optimization_stats'));
-            add_action('wp_ajax_bunny_run_optimization_diagnostics', array($this, 'ajax_run_optimization_diagnostics'));
-        }
+        // Media library integration
+        add_filter('manage_media_columns', array($this, 'add_media_column'));
+        add_action('manage_media_custom_column', array($this, 'display_media_column'), 10, 2);
+        add_action('admin_footer', array($this, 'add_media_library_filter'));
+        add_action('pre_get_posts', array($this, 'filter_media_library_query'));
     }
     
     /**
@@ -569,11 +574,15 @@ class Bunny_Admin {
         // Use consolidated stats from the stats class
         $migration_stats = $this->stats->get_migration_progress();
         
+        // Get settings
+        $settings = $this->settings->get_all();
+        $threshold_kb = isset($settings['optimization_threshold']) ? (int) $settings['optimization_threshold'] : 150;
+        
         ?>
         <div class="wrap">
             <h1><?php esc_html_e('Bulk Migration', 'bunny-media-offload'); ?></h1>
             
-            <?php $this->render_unified_stats_widget(__('Image Statistics', 'bunny-media-offload')); ?>
+            <?php $this->render_unified_stats_widget(__('Image Statistics – Ready for Migration', 'bunny-media-offload')); ?>
             
             <div class="bunny-migration-info">
                 <div class="notice notice-info">
@@ -582,8 +591,29 @@ class Bunny_Admin {
                 </div>
             </div>
             
-
-
+            <!-- Migration Criteria Box -->
+            <div class="bunny-card">
+                <h3><?php esc_html_e('Migration Criteria', 'bunny-media-offload'); ?></h3>
+                <div class="bunny-migration-criteria">
+                    <p><?php esc_html_e('The following images will be migrated to Bunny CDN:', 'bunny-media-offload'); ?></p>
+                    <ul>
+                        <li>
+                            <?php 
+                            printf(
+                                // translators: %d is the threshold in KB
+                                esc_html__('WebP/AVIF: Only if size does not exceed %d KB', 'bunny-media-offload'),
+                                esc_html($threshold_kb)
+                            ); 
+                            ?>
+                        </li>
+                        <li><?php esc_html_e('All files must be hosted locally (not on CDN)', 'bunny-media-offload'); ?></li>
+                    </ul>
+                    <div class="bunny-eligibility-stats">
+                        <strong><?php esc_html_e('Eligible for migration:', 'bunny-media-offload'); ?></strong>
+                        <span id="eligible-count"><?php echo esc_html(number_format($migration_stats['images_pending'])); ?></span> <?php esc_html_e('images', 'bunny-media-offload'); ?>
+                    </div>
+                </div>
+            </div>
             
             <div class="bunny-migration-form">
                 <h3><?php esc_html_e('Start New Migration', 'bunny-media-offload'); ?></h3>
@@ -627,10 +657,16 @@ class Bunny_Admin {
                     <div class="bunny-progress-fill" id="migration-progress-bar" style="width: 0%"></div>
                 </div>
                 <p id="migration-status-text"></p>
-                <div id="migration-errors" class="bunny-errors-hidden">
+                <div id="migration-errors" style="display: none;">
                     <h4><?php esc_html_e('Errors', 'bunny-media-offload'); ?></h4>
                     <ul id="migration-error-list"></ul>
                 </div>
+            </div>
+            
+            <!-- Migration Log -->
+            <div id="migration-log" class="bunny-migration-log" style="display: none;">
+                <h4><?php esc_html_e('Migration Log', 'bunny-media-offload'); ?></h4>
+                <div class="bunny-log-container" id="migration-log-container"></div>
             </div>
             
             <div class="bunny-troubleshooting">
@@ -647,6 +683,15 @@ class Bunny_Admin {
                 </div>
             </div>
         </div>
+        
+        <script type="text/javascript">
+            // Initialize the migration JS module when document is ready
+            jQuery(document).ready(function($) {
+                if (typeof BunnyMigration !== 'undefined') {
+                    BunnyMigration.init();
+                }
+            });
+        </script>
         <?php
     }
     
@@ -889,7 +934,10 @@ class Bunny_Admin {
             return;
         }
         
-        $stats = $optimizer->get_optimization_stats();
+        // Get unified statistics for consistency across all pages
+        $stats = $this->stats->get_unified_image_stats();
+        $optimization_stats = $optimizer->get_optimization_stats(); // For optimization-specific data
+        
         $settings = $this->settings->get_all();
         
         // Check if BMO API key is set
@@ -921,128 +969,23 @@ class Bunny_Admin {
                 </div>
             <?php endif; ?>
             
+            <?php $this->render_unified_stats_widget(__('Image Statistics', 'bunny-media-offload')); ?>
+            
             <div class="bunny-optimization-dashboard">
-                <!-- Stats Overview -->
+                <!-- Statistics explanation -->
                 <div class="bunny-card">
-                    <h2><?php esc_html_e('Image Statistics', 'bunny-media-offload'); ?></h2>
-                    <div class="bunny-stats-visualization">
-                        <div class="bunny-circular-chart-container">
-                            <svg width="200" height="200" class="bunny-circular-chart">
-                                <circle cx="100" cy="100" r="80" fill="none" stroke="#f1f1f1" stroke-width="20" />
-                                
-                                <?php
-                                // Calculate segment lengths
-                                $total = max(1, $stats['total_images']);
-                                $optimized_percent = ($stats['optimized'] / $total) * 100;
-                                $not_optimized_percent = ($stats['not_optimized'] / $total) * 100;
-                                $in_progress_percent = ($stats['in_progress'] / $total) * 100;
-                                
-                                // Calculate stroke-dasharray values
-                                $circumference = 2 * M_PI * 80;
-                                $optimized_dash = ($optimized_percent / 100) * $circumference;
-                                $not_optimized_dash = ($not_optimized_percent / 100) * $circumference;
-                                $in_progress_dash = ($in_progress_percent / 100) * $circumference;
-                                
-                                // Calculate stroke-dashoffset values
-                                $optimized_offset = 0;
-                                $not_optimized_offset = $optimized_dash;
-                                $in_progress_offset = $optimized_dash + $not_optimized_dash;
-                                ?>
-                                
-                                <!-- Optimized segment -->
-                                <circle 
-                                    cx="100" 
-                                    cy="100" 
-                                    r="80" 
-                                    fill="none" 
-                                    stroke="#10b981" 
-                                    stroke-width="20" 
-                                    stroke-dasharray="<?php echo esc_attr($optimized_dash . ' ' . ($circumference - $optimized_dash)); ?>" 
-                                    stroke-dashoffset="0" 
-                                    class="bunny-donut-segment" 
-                                    style="--final-dasharray: <?php echo esc_attr($optimized_dash . ' ' . ($circumference - $optimized_dash)); ?>;" 
-                                />
-                                
-                                <!-- Not Optimized segment -->
-                                <circle 
-                                    cx="100" 
-                                    cy="100" 
-                                    r="80" 
-                                    fill="none" 
-                                    stroke="#ef4444" 
-                                    stroke-width="20" 
-                                    stroke-dasharray="<?php echo esc_attr($not_optimized_dash . ' ' . ($circumference - $not_optimized_dash)); ?>" 
-                                    stroke-dashoffset="<?php echo esc_attr(-$not_optimized_offset); ?>" 
-                                    class="bunny-donut-segment" 
-                                    style="--final-dasharray: <?php echo esc_attr($not_optimized_dash . ' ' . ($circumference - $not_optimized_dash)); ?>;"
-                                    transform="rotate(-90, 100, 100)"
-                                />
-                                
-                                <!-- In Progress segment -->
-                                <?php if ($in_progress_percent > 0): ?>
-                                <circle 
-                                    cx="100" 
-                                    cy="100" 
-                                    r="80" 
-                                    fill="none" 
-                                    stroke="#f59e0b" 
-                                    stroke-width="20" 
-                                    stroke-dasharray="<?php echo esc_attr($in_progress_dash . ' ' . ($circumference - $in_progress_dash)); ?>" 
-                                    stroke-dashoffset="<?php echo esc_attr(-$in_progress_offset); ?>" 
-                                    class="bunny-donut-segment" 
-                                    style="--final-dasharray: <?php echo esc_attr($in_progress_dash . ' ' . ($circumference - $in_progress_dash)); ?>;"
-                                    transform="rotate(-90, 100, 100)"
-                                />
-                                <?php endif; ?>
-                            </svg>
-                            
-                            <div class="bunny-chart-center">
-                                <div class="bunny-chart-percent"><?php echo esc_html($stats['optimization_percent']); ?>%</div>
-                                <div class="bunny-chart-label"><?php esc_html_e('Optimized', 'bunny-media-offload'); ?></div>
-                            </div>
-                        </div>
-                        
-                        <div class="bunny-stats-legend">
-                            <div class="bunny-legend-item">
-                                <div class="bunny-legend-color bunny-optimized-color"></div>
-                                <div class="bunny-legend-label"><?php esc_html_e('Optimized Images', 'bunny-media-offload'); ?></div>
-                                <div class="bunny-legend-value"><?php echo esc_html(number_format($stats['optimized'])); ?></div>
-                            </div>
-                            
-                            <div class="bunny-legend-item">
-                                <div class="bunny-legend-color bunny-not-optimized-color"></div>
-                                <div class="bunny-legend-label"><?php esc_html_e('Not Optimized', 'bunny-media-offload'); ?></div>
-                                <div class="bunny-legend-value"><?php echo esc_html(number_format($stats['not_optimized'])); ?></div>
-                            </div>
-                            
-                            <?php if ($stats['in_progress'] > 0): ?>
-                            <div class="bunny-legend-item">
-                                <div class="bunny-legend-color bunny-in-progress-color"></div>
-                                <div class="bunny-legend-label"><?php esc_html_e('In Progress', 'bunny-media-offload'); ?></div>
-                                <div class="bunny-legend-value"><?php echo esc_html(number_format($stats['in_progress'])); ?></div>
-                            </div>
-                            <?php endif; ?>
-                            
-                            <div class="bunny-legend-item bunny-legend-total">
-                                <div class="bunny-legend-label"><?php esc_html_e('Total Images', 'bunny-media-offload'); ?></div>
-                                <div class="bunny-legend-value"><?php echo esc_html(number_format($stats['total_images'])); ?></div>
-                            </div>
-                            
-                            <?php if ($stats['space_saved']): ?>
-                            <div class="bunny-legend-item bunny-legend-saved">
-                                <div class="bunny-legend-label"><?php esc_html_e('Space Saved', 'bunny-media-offload'); ?></div>
-                                <div class="bunny-legend-value"><?php echo esc_html($stats['space_saved']); ?></div>
-                            </div>
-                            <?php endif; ?>
-                            
-                            <?php if ($stats['average_reduction'] > 0): ?>
-                            <div class="bunny-legend-item bunny-legend-reduction">
-                                <div class="bunny-legend-label"><?php esc_html_e('Average Reduction', 'bunny-media-offload'); ?></div>
-                                <div class="bunny-legend-value"><?php echo esc_html($stats['average_reduction']); ?>%</div>
-                            </div>
-                            <?php endif; ?>
-                        </div>
+                    <h3><?php esc_html_e('Optimization Criteria', 'bunny-media-offload'); ?></h3>
+                    <p><?php printf(
+                        /* translators: %s is the size threshold in KB */
+                        esc_html__('Images larger than %s KB will be optimized to reduce file size while maintaining quality.', 'bunny-media-offload'),
+                        $threshold_kb
+                    ); ?></p>
+                    
+                    <?php if (!$api_key): ?>
+                    <div class="notice notice-warning">
+                        <p><?php esc_html_e('Please configure your Optimization API key in the settings to enable optimization.', 'bunny-media-offload'); ?></p>
                     </div>
+                    <?php endif; ?>
                 </div>
                 
                 <!-- Optimization Controls -->
@@ -1288,14 +1231,25 @@ class Bunny_Admin {
      * AJAX: Get stats
      */
     public function ajax_get_stats() {
-        check_ajax_referer('bunny_ajax_nonce', 'nonce');
-        
-        if (!current_user_can('manage_options')) {
-            wp_die(esc_html__('Insufficient permissions.', 'bunny-media-offload'));
+        // Verify nonce
+        if (!check_ajax_referer('bunny_ajax_nonce', 'nonce', false)) {
+            wp_send_json_error(array('message' => __('Security check failed.', 'bunny-media-offload')));
+            return;
         }
         
-        $stats = $this->stats->get_dashboard_stats();
-        wp_send_json_success($stats);
+        // Clear all statistics caches before fetching fresh data
+        $this->stats->clear_cache();
+        
+        // Get fresh dashboard stats
+        $dashboard_stats = $this->stats->get_dashboard_stats();
+        
+        // Get fresh unified image stats
+        $unified_stats = $this->stats->get_unified_image_stats();
+        
+        // Merge the stats
+        $combined_stats = array_merge($dashboard_stats, $unified_stats);
+        
+        wp_send_json_success($combined_stats);
     }
     
     /**
@@ -1786,76 +1740,81 @@ class Bunny_Admin {
      * Render unified image statistics widget
      */
     private function render_unified_stats_widget($title = null) {
+        // Get the stats
         $stats = $this->stats->get_unified_image_stats();
-        $widget_title = $title ?: __('Image Statistics', 'bunny-media-offload');
+        
+        $default_title = __('Image Overview', 'bunny-media-offload');
+        $widget_title = $title ?: $default_title;
+        
         ?>
-        <div class="bunny-unified-stats-widget">
-            <div class="bunny-stats-header">
-                <h3><?php echo esc_html($widget_title); ?></h3>
-                <div class="bunny-total-count">
-                    <span class="bunny-total-number"><?php echo number_format($stats['total_images']); ?></span>
-                    <span class="bunny-total-label"><?php esc_html_e('Total Images', 'bunny-media-offload'); ?></span>
-                </div>
-            </div>
+        <div class="bunny-card">
+            <h2><?php echo esc_html($widget_title); ?></h2>
             
-            <div class="bunny-stats-visualization">
-                <div class="bunny-circular-chart">
-                    <svg viewBox="0 0 42 42" class="bunny-donut">
+            <div class="bunny-stats-container">
+                <div class="bunny-donut-chart-container">
+                    <svg width="150" height="150" viewBox="0 0 150 150" class="bunny-stats-donut">
                         <!-- Background circle -->
-                        <circle class="bunny-donut-hole" cx="21" cy="21" r="15.915494309189533"></circle>
-                        <circle class="bunny-donut-ring" cx="21" cy="21" r="15.915494309189533" fill="transparent" stroke="#e5e7eb" stroke-width="3"></circle>
+                        <circle cx="75" cy="75" r="65" fill="#1e1e1e" stroke="#333" stroke-width="1" />
                         
-                        <?php if ($stats['total_images'] > 0): ?>
-                            <?php
-                            $circumference = 100;
-                            $offset = 0;
-                            
-                            // Not optimized (red)
-                            if ($stats['not_optimized_percent'] > 0) {
-                                $stroke_dasharray = $stats['not_optimized_percent'] . ' ' . (100 - $stats['not_optimized_percent']);
-                                $stroke_dashoffset = -$offset;
-                                echo '<circle class="bunny-donut-segment bunny-not-optimized" cx="21" cy="21" r="15.915494309189533" fill="transparent" stroke="#ef4444" stroke-width="3" stroke-dasharray="' . esc_attr($stroke_dasharray) . '" stroke-dashoffset="' . esc_attr($stroke_dashoffset) . '"></circle>';
-                                $offset += $stats['not_optimized_percent'];
-                            }
-                            
-                            // Optimized (yellow)
-                            if ($stats['optimized_percent'] > 0) {
-                                $stroke_dasharray = $stats['optimized_percent'] . ' ' . (100 - $stats['optimized_percent']);
-                                $stroke_dashoffset = -$offset;
-                                echo '<circle class="bunny-donut-segment bunny-optimized" cx="21" cy="21" r="15.915494309189533" fill="transparent" stroke="#f59e0b" stroke-width="3" stroke-dasharray="' . esc_attr($stroke_dasharray) . '" stroke-dashoffset="' . esc_attr($stroke_dashoffset) . '"></circle>';
-                                $offset += $stats['optimized_percent'];
-                            }
-                            
-                            // Cloud (green)
-                            if ($stats['cloud_percent'] > 0) {
-                                $stroke_dasharray = $stats['cloud_percent'] . ' ' . (100 - $stats['cloud_percent']);
-                                $stroke_dashoffset = -$offset;
-                                echo '<circle class="bunny-donut-segment bunny-cloud" cx="21" cy="21" r="15.915494309189533" fill="transparent" stroke="#10b981" stroke-width="3" stroke-dasharray="' . esc_attr($stroke_dasharray) . '" stroke-dashoffset="' . esc_attr($stroke_dashoffset) . '"></circle>';
-                            }
-                            ?>
-                        <?php endif; ?>
+                        <!-- Segments -->
+                        <?php 
+                        // Calculate angles
+                        $total_angle = 360;
+                        $local_angle = ($stats['not_optimized_percent'] / 100) * $total_angle;
+                        $optimized_angle = ($stats['optimized_percent'] / 100) * $total_angle;
+                        $cdn_angle = ($stats['cloud_percent'] / 100) * $total_angle;
+                        
+                        // Calculate paths
+                        if ($local_angle > 0) {
+                            $this->render_donut_segment(75, 75, 60, 0, $local_angle, '#ef4444', 'bunny-segment-not-optimized');
+                        }
+                        
+                        if ($optimized_angle > 0) {
+                            $this->render_donut_segment(75, 75, 60, $local_angle, $optimized_angle, '#f59e0b', 'bunny-segment-ready-for-migration');
+                        }
+                        
+                        if ($cdn_angle > 0) {
+                            $this->render_donut_segment(75, 75, 60, $local_angle + $optimized_angle, $cdn_angle, '#10b981', 'bunny-segment-on-cdn');
+                        }
+                        ?>
+                        
+                        <!-- Center -->
+                        <circle cx="75" cy="75" r="40" fill="#1e1e1e" />
+                        <text x="75" y="75" text-anchor="middle" dominant-baseline="middle" fill="#fff" font-size="14" class="bunny-total-images">
+                            <?php echo esc_html(number_format($stats['total_images'])); ?>
+                        </text>
+                        <text x="75" y="90" text-anchor="middle" dominant-baseline="middle" fill="#999" font-size="10">
+                            <?php esc_html_e('TOTAL IMAGES', 'bunny-media-offload'); ?>
+                        </text>
                     </svg>
-                    
-                    <div class="bunny-chart-center">
-                        <div class="bunny-chart-icon">📊</div>
-                    </div>
                 </div>
                 
-                <div class="bunny-stats-legend">
-                    <div class="bunny-legend-item">
-                        <span class="bunny-legend-color bunny-not-optimized-color"></span>
-                        <span class="bunny-legend-label"><?php esc_html_e('Not Optimized', 'bunny-media-offload'); ?></span>
-                        <span class="bunny-legend-value"><?php echo number_format($stats['local_eligible']); ?> (<?php echo esc_html($stats['not_optimized_percent']); ?>%)</span>
+                <div class="bunny-stats-details">
+                    <div class="bunny-stat-item bunny-stat-not-optimized">
+                        <span class="bunny-stat-indicator" style="background-color: #ef4444;"></span>
+                        <span class="bunny-stat-label"><?php esc_html_e('Not Optimized', 'bunny-media-offload'); ?></span>
+                        <span class="bunny-stat-value">
+                            <span class="bunny-not-optimized-count"><?php echo esc_html(number_format($stats['local_eligible'])); ?></span>
+                            (<span class="bunny-not-optimized-percent"><?php echo esc_html($stats['not_optimized_percent']); ?></span>%)
+                        </span>
                     </div>
-                    <div class="bunny-legend-item">
-                        <span class="bunny-legend-color bunny-optimized-color"></span>
-                        <span class="bunny-legend-label"><?php esc_html_e('Ready for Migration', 'bunny-media-offload'); ?></span>
-                        <span class="bunny-legend-value"><?php echo number_format($stats['already_optimized']); ?> (<?php echo esc_html($stats['optimized_percent']); ?>%)</span>
+                    
+                    <div class="bunny-stat-item bunny-stat-ready">
+                        <span class="bunny-stat-indicator" style="background-color: #f59e0b;"></span>
+                        <span class="bunny-stat-label"><?php esc_html_e('Ready for Migration', 'bunny-media-offload'); ?></span>
+                        <span class="bunny-stat-value">
+                            <span class="bunny-ready-for-migration-count"><?php echo esc_html(number_format($stats['already_optimized'])); ?></span>
+                            (<span class="bunny-ready-for-migration-percent"><?php echo esc_html($stats['optimized_percent']); ?></span>%)
+                        </span>
                     </div>
-                    <div class="bunny-legend-item">
-                        <span class="bunny-legend-color bunny-cloud-color"></span>
-                        <span class="bunny-legend-label"><?php esc_html_e('On CDN', 'bunny-media-offload'); ?></span>
-                        <span class="bunny-legend-value"><?php echo number_format($stats['images_migrated']); ?> (<?php echo esc_html($stats['cloud_percent']); ?>%)</span>
+                    
+                    <div class="bunny-stat-item bunny-stat-cdn">
+                        <span class="bunny-stat-indicator" style="background-color: #10b981;"></span>
+                        <span class="bunny-stat-label"><?php esc_html_e('On CDN', 'bunny-media-offload'); ?></span>
+                        <span class="bunny-stat-value">
+                            <span class="bunny-on-cdn-count"><?php echo esc_html(number_format($stats['images_migrated'])); ?></span>
+                            (<span class="bunny-on-cdn-percent"><?php echo esc_html($stats['cloud_percent']); ?></span>%)
+                        </span>
                     </div>
                 </div>
             </div>
@@ -1864,7 +1823,7 @@ class Bunny_Admin {
     }
     
     /**
-     * AJAX handler to refresh statistics after migration
+     * AJAX: Refresh statistics (original method)
      */
     public function ajax_refresh_stats() {
         // Verify nonce
@@ -1873,16 +1832,50 @@ class Bunny_Admin {
             return;
         }
         
-        // Clear all statistics caches
-        $this->stats->clear_cache();
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(array('message' => __('Permission denied.', 'bunny-media-offload')));
+            return;
+        }
+        
+        // Get the stats
+        $stats = $this->stats->get_dashboard_stats();
+        
+        // Add migration progress data
+        $migration_progress = $this->stats->get_migration_progress();
+        $stats['migration_progress'] = $migration_progress['progress_percentage'];
+        
+        wp_send_json_success($stats);
+    }
+    
+    /**
+     * AJAX: Refresh all statistics with cache clearing
+     */
+    public function ajax_refresh_all_stats() {
+        check_ajax_referer('bunny_ajax_nonce', 'nonce');
+        
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Permission denied');
+        }
+        
+        // Clear all stats caches
+        if ($this->stats) {
+            $this->stats->clear_cache();
+        }
         
         // Get fresh stats
+        $stats = $this->stats->get_dashboard_stats();
+        
+        // Get fresh unified image stats - this is the authoritative source
         $unified_stats = $this->stats->get_unified_image_stats();
         
-        wp_send_json_success(array(
-            'stats' => $unified_stats,
-            'message' => __('Statistics refreshed successfully.', 'bunny-media-offload')
-        ));
+        // Add migration progress data
+        $migration_progress = $this->stats->get_migration_progress();
+        $stats['migration_progress'] = $migration_progress['progress_percentage'];
+        
+        // Merge the stats
+        $combined_stats = array_merge($stats, $unified_stats);
+        
+        wp_send_json_success($combined_stats);
     }
     
     /**
@@ -1954,6 +1947,11 @@ class Bunny_Admin {
         
         if (!$this->optimizer) {
             wp_send_json_error('Optimization module not initialized');
+        }
+        
+        // Clear stats cache first to ensure fresh data
+        if ($this->stats) {
+            $this->stats->clear_cache();
         }
         
         $stats = $this->optimizer->get_optimization_stats();
@@ -2123,5 +2121,87 @@ class Bunny_Admin {
             </tbody>
         </table>
         <?php
+    }
+    
+    /**
+     * Register admin scripts and styles
+     */
+    public function register_admin_scripts() {
+        // Only register scripts on plugin pages
+        $screen = get_current_screen();
+        if (!$screen || strpos($screen->id, 'bunny-media') === false) {
+            return;
+        }
+        
+        $plugin_url = plugin_dir_url(dirname(__FILE__));
+        
+        // Define a version for assets (use constant if defined, otherwise fallback to a timestamp)
+        $version = defined('BUNNY_MEDIA_OFFLOAD_VERSION') ? BUNNY_MEDIA_OFFLOAD_VERSION : time();
+        
+        // Register and enqueue styles
+        wp_register_style('bunny-admin-css', $plugin_url . 'assets/css/admin.css', array(), $version);
+        wp_enqueue_style('bunny-admin-css');
+        
+        // Register scripts
+        wp_register_script('bunny-admin-js', $plugin_url . 'assets/js/admin.js', array('jquery'), $version, true);
+        
+        // Unified Statistics Module (loads on all plugin pages)
+        wp_register_script('bunny-stats-js', $plugin_url . 'assets/js/bunny-stats.js', array('jquery'), $version, true);
+        
+        // Migration script (only loaded on migration page)
+        wp_register_script('bunny-migration-js', $plugin_url . 'assets/js/bunny-migration.js', array('jquery'), $version, true);
+        
+        // Optimization script (only loaded on optimization page)
+        wp_register_script('bunny-optimization-js', $plugin_url . 'assets/js/bunny-optimization.js', array('jquery'), $version, true);
+        
+        // Enqueue the common scripts for all plugin pages
+        wp_enqueue_script('bunny-admin-js');
+        wp_enqueue_script('bunny-stats-js');
+        
+        // Localize script with ajax url and nonce
+        wp_localize_script('bunny-admin-js', 'bunnyAjax', array(
+            'ajaxurl' => admin_url('admin-ajax.php'),
+            'nonce' => wp_create_nonce('bunny_ajax_nonce'),
+            'pull_timeout' => $this->settings->get('pull_timeout', 30),
+            'preview_domain' => $this->settings->get('custom_hostname', '')
+        ));
+        
+        // Enqueue page-specific scripts
+        if (isset($_GET['page'])) {
+            if ($_GET['page'] === 'bunny-media-offload-migration') {
+                wp_enqueue_script('bunny-migration-js');
+            } elseif ($_GET['page'] === 'bunny-media-offload-optimization') {
+                wp_enqueue_script('bunny-optimization-js');
+            }
+        }
+    }
+    
+    /**
+     * Render a donut chart segment
+     */
+    private function render_donut_segment($cx, $cy, $r, $start_angle, $segment_angle, $color, $class = '') {
+        // Convert angles to radians
+        $start_rad = deg2rad($start_angle);
+        $end_rad = deg2rad($start_angle + $segment_angle);
+        
+        // Calculate start and end points
+        $start_x = $cx + $r * cos($start_rad);
+        $start_y = $cy + $r * sin($start_rad);
+        $end_x = $cx + $r * cos($end_rad);
+        $end_y = $cy + $r * sin($end_rad);
+        
+        // Determine if arc should take the large-arc-flag
+        $large_arc = $segment_angle > 180 ? 1 : 0;
+        
+        // Create SVG path
+        $path = "M {$cx},{$cy} L {$start_x},{$start_y} A {$r},{$r} 0 {$large_arc},1 {$end_x},{$end_y} Z";
+        
+        // Output SVG path element
+        printf(
+            '<path d="%s" fill="%s" class="%s"></path>',
+            esc_attr($path),
+            esc_attr($color),
+            esc_attr($class)
+        );
     }
 } 

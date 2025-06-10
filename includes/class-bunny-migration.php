@@ -49,35 +49,48 @@ class Bunny_Migration {
         // Include SVG, AVIF and WebP file types for migration
         $file_types = array('svg', 'avif', 'webp');
         // phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verification is handled by validate_ajax_request() called above
-        $post_types = isset($_POST['post_types']) ? array_map('sanitize_text_field', wp_unslash($_POST['post_types'])) : array();
+        $language_scope = isset($_POST['language_scope']) ? sanitize_text_field(wp_unslash($_POST['language_scope'])) : 'current';
+        $post_types = array();
         
         // Get total files to migrate
-        $total_files = $this->get_files_to_migrate_count($file_types, $post_types);
+        $total_files = $this->get_files_to_migrate_count($file_types, $post_types, $language_scope);
         
         if ($total_files === 0) {
             wp_send_json_error(array('message' => __('No files found to migrate.', 'bunny-media-offload')));
         }
         
         // Initialize migration session
-        $migration_id = $this->init_migration_session($total_files, $file_types, $post_types);
+        $migration_id = $this->init_migration_session($total_files, $file_types, $post_types, $language_scope);
         
-        // Get concurrent limit setting
-        $concurrent_limit = $this->settings->get('migration_concurrent_limit', 4);
+        // Get concurrent limit setting but cap at 1 for the new implementation
+        $concurrent_limit = 1; // Force single thread for better control
+        
+        // Set up a queue in the session for our batched processing
+        update_option('bunny_migration_queue', array(
+            'migration_id' => $migration_id,
+            'batch_size' => $this->settings->get('batch_size', 20), // Limit batch size
+            'delay' => 200, // Delay in ms between operations
+            'processed' => 0,
+            'successful' => 0,
+            'failed' => 0,
+            'skipped' => 0,
+            'status' => 'running',
+            'offset' => 0
+        ));
         
         $this->logger->info('Migration started', array(
             'migration_id' => $migration_id,
             'total_files' => $total_files,
             'file_types' => $file_types,
-            'post_types' => $post_types,
+            'language_scope' => $language_scope,
             'concurrent_limit' => $concurrent_limit
         ));
         
         wp_send_json_success(array(
-            'migration_id' => $migration_id,
-            'total_files' => $total_files,
-            'concurrent_limit' => $concurrent_limit,
-            // translators: %1$d is the total number of files, %2$d is the number of concurrent threads
-            'message' => sprintf(__('Migration started. %1$d files to process with %2$d concurrent threads.', 'bunny-media-offload'), $total_files, $concurrent_limit)
+            'added' => $total_files,
+            'queue_size' => $total_files,
+            // translators: %1$d is the total number of files
+            'message' => sprintf(__('Migration started. %1$d files added to queue.', 'bunny-media-offload'), $total_files)
         ));
     }
     
@@ -87,57 +100,227 @@ class Bunny_Migration {
     public function ajax_migration_batch() {
         $this->validate_ajax_request();
         
-        // phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verification is handled by validate_ajax_request() called above
-        $migration_id = isset($_POST['migration_id']) ? sanitize_text_field(wp_unslash($_POST['migration_id'])) : '';
-        $session = $this->get_migration_session($migration_id);
+        // Get the migration queue
+        $queue = get_option('bunny_migration_queue', false);
         
+        if (!$queue || empty($queue['migration_id'])) {
+            wp_send_json_error(array('message' => __('Migration queue not found.', 'bunny-media-offload')));
+        }
+        
+        // Check if migration was cancelled
+        if ($queue['status'] === 'cancelled') {
+            wp_send_json_error(array('message' => __('Migration was cancelled.', 'bunny-media-offload')));
+        }
+        
+        // Clear stats cache for fresh data across all admin pages
+        if (class_exists('Bunny_Stats')) {
+            global $bunny_stats;
+            if ($bunny_stats) {
+                $bunny_stats->clear_cache();
+            }
+        }
+        
+        // Get session for reference
+        $session = $this->get_migration_session($queue['migration_id']);
         if (!$session) {
             wp_send_json_error(array('message' => __('Migration session not found.', 'bunny-media-offload')));
         }
         
-        if ($session['status'] === 'cancelled') {
-            wp_send_json_error(array('message' => __('Migration was cancelled.', 'bunny-media-offload')));
-        }
+        // Process a small batch (1-5 files) with proper feedback
+        $batch_size = min(5, $queue['batch_size']);
+        $file_types = isset($session['file_types']) ? $session['file_types'] : array('svg', 'avif', 'webp');
+        $post_types = isset($session['post_types']) ? $session['post_types'] : array();
+        $language_scope = isset($session['language_scope']) ? $session['language_scope'] : 'current';
         
-        $batch_size = $this->settings->get('batch_size', 90);
-        $result = $this->process_batch($session, $batch_size);
+        // Get the next batch of files
+        $files = $this->get_files_to_migrate($file_types, $post_types, $batch_size, $queue['offset'], $language_scope);
         
-        // Update session
-        $this->update_migration_session($migration_id, array(
-            'processed' => $result['processed'],
-            'successful' => $result['successful'],
-            'failed' => $result['failed'],
-            'errors' => array_merge($session['errors'], $result['errors']),
-            'status' => $result['completed'] ? 'completed' : 'running'
-        ));
-        
-        $response = array(
-            'processed' => $result['processed'],
-            'successful' => $result['successful'],
-            'failed' => $result['failed'],
-            'total' => $session['total_files'],
-            'completed' => $result['completed'],
-            'progress' => Bunny_Utils::get_progress_percentage($result['processed'], $session['total_files']),
-            'errors' => $result['errors'],
-            'current_files' => isset($result['current_files']) ? $result['current_files'] : array()
+        $result = array(
+            'processed' => 0,
+            'successful' => 0,
+            'failed' => 0,
+            'skipped' => 0,
+            'completed' => false,
+            'errors' => array(),
+            'results' => array()
         );
         
-        if ($result['completed']) {
-            $this->logger->info('Migration completed', array(
-                'migration_id' => $migration_id,
-                'total_processed' => $result['processed'],
-                'successful' => $result['successful'],
-                'failed' => $result['failed']
+        // Check if we have files to process
+        if (empty($files)) {
+            // No more files, we're done
+            $result['completed'] = true;
+            
+            // Update the queue
+            $queue['status'] = 'completed';
+            update_option('bunny_migration_queue', $queue);
+            
+            // Update the session
+            $this->update_migration_session($queue['migration_id'], array(
+                'processed' => $queue['processed'],
+                'successful' => $queue['successful'],
+                'failed' => $queue['failed'],
+                'status' => 'completed'
             ));
             
-            $response['message'] = sprintf(
-                // translators: %1$d is the number of files processed, %2$d is the number of successful uploads, %3$d is the number of failed uploads
-                __('Migration completed. %1$d files processed, %2$d successful, %3$d failed.', 'bunny-media-offload'),
-                $result['processed'],
-                $result['successful'],
-                $result['failed']
-            );
+            // Send successful completion response
+            wp_send_json_success(array(
+                'processed' => $queue['processed'],
+                'successful' => $queue['successful'],
+                'failed' => $queue['failed'],
+                'remaining' => 0,
+                'results' => array(),
+                'completed' => true
+            ));
+            return;
         }
+        
+        // Process each file in the batch
+        foreach ($files as $file) {
+            $attachment_id = $file->ID;
+            $file_path = $file->file_path;
+            
+            $result['processed']++;
+            $queue['processed']++;
+            
+            // Get attachment metadata
+            $metadata = wp_get_attachment_metadata($attachment_id);
+            
+            // Process the file
+            $process_result = array(
+                'attachment_id' => $attachment_id,
+                'success' => false,
+                'skipped' => false,
+                'message' => ''
+            );
+            
+            try {
+                // Check if already migrated
+                $already_migrated = $this->is_file_already_migrated($attachment_id);
+                if ($already_migrated) {
+                    $process_result['skipped'] = true;
+                    $process_result['message'] = __('File already migrated', 'bunny-media-offload');
+                    $result['skipped']++;
+                    $queue['skipped']++;
+                } else {
+                    // Get full local path
+                    $upload_dir = wp_upload_dir();
+                    $local_path = $upload_dir['basedir'] . '/' . $file_path;
+                    
+                    // Check file exists and is readable
+                    if (!file_exists($local_path) || !is_readable($local_path)) {
+                        throw new Exception(__('File not found or not readable', 'bunny-media-offload'));
+                    }
+                    
+                    // Check file size is within limits
+                    if (!$this->should_migrate_file($local_path)) {
+                        $process_result['skipped'] = true;
+                        $process_result['message'] = __('File size exceeds limit', 'bunny-media-offload');
+                        $result['skipped']++;
+                        $queue['skipped']++;
+                    } else {
+                        // Generate remote path
+                        $remote_path = $this->generate_remote_path($file_path);
+                        
+                        // Upload file to Bunny CDN
+                        $upload_result = $this->api->upload_file($local_path, $remote_path);
+                        
+                        if ($upload_result['success']) {
+                            // Record the offloaded file in database
+                            $bunny_url = $this->add_version_to_url($upload_result['url']);
+                            $this->record_offloaded_file($attachment_id, $bunny_url, $remote_path, $file_path);
+                            
+                            // Upload thumbnails if available
+                            if (!empty($metadata['sizes'])) {
+                                $this->upload_image_thumbnails($metadata, $attachment_id, $local_path);
+                            }
+                            
+                            // Delete local file if configured
+                            if ($this->settings->get('delete_local', false)) {
+                                $this->delete_local_file($local_path, $attachment_id, $metadata);
+                            }
+                            
+                            // Log successful migration
+                            $this->logger->info('File migrated to Bunny CDN', array(
+                                'attachment_id' => $attachment_id,
+                                'remote_path' => $remote_path,
+                                'url' => $bunny_url
+                            ));
+                            
+                            $process_result['success'] = true;
+                            $result['successful']++;
+                            $queue['successful']++;
+                        } else {
+                            throw new Exception(isset($upload_result['message']) ? $upload_result['message'] : __('Unknown upload error', 'bunny-media-offload'));
+                        }
+                    }
+                }
+            } catch (Exception $e) {
+                $error_message = $e->getMessage();
+                $process_result['message'] = $error_message;
+                
+                // Log error
+                $this->logger->error('Migration failed', array(
+                    'attachment_id' => $attachment_id,
+                    'error' => $error_message
+                ));
+                
+                $result['errors'][] = array(
+                    'attachment_id' => $attachment_id,
+                    'message' => $error_message
+                );
+                
+                $result['failed']++;
+                $queue['failed']++;
+            }
+            
+            // Add to results array for client-side feedback
+            $result['results'][] = $process_result;
+        }
+        
+        // Update offset for next batch
+        $queue['offset'] += count($files);
+        
+        // Check if we've processed all files
+        $remaining = max(0, $session['total_files'] - $queue['offset']);
+        $result['completed'] = ($remaining <= 0);
+        
+        if ($result['completed']) {
+            $queue['status'] = 'completed';
+            
+            // Log completion
+            $this->logger->info('Migration completed', array(
+                'migration_id' => $queue['migration_id'],
+                'total_processed' => $queue['processed'],
+                'successful' => $queue['successful'],
+                'failed' => $queue['failed'],
+                'skipped' => $queue['skipped']
+            ));
+        }
+        
+        // Update the queue in database
+        update_option('bunny_migration_queue', $queue);
+        
+        // Update session if completed
+        if ($result['completed']) {
+            $this->update_migration_session($queue['migration_id'], array(
+                'processed' => $queue['processed'],
+                'successful' => $queue['successful'],
+                'failed' => $queue['failed'],
+                'status' => 'completed'
+            ));
+        }
+        
+        // Prepare response
+        $response = array(
+            'processed' => count($files),
+            'total_processed' => $queue['processed'],
+            'successful' => $queue['successful'],
+            'failed' => $queue['failed'],
+            'skipped' => $queue['skipped'],
+            'remaining' => $remaining,
+            'completed' => $result['completed'],
+            'results' => $result['results']
+        );
         
         wp_send_json_success($response);
     }
@@ -175,12 +358,21 @@ class Bunny_Migration {
     public function ajax_cancel_migration() {
         $this->validate_ajax_request();
         
-        // phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verification is handled by validate_ajax_request() called above
-        $migration_id = isset($_POST['migration_id']) ? sanitize_text_field(wp_unslash($_POST['migration_id'])) : '';
+        // Get the migration queue
+        $queue = get_option('bunny_migration_queue', false);
         
-        $this->update_migration_session($migration_id, array('status' => 'cancelled'));
-        
-        $this->logger->info('Migration cancelled', array('migration_id' => $migration_id));
+        if ($queue && !empty($queue['migration_id'])) {
+            $migration_id = $queue['migration_id'];
+            
+            // Update session
+            $this->update_migration_session($migration_id, array('status' => 'cancelled'));
+            
+            // Update queue
+            $queue['status'] = 'cancelled';
+            update_option('bunny_migration_queue', $queue);
+            
+            $this->logger->info('Migration cancelled', array('migration_id' => $migration_id));
+        }
         
         wp_send_json_success(array('message' => __('Migration cancelled.', 'bunny-media-offload')));
     }
@@ -188,7 +380,7 @@ class Bunny_Migration {
     /**
      * Get files to migrate
      */
-    private function get_files_to_migrate($file_types = array(), $post_types = array(), $limit = null, $offset = 0) {
+    private function get_files_to_migrate($file_types = array(), $post_types = array(), $limit = null, $offset = 0, $language_scope = 'current') {
         global $wpdb;
         
         $where_conditions = array("posts.post_type = 'attachment'");
@@ -212,6 +404,12 @@ class Bunny_Migration {
         // Only include files that have file paths (valid files)
         $where_conditions[] = "meta.meta_value IS NOT NULL AND meta.meta_value != ''";
         
+        // Apply language filter if using WPML
+        if ($this->wpml && $this->wpml->is_wpml_active() && $language_scope === 'current') {
+            $current_language = $this->wpml->get_current_language();
+            $where_conditions[] = $wpdb->prepare("(wpml.language_code = %s OR wpml.language_code IS NULL)", $current_language);
+        }
+        
         $where_clause = implode(' AND ', $where_conditions);
         
         $limit_clause = '';
@@ -219,11 +417,18 @@ class Bunny_Migration {
             $limit_clause = $wpdb->prepare(' LIMIT %d OFFSET %d', $limit, $offset);
         }
         
+        // Add WPML join if needed
+        $wpml_join = '';
+        if ($this->wpml && $this->wpml->is_wpml_active() && $language_scope === 'current') {
+            $wpml_join = "LEFT JOIN {$wpdb->prefix}icl_translations wpml ON posts.ID = wpml.element_id AND wpml.element_type = 'post_attachment'";
+        }
+        
         // Apply WPML filter to query if needed
         $query = apply_filters('bunny_get_attachments_query', "
             SELECT posts.ID, posts.post_title, meta.meta_value as file_path
             FROM {$wpdb->posts} posts
             LEFT JOIN {$wpdb->postmeta} meta ON posts.ID = meta.post_id AND meta.meta_key = '_wp_attached_file'
+            $wpml_join
             WHERE $where_clause
             ORDER BY posts.ID ASC
             $limit_clause
@@ -248,14 +453,13 @@ class Bunny_Migration {
             }
         }
         
-        // Apply WPML filter to results
-        return apply_filters('bunny_migration_attachments', $filtered_results, array('file_types' => $file_types));
+        return $filtered_results;
     }
     
     /**
-     * Get count of files to migrate
+     * Get count of files to migrate with language scope support
      */
-    private function get_files_to_migrate_count($file_types = array(), $post_types = array()) {
+    private function get_files_to_migrate_count($file_types = array(), $post_types = array(), $language_scope = 'current') {
         global $wpdb;
         
         $where_conditions = array("posts.post_type = 'attachment'");
@@ -276,21 +480,41 @@ class Bunny_Migration {
         $bunny_table = $wpdb->prefix . 'bunny_offloaded_files';
         $where_conditions[] = "posts.ID NOT IN (SELECT attachment_id FROM $bunny_table WHERE is_synced = 1)";
         
-        // Only count files that have file paths (valid files)
+        // Only include files that have file paths (valid files)
         $where_conditions[] = "meta.meta_value IS NOT NULL AND meta.meta_value != ''";
+        
+        // Apply language filter if using WPML
+        if ($this->wpml && $this->wpml->is_wpml_active() && $language_scope === 'current') {
+            $current_language = $this->wpml->get_current_language();
+            $where_conditions[] = $wpdb->prepare("(wpml.language_code = %s OR wpml.language_code IS NULL)", $current_language);
+        }
         
         $where_clause = implode(' AND ', $where_conditions);
         
-        $query = "
+        // Add WPML join if needed
+        $wpml_join = '';
+        if ($this->wpml && $this->wpml->is_wpml_active() && $language_scope === 'current') {
+            $wpml_join = "LEFT JOIN {$wpdb->prefix}icl_translations wpml ON posts.ID = wpml.element_id AND wpml.element_type = 'post_attachment'";
+        }
+        
+        // Apply WPML filter to query if needed
+        $query = apply_filters('bunny_get_attachments_count_query', "
             SELECT COUNT(DISTINCT posts.ID)
             FROM {$wpdb->posts} posts
             LEFT JOIN {$wpdb->postmeta} meta ON posts.ID = meta.post_id AND meta.meta_key = '_wp_attached_file'
+            $wpml_join
             WHERE $where_clause
-        ";
+        ");
         
-        // Get files and filter by size (more accurate than count query)
-        $files = $this->get_files_to_migrate($file_types, $post_types);
-        return count($files);
+        if (!empty($params)) {
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared,WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Query is safely constructed above with placeholders, custom migration query, caching not appropriate for one-time migration
+            $count = $wpdb->get_var($wpdb->prepare($query, ...$params));
+        } else {
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared,WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Query contains only safe table names and WHERE clauses, custom migration query, caching not appropriate for one-time migration
+            $count = $wpdb->get_var($query);
+        }
+        
+        return (int) $count;
     }
     
     /**
@@ -498,7 +722,7 @@ class Bunny_Migration {
     /**
      * Initialize migration session
      */
-    private function init_migration_session($total_files, $file_types, $post_types) {
+    private function init_migration_session($total_files, $file_types, $post_types, $language_scope = 'current') {
         $migration_id = 'migration_' . time() . '_' . wp_generate_password(8, false);
         
         $session_data = array(
@@ -510,6 +734,7 @@ class Bunny_Migration {
             'failed' => 0,
             'file_types' => $file_types,
             'post_types' => $post_types,
+            'language_scope' => $language_scope,
             'start_time' => time(),
             'errors' => array()
         );
@@ -609,8 +834,6 @@ class Bunny_Migration {
         update_option('bunny_media_offload_stats', $stats);
     }
     
-
-    
     /**
      * Get comprehensive migration statistics 
      */
@@ -686,10 +909,6 @@ class Bunny_Migration {
         return array_merge($base_stats, $detailed_stats);
     }
     
-
-    
-
-    
     /**
      * Get supported MIME types for migration
      */
@@ -721,5 +940,19 @@ class Bunny_Migration {
         
         // Always migrate if file exists
         return true;
+    }
+    
+    /**
+     * Check if a file is already migrated
+     */
+    private function is_file_already_migrated($attachment_id) {
+        global $wpdb;
+        
+        $bunny_table = $wpdb->prefix . 'bunny_offloaded_files';
+        
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Simple lookup query for one-time migration
+        $result = $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM $bunny_table WHERE attachment_id = %d AND is_synced = 1", $attachment_id));
+        
+        return (int) $result > 0;
     }
 } 

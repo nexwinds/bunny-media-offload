@@ -89,6 +89,51 @@ class Bunny_Optimization {
     public function get_optimization_stats() {
         global $wpdb;
         
+        // Check if stats class is available through global
+        global $bunny_stats;
+        if ($bunny_stats) {
+            // Use unified stats for consistency across all plugin pages
+            $unified_stats = $bunny_stats->get_unified_image_stats();
+            
+            $stats = array(
+                'total_images' => $unified_stats['total_images'],
+                'optimized' => $unified_stats['already_optimized'] + $unified_stats['images_migrated'],
+                'not_optimized' => $unified_stats['local_eligible'],
+                'in_progress' => $this->get_queue_count('pending') + $this->get_queue_count('processing'),
+                'optimization_percent' => $unified_stats['optimized_percent'] + $unified_stats['cloud_percent'],
+                'eligible_for_optimization' => $this->get_eligible_images_count(),
+            );
+            
+            // Get space saved and average reduction data from optimization metadata
+            $meta_values = $wpdb->get_col("SELECT meta_value FROM $wpdb->postmeta WHERE meta_key = '_bunny_optimization_data'");
+            $total_saved = 0;
+            $total_reduction = 0;
+            $count = 0;
+            
+            foreach ($meta_values as $meta_value) {
+                $data = maybe_unserialize($meta_value);
+                if (isset($data['bytes_saved']) && $data['bytes_saved'] > 0) {
+                    $total_saved += $data['bytes_saved'];
+                    
+                    if (isset($data['compression_ratio']) && $data['compression_ratio'] > 0) {
+                        $total_reduction += $data['compression_ratio'];
+                        $count++;
+                    }
+                }
+            }
+            
+            $stats['space_saved'] = $this->format_bytes($total_saved);
+            
+            if ($count > 0) {
+                $stats['average_reduction'] = round($total_reduction / $count, 1);
+            } else {
+                $stats['average_reduction'] = 0;
+            }
+            
+            return $stats;
+        }
+        
+        // Fallback to original calculation if stats class is not available
         $stats = array(
             'total_images' => 0,
             'optimized' => 0,
@@ -731,6 +776,12 @@ class Bunny_Optimization {
         
         if (!current_user_can('manage_options')) {
             wp_send_json_error('Permission denied');
+        }
+        
+        // Clear stats cache for fresh data
+        global $bunny_stats;
+        if ($bunny_stats) {
+            $bunny_stats->clear_cache();
         }
         
         $stats = $this->get_optimization_stats();

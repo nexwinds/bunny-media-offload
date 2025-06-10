@@ -96,7 +96,7 @@ class Bunny_Media_Offload {
      */
     public function enqueue_admin_scripts($hook) {
         if (strpos($hook, 'bunny-media-offload') !== false || strpos($hook, 'bunny-media-logs') !== false) {
-            // Enqueue modular optimization module first
+            // Enqueue modular optimization and migration modules first
             wp_enqueue_script(
                 'bunny-optimization-module',
                 BMO_PLUGIN_URL . 'assets/js/bunny-optimization.js',
@@ -106,9 +106,17 @@ class Bunny_Media_Offload {
             );
             
             wp_enqueue_script(
+                'bunny-migration-module',
+                BMO_PLUGIN_URL . 'assets/js/bunny-migration.js',
+                array('jquery'),
+                BMO_PLUGIN_VERSION,
+                true
+            );
+            
+            wp_enqueue_script(
                 'bunny-media-offload-admin',
                 BMO_PLUGIN_URL . 'assets/js/admin.js',
-                array('jquery', 'bunny-optimization-module'), // Make admin.js depend on optimization module
+                array('jquery', 'bunny-optimization-module', 'bunny-migration-module'), // Make admin.js depend on both modules
                 BMO_PLUGIN_VERSION,
                 true
             );
@@ -144,7 +152,7 @@ class Bunny_Media_Offload {
                 );
             }
             
-            // Localize scripts for both optimization module and admin
+            // Localize scripts for all modules and admin
             $ajax_data = array(
                 'ajaxurl' => admin_url('admin-ajax.php'),
                 'nonce' => wp_create_nonce('bunny_ajax_nonce'),
@@ -164,10 +172,17 @@ class Bunny_Media_Offload {
                     'processing_delay' => 1000,  // Delay between batches (ms)
                     'retry_attempts' => 3,       // Retry attempts for failed batches
                     'strategy' => 'FIFO'         // Processing strategy (First In, First Out)
+                ),
+                'migration_config' => array(
+                    'batch_size' => 5,           // Migration batch size
+                    'max_queue' => 100,          // Maximum internal queue size
+                    'queue_delay' => 200,        // Delay between image processing (ms)
+                    'retry_attempts' => 3        // Retry attempts for failed migrations
                 )
             );
             
             wp_localize_script('bunny-optimization-module', 'bunnyAjax', $ajax_data);
+            wp_localize_script('bunny-migration-module', 'bunnyAjax', $ajax_data);
             wp_localize_script('bunny-media-offload-admin', 'bunnyAjax', $ajax_data);
         }
     }
