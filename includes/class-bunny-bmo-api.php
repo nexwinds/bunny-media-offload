@@ -72,9 +72,9 @@ class Bunny_BMO_API {
             'batch' => $request_data['batch']
         ));
         
-        // Make API request
+        // Make API request with reduced timeout to prevent long hangs
         $response = wp_remote_post($endpoint, array(
-            'timeout' => 60,
+            'timeout' => 30, // Reduced from 60 to 30 seconds
             'headers' => array(
                 'x-api-key' => $api_key,
                 'Content-Type' => 'application/json',
