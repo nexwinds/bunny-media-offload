@@ -157,8 +157,7 @@ class Bunny_Settings {
             
             // BMO API optimization settings
             'auto_optimize' => false,                  // Auto-optimize on upload
-            'optimization_threshold' => 150,           // Threshold in KB for optimizing WebP/AVIF files
-            'max_file_size' => 10,                     // Maximum file size in MB (10MB is the API limit)
+            'max_file_size' => 10240,                  // Maximum file size in KB (10240KB = 10MB is the API limit)
             'optimization_format' => 'auto'            // AVIF is enforced by the API
         );
     }

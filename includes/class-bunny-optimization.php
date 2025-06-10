@@ -203,12 +203,8 @@ class Bunny_Optimization {
         
         // Get the maximum file size setting
         $settings = $this->settings->get_all();
-        $max_file_size = isset($settings['max_file_size']) ? (int) $settings['max_file_size'] : 10;  // Default 10MB
-        $max_file_size_bytes = $max_file_size * 1024 * 1024;
-        
-        // Get the optimization user threshold
-        $threshold_kb = isset($settings['optimization_threshold']) ? (int) $settings['optimization_threshold'] : 150; // Default 150KB
-        $threshold_bytes = $threshold_kb * 1024;
+        $max_file_size_kb = isset($settings['max_file_size']) ? (int) $settings['max_file_size'] : 10240;  // Default 10MB in KB
+        $max_file_size_bytes = $max_file_size_kb * 1024; // Convert KB to bytes
         
         // Get attachment IDs that are not optimized and not in queue
         $attachments_query = $wpdb->prepare(
@@ -226,18 +222,15 @@ class Bunny_Optimization {
         $eligible_count = 0;
         $attachment_ids = $wpdb->get_col($attachments_query);
         
+        // Check each file's size against the max_file_size
         foreach ($attachment_ids as $attachment_id) {
             $file_path = get_attached_file($attachment_id);
-            
             if (!$file_path || !file_exists($file_path)) {
                 continue;
             }
             
             $file_size = filesize($file_path);
-            $mime_type = get_post_mime_type($attachment_id);
-            
-            // Check if the file meets optimization criteria
-            if ($this->is_eligible_for_optimization($file_path, $file_size, $mime_type, $threshold_bytes, $max_file_size_bytes)) {
+            if ($file_size > $max_file_size_bytes) {
                 $eligible_count++;
             }
         }
@@ -285,12 +278,8 @@ class Bunny_Optimization {
         
         // Get the maximum file size setting
         $settings = $this->settings->get_all();
-        $max_file_size = isset($settings['max_file_size']) ? (int) $settings['max_file_size'] : 10;  // Default 10MB
-        $max_file_size_bytes = $max_file_size * 1024 * 1024;
-        
-        // Get the optimization user threshold
-        $threshold_kb = isset($settings['optimization_threshold']) ? (int) $settings['optimization_threshold'] : 150; // Default 150KB
-        $threshold_bytes = $threshold_kb * 1024;
+        $max_file_size_kb = isset($settings['max_file_size']) ? (int) $settings['max_file_size'] : 10240;  // Default 10MB in KB
+        $max_file_size_bytes = $max_file_size_kb * 1024; // Convert KB to bytes
         
         // Get attachment IDs that are not optimized and not in queue
         $attachments_query = $wpdb->prepare(
@@ -308,23 +297,28 @@ class Bunny_Optimization {
         $attachment_ids = $wpdb->get_col($attachments_query);
         $eligible_attachments = array();
         
+        // Check each file's size against the max_file_size
         foreach ($attachment_ids as $attachment_id) {
             $file_path = get_attached_file($attachment_id);
-            
             if (!$file_path || !file_exists($file_path)) {
                 continue;
             }
             
             $file_size = filesize($file_path);
-            $mime_type = get_post_mime_type($attachment_id);
-            
-            // Check if the file meets optimization criteria
-            if ($this->is_eligible_for_optimization($file_path, $file_size, $mime_type, $threshold_bytes, $max_file_size_bytes)) {
+            if ($file_size > $max_file_size_bytes) {
+                // Get the file's data
+                $file_data = file_get_contents($file_path);
+                if (!$file_data) {
+                    continue;
+                }
+                
+                $mime_type = get_post_mime_type($attachment_id);
                 $eligible_attachments[] = array(
-                    'attachment_id' => $attachment_id,
+                    'id' => $attachment_id,
+                    'imageData' => base64_encode($file_data),
+                    'mimeType' => $mime_type,
                     'file_path' => $file_path,
-                    'file_size' => $file_size,
-                    'mime_type' => $mime_type
+                    'file_size' => $file_size
                 );
             }
         }
@@ -476,7 +470,7 @@ class Bunny_Optimization {
         // Get API settings
         $api_key = isset($settings['bmo_api_key']) ? $settings['bmo_api_key'] : '';
         $api_region = isset($settings['bmo_api_region']) ? $settings['bmo_api_region'] : 'us';
-        $threshold_kb = isset($settings['optimization_threshold']) ? (int) $settings['optimization_threshold'] : 150;
+        $max_file_size_kb = isset($settings['max_file_size']) ? (int) $settings['max_file_size'] : 10240; // Default 10MB in KB
         
         if (empty($api_key)) {
             $this->logger->log('error', 'BMO API key is not set');
@@ -494,8 +488,7 @@ class Bunny_Optimization {
         
         // Format data for API
         $api_data = array(
-            'images' => array(),
-            'userThresholdKb' => $threshold_kb
+            'images' => array()
         );
         
         foreach ($batch as $item) {

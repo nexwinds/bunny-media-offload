@@ -489,14 +489,10 @@ class Bunny_Admin {
         </div>
         
         <div class="bunny-settings-section">
-            <h3><?php esc_html_e('Image Optimization', 'bunny-media-offload'); ?></h3>
-            
+
             <?php $this->render_bmo_settings($settings); ?>
         </div>
         
-        <div class="bunny-settings-section">
-            <h3><?php esc_html_e('File Type Settings', 'bunny-media-offload'); ?></h3>
-        </div>
         <?php
     }
     
@@ -576,7 +572,7 @@ class Bunny_Admin {
         
         // Get settings
         $settings = $this->settings->get_all();
-        $threshold_kb = isset($settings['optimization_threshold']) ? (int) $settings['optimization_threshold'] : 150;
+        $max_file_size_kb = isset($settings['max_file_size']) ? (int) $settings['max_file_size'] : 10240; // Default 10MB in KB
         
         ?>
         <div class="wrap">
@@ -602,7 +598,7 @@ class Bunny_Admin {
                             printf(
                                 // translators: %d is the threshold in KB
                                 esc_html__('WebP/AVIF: Only if size does not exceed %d KB', 'bunny-media-offload'),
-                                esc_html($threshold_kb)
+                                esc_html($max_file_size_kb)
                             ); 
                             ?>
                         </li>
@@ -943,7 +939,7 @@ class Bunny_Admin {
         // Check if BMO API key is set
         $api_key = isset($settings['bmo_api_key']) ? $settings['bmo_api_key'] : '';
         $api_region = isset($settings['bmo_api_region']) ? $settings['bmo_api_region'] : 'us';
-        $threshold_kb = isset($settings['optimization_threshold']) ? (int) $settings['optimization_threshold'] : 150;
+        $max_file_size_kb = isset($settings['max_file_size']) ? (int) $settings['max_file_size'] : 10240; // Default 10MB in KB
         
         ?>
         <div class="wrap">
@@ -978,7 +974,7 @@ class Bunny_Admin {
                     <p><?php printf(
                         /* translators: %s is the size threshold in KB */
                         esc_html__('Images larger than %s KB will be optimized to reduce file size while maintaining quality.', 'bunny-media-offload'),
-                        $threshold_kb
+                        $max_file_size_kb
                     ); ?></p>
                     
                     <?php if (!$api_key): ?>
@@ -1991,7 +1987,6 @@ class Bunny_Admin {
         $bmo_api_key = isset($settings['bmo_api_key']) ? $settings['bmo_api_key'] : '';
         $bmo_api_region = isset($settings['bmo_api_region']) ? $settings['bmo_api_region'] : 'us';
         $auto_optimize = isset($settings['auto_optimize']) ? (bool) $settings['auto_optimize'] : false;
-        $optimization_threshold = isset($settings['optimization_threshold']) ? (int) $settings['optimization_threshold'] : 150;
         $max_file_size = isset($settings['max_file_size']) ? (int) $settings['max_file_size'] : 10;
         
         $key_from_constant = $this->settings->get_config_source('bmo_api_key') === 'constant';
@@ -1999,6 +1994,13 @@ class Bunny_Admin {
         
         ?>
         <h3><?php esc_html_e('BMO API Settings', 'bunny-media-offload'); ?></h3>
+        
+        <div class="bunny-info-box">
+            <p>
+                <?php esc_html_e('Bunny Media Optimizer API enables image optimization in WebP and AVIF formats for significant file size reduction.', 'bunny-media-offload'); ?>
+                <a href="https://bunny.net/media-optimizer/" target="_blank" rel="noopener"><?php esc_html_e('Learn more', 'bunny-media-offload'); ?> →</a>
+            </p>
+        </div>
         
         <table class="form-table">
             <tbody>
@@ -2008,100 +2010,82 @@ class Bunny_Admin {
                     </th>
                     <td>
                         <?php if ($key_from_constant): ?>
-                            <input type="text" 
-                                id="bmo_api_key"
-                                class="regular-text"
-                                value="<?php echo esc_attr(substr($bmo_api_key, 0, 5) . '...' . substr($bmo_api_key, -5)); ?>"
-                                disabled
-                            />
-                            <p class="description">
-                                <?php esc_html_e('Set in wp-config.php as BMO_API_KEY', 'bunny-media-offload'); ?>
-                            </p>
+                        <input type="text" 
+                            id="bmo_api_key"
+                            value="<?php echo esc_attr($this->mask_key($bmo_api_key)); ?>"
+                            class="regular-text bunny-readonly-field"
+                            readonly
+                        />
+                        <span class="bunny-config-source"><?php esc_html_e('Configured in wp-config.php', 'bunny-media-offload'); ?></span>
                         <?php else: ?>
-                            <input type="text" 
-                                id="bmo_api_key"
-                                name="bunny_json_settings[bmo_api_key]"
-                                class="regular-text"
-                                value="<?php echo esc_attr($bmo_api_key); ?>"
-                                placeholder="<?php esc_attr_e('Enter your BMO API key', 'bunny-media-offload'); ?>"
-                            />
-                            <p class="description">
-                                <?php esc_html_e('Your BMO API key for image optimization. Get one at https://bmo.nexwinds.com/', 'bunny-media-offload'); ?>
-                            </p>
+                        <input type="password" 
+                            id="bmo_api_key"
+                            name="bunny_json_settings[bmo_api_key]"
+                            class="regular-text"
+                            value="<?php echo esc_attr($bmo_api_key); ?>"
+                            autocomplete="new-password"
+                        />
+                        <?php endif; ?>
+                        <p class="description">
+                            <?php esc_html_e('Enter your Bunny Media Optimizer API key. Available in your BMO dashboard.', 'bunny-media-offload'); ?>
+                        </p>
+                        <?php if (!$key_from_constant): ?>
+                        <button type="button" id="test-bmo-connection" class="button bunny-test-button">
+                            <?php esc_html_e('Test BMO Connection', 'bunny-media-offload'); ?>
+                        </button>
+                        <span id="bmo-connection-result"></span>
                         <?php endif; ?>
                     </td>
                 </tr>
                 
                 <tr>
                     <th scope="row">
-                        <label for="bmo_api_region"><?php esc_html_e('BMO API Region', 'bunny-media-offload'); ?></label>
+                        <label for="bmo_api_region"><?php esc_html_e('API Region', 'bunny-media-offload'); ?></label>
                     </th>
                     <td>
                         <?php if ($region_from_constant): ?>
-                            <input type="text" 
-                                id="bmo_api_region"
-                                class="regular-text"
-                                value="<?php echo esc_attr(strtoupper($bmo_api_region)); ?>"
-                                disabled
-                            />
-                            <p class="description">
-                                <?php esc_html_e('Set in wp-config.php as BMO_API_REGION', 'bunny-media-offload'); ?>
-                            </p>
+                        <input type="text" 
+                            id="bmo_api_region"
+                            value="<?php echo esc_attr($bmo_api_region === 'us' ? 'United States (US)' : 'Europe (EU)'); ?>"
+                            class="regular-text bunny-readonly-field"
+                            readonly
+                        />
+                        <span class="bunny-config-source"><?php esc_html_e('Configured in wp-config.php', 'bunny-media-offload'); ?></span>
                         <?php else: ?>
-                            <select id="bmo_api_region" name="bunny_json_settings[bmo_api_region]">
-                                <option value="us" <?php selected($bmo_api_region, 'us'); ?>><?php esc_html_e('US (Default)', 'bunny-media-offload'); ?></option>
-                                <option value="eu" <?php selected($bmo_api_region, 'eu'); ?>><?php esc_html_e('EU (GDPR Compliant)', 'bunny-media-offload'); ?></option>
-                            </select>
-                            <p class="description">
-                                <?php esc_html_e('Select the API region closest to your server location', 'bunny-media-offload'); ?>
-                            </p>
+                        <select id="bmo_api_region" name="bunny_json_settings[bmo_api_region]">
+                            <option value="us" <?php selected($bmo_api_region, 'us'); ?>><?php esc_html_e('United States (US)', 'bunny-media-offload'); ?></option>
+                            <option value="eu" <?php selected($bmo_api_region, 'eu'); ?>><?php esc_html_e('Europe (EU)', 'bunny-media-offload'); ?></option>
+                        </select>
                         <?php endif; ?>
+                        <p class="description">
+                            <?php esc_html_e('Select the region that matches your Bunny Media Optimizer account.', 'bunny-media-offload'); ?>
+                        </p>
                     </td>
                 </tr>
                 
                 <tr>
                     <th scope="row">
-                        <?php esc_html_e('Auto-Optimize on Upload', 'bunny-media-offload'); ?>
+                        <label for="auto_optimize"><?php esc_html_e('Auto-Optimize', 'bunny-media-offload'); ?></label>
                     </th>
                     <td>
-                        <label for="auto_optimize">
+                        <label>
                             <input type="checkbox" 
                                 id="auto_optimize"
                                 name="bunny_json_settings[auto_optimize]"
                                 value="1"
-                                <?php checked($auto_optimize, true); ?>
+                                <?php checked($auto_optimize); ?>
                             />
-                            <?php esc_html_e('Automatically optimize images when they are uploaded', 'bunny-media-offload'); ?>
+                            <?php esc_html_e('Automatically optimize images on upload', 'bunny-media-offload'); ?>
                         </label>
                         <p class="description">
-                            <?php esc_html_e('Images will be converted to AVIF format for better compression', 'bunny-media-offload'); ?>
+                            <?php esc_html_e('When enabled, images will be optimized immediately when uploaded to WordPress.', 'bunny-media-offload'); ?>
                         </p>
                     </td>
                 </tr>
                 
                 <tr>
                     <th scope="row">
-                        <label for="optimization_threshold"><?php esc_html_e('Optimization Threshold (KB)', 'bunny-media-offload'); ?></label>
-                    </th>
-                    <td>
-                        <input type="number" 
-                            id="optimization_threshold"
-                            name="bunny_json_settings[optimization_threshold]"
-                            class="small-text"
-                            value="<?php echo esc_attr($optimization_threshold); ?>"
-                            min="50"
-                            max="1000"
-                            step="10"
-                        />
-                        <p class="description">
-                            <?php esc_html_e('WebP/AVIF files will only be compressed if they exceed this size (KB)', 'bunny-media-offload'); ?>
-                        </p>
-                    </td>
-                </tr>
-                
-                <tr>
-                    <th scope="row">
-                        <label for="max_file_size"><?php esc_html_e('Maximum File Size (MB)', 'bunny-media-offload'); ?></label>
+                        <label for="max_file_size"><?php esc_html_e('Maximum File Size (KB)', 'bunny-media-offload'); ?></label>
                     </th>
                     <td>
                         <input type="number" 
@@ -2109,13 +2093,38 @@ class Bunny_Admin {
                             name="bunny_json_settings[max_file_size]"
                             class="small-text"
                             value="<?php echo esc_attr($max_file_size); ?>"
-                            min="1"
-                            max="10"
+                            min="35"
+                            max="9216"
                             step="1"
                         />
                         <p class="description">
-                            <?php esc_html_e('Maximum file size for optimization (API limit is 10MB)', 'bunny-media-offload'); ?>
+                            <?php esc_html_e('Maximum file size for images to be optimized or migrated directly (range: 35KB - 9MB)', 'bunny-media-offload'); ?>
                         </p>
+                        
+                        <div class="bunny-converter" style="margin-top: 10px;">
+                            <label>
+                                <span><?php esc_html_e('MB to KB Converter:', 'bunny-media-offload'); ?></span>
+                                <input type="number" id="mb_converter" min="0.04" max="9" step="0.01" style="width: 70px;" placeholder="MB">
+                            </label>
+                            <span id="kb_result" style="margin-left: 10px;"></span>
+                            <script>
+                                jQuery(document).ready(function($) {
+                                    $('#mb_converter').on('input', function() {
+                                        var mbValue = parseFloat($(this).val());
+                                        if (!isNaN(mbValue)) {
+                                            var kbValue = Math.round(mbValue * 1024);
+                                            $('#kb_result').text('= ' + kbValue + ' KB');
+                                            
+                                            if (kbValue >= 35 && kbValue <= 9216) {
+                                                $('#max_file_size').val(kbValue);
+                                            }
+                                        } else {
+                                            $('#kb_result').text('');
+                                        }
+                                    });
+                                });
+                            </script>
+                        </div>
                     </td>
                 </tr>
             </tbody>

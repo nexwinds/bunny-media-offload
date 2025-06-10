@@ -938,7 +938,17 @@ class Bunny_Migration {
             return false;
         }
         
-        // Always migrate if file exists
+        // Get maximum file size (KB) from settings
+        $settings = $this->settings->get_all();
+        $max_file_size_kb = isset($settings['max_file_size']) ? (int) $settings['max_file_size'] : 10240; // Default 10MB in KB
+        $max_file_size_bytes = $max_file_size_kb * 1024; // Convert KB to bytes
+        
+        // Check if file size is within the limit
+        $file_size = filesize($local_path);
+        if ($file_size > $max_file_size_bytes) {
+            return false;
+        }
+        
         return true;
     }
     
