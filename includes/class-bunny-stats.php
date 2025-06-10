@@ -7,17 +7,15 @@ class Bunny_Stats {
     private $api;
     private $settings;
     private $migration;
-    private $optimizer;
     private $cache_duration = 300; // 5 minutes standard cache
     
     /**
      * Constructor
      */
-    public function __construct($api, $settings, $migration = null, $optimizer = null) {
+    public function __construct($api, $settings, $migration = null) {
         $this->api = $api;
         $this->settings = $settings;
         $this->migration = $migration;
-        $this->optimizer = $optimizer;
     }
     
     /**
@@ -31,14 +29,6 @@ class Bunny_Stats {
             return $cached_stats;
         }
         
-        // Use optimization stats as base - this ensures we're using the same criteria
-        // for both "Not Optimized" statistic and "Local Images Eligible"
-        $optimization_stats = $this->optimizer ? $this->optimizer->get_detailed_optimization_stats() : array();
-        
-        // Get images needing optimization (legacy formats) from optimization stats
-        // This is the "Not Optimized" count and uses the same validation logic
-        $local_eligible = $optimization_stats['local']['total_eligible'] ?? 0;
-        
         // For "Ready for Migration", use migration logic to get accurate count
         // This ensures the count matches what migration can actually process
         $ready_for_migration = 0;
@@ -47,11 +37,11 @@ class Bunny_Stats {
             $ready_for_migration = $migration_stats['pending_files'] ?? 0;
         }
         
-        // Get migrated count (with URL detection as fallback)
-        $images_migrated = max(
-            $optimization_stats['images_migrated'] ?? 0,
-            $this->count_cdn_images_by_url()
-        );
+        // Get count of eligible local files
+        $local_eligible = $this->count_eligible_local_files();
+        
+        // Get migrated count
+        $images_migrated = $this->count_cdn_images_by_url();
         
         $total_images = $local_eligible + $ready_for_migration + $images_migrated;
         
@@ -62,8 +52,8 @@ class Bunny_Stats {
         
         $stats = array(
             'total_images' => $total_images,
-            'local_eligible' => $local_eligible, // Same as "Not Optimized" - reuses BMO processor criteria
-            'already_optimized' => $ready_for_migration, // Now uses migration-compatible count
+            'local_eligible' => $local_eligible,
+            'already_optimized' => $ready_for_migration,
             'images_migrated' => $images_migrated,
             'not_optimized_percent' => $not_optimized_percent,
             'optimized_percent' => $optimized_percent,
@@ -74,6 +64,27 @@ class Bunny_Stats {
         wp_cache_set($cache_key, $stats, 'bunny_media_offload', $this->cache_duration);
         
         return $stats;
+    }
+    
+    /**
+     * Count eligible local image files
+     */
+    private function count_eligible_local_files() {
+        global $wpdb;
+        
+        $allowed_mime_types = array('image/jpeg', 'image/png', 'image/gif');
+        $mime_type_placeholders = implode(',', array_fill(0, count($allowed_mime_types), '%s'));
+        
+        // Get count of local images that are eligible for migration
+        $query = $wpdb->prepare(
+            "SELECT COUNT(*) FROM {$wpdb->posts} 
+            WHERE post_type = 'attachment' 
+            AND post_mime_type IN ($mime_type_placeholders)
+            AND post_status = 'inherit'",
+            $allowed_mime_types
+        );
+        
+        return (int) $wpdb->get_var($query);
     }
     
     /**
@@ -242,9 +253,6 @@ class Bunny_Stats {
         foreach ($cache_keys as $key) {
             wp_cache_delete($key, 'bunny_media_offload');
         }
-        
-        // Also clear optimization and migration caches that we depend on
-        wp_cache_delete('bunny_detailed_optimization_stats', 'bunny_media_offload');
         
         return true;
     }

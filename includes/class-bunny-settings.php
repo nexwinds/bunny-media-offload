@@ -153,11 +153,7 @@ class Bunny_Settings {
             'batch_size' => 100,
             'enable_logs' => true,
             'log_level' => 'info',
-            'optimization_format' => 'auto',
-            'optimization_quality' => 85,
             'migration_concurrent_limit' => 4
-            // Note: optimization_concurrent_limit removed - processing is now external via BMO API
-            // Note: optimization_batch_size fixed at 10 for BMO API
         );
     }
     
@@ -213,7 +209,7 @@ class Bunny_Settings {
      * Validate boolean settings
      */
     private function validate_booleans($settings) {
-        $boolean_settings = array('delete_local', 'file_versioning', 'enable_logs', 'optimization_enabled');
+        $boolean_settings = array('delete_local', 'file_versioning', 'enable_logs');
         $validated = array();
         
         foreach ($boolean_settings as $setting) {
@@ -258,10 +254,7 @@ class Bunny_Settings {
         $choices = array(
             'batch_size' => array(50, 100, 150, 250),
             'log_level' => array('error', 'warning', 'info', 'debug'),
-            'optimization_format' => array('avif', 'webp', 'auto'),
             'migration_concurrent_limit' => array(2, 4, 8)
-            // Note: optimization_concurrent_limit removed - processing is now external via BMO API
-            // Note: optimization_batch_size removed - fixed at 10 for BMO API
         );
         
         $defaults = $this->get_default_settings();
@@ -271,12 +264,6 @@ class Bunny_Settings {
                 $value = is_numeric($valid_values[0]) ? intval($settings[$setting]) : $settings[$setting];
                 $validated[$setting] = in_array($value, $valid_values) ? $value : ($defaults[$setting] ?? $valid_values[0]);
             }
-        }
-        
-        // Validate optimization quality (1-100)
-        if (isset($settings['optimization_quality'])) {
-            $quality = intval($settings['optimization_quality']);
-            $validated['optimization_quality'] = ($quality >= 1 && $quality <= 100) ? $quality : 85;
         }
         
         return $validated;

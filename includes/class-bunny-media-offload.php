@@ -14,7 +14,6 @@ class Bunny_Media_Offload {
      * Plugin components
      */
     public $api;
-    public $bmo_api;
     public $uploader;
     public $admin;
     public $migration;
@@ -22,7 +21,6 @@ class Bunny_Media_Offload {
     public $stats;
     public $logger;
     public $cli;
-    public $optimizer;
     public $wpml;
     
     /**
@@ -52,13 +50,6 @@ class Bunny_Media_Offload {
         require_once BMO_PLUGIN_DIR . 'includes/class-bunny-logger.php';
         require_once BMO_PLUGIN_DIR . 'includes/class-bunny-settings.php';
         require_once BMO_PLUGIN_DIR . 'includes/class-bunny-api.php';
-        require_once BMO_PLUGIN_DIR . 'includes/class-bunny-bmo-api.php';
-        
-        // Load modular optimization components
-        require_once BMO_PLUGIN_DIR . 'includes/class-bunny-optimization-session.php';
-        require_once BMO_PLUGIN_DIR . 'includes/class-bunny-bmo-processor.php';
-        require_once BMO_PLUGIN_DIR . 'includes/class-bunny-optimization-controller.php';
-        require_once BMO_PLUGIN_DIR . 'includes/class-bunny-optimizer.php';
         
         require_once BMO_PLUGIN_DIR . 'includes/class-bunny-uploader.php';
         require_once BMO_PLUGIN_DIR . 'includes/class-bunny-migration.php';
@@ -74,7 +65,6 @@ class Bunny_Media_Offload {
         add_action('init', array($this, 'load_textdomain'));
         add_action('admin_enqueue_scripts', array($this, 'enqueue_admin_scripts'));
         add_action('wp_enqueue_scripts', array($this, 'enqueue_frontend_scripts'));
-
     }
     
     /**
@@ -84,15 +74,11 @@ class Bunny_Media_Offload {
         $this->logger = new Bunny_Logger();
         $this->settings = new Bunny_Settings();
         $this->api = new Bunny_API($this->settings, $this->logger);
-        $this->bmo_api = new Bunny_BMO_API($this->settings, $this->logger);
-        $this->optimizer = new Bunny_Optimizer($this->api, $this->settings, $this->logger, $this->bmo_api);
         $this->uploader = new Bunny_Uploader($this->api, $this->settings, $this->logger);
         $this->migration = new Bunny_Migration($this->api, $this->settings, $this->logger);
-        $this->stats = new Bunny_Stats($this->api, $this->settings, $this->migration, $this->optimizer);
+        $this->stats = new Bunny_Stats($this->api, $this->settings, $this->migration);
         $this->wpml = new Bunny_WPML($this->settings, $this->logger);
-        $this->admin = new Bunny_Admin($this->settings, $this->stats, $this->migration, $this->logger, $this->optimizer, $this->wpml);
-        
-
+        $this->admin = new Bunny_Admin($this->settings, $this->stats, $this->migration, $this->logger, null, $this->wpml);
     }
     
     /**
@@ -189,8 +175,6 @@ class Bunny_Media_Offload {
     public function enqueue_frontend_scripts() {
         // Frontend scripts if needed
     }
-    
-
     
     /**
      * Plugin activation

@@ -14,10 +14,6 @@
                 <key name="batch_size" />
                 <key name="enable_logs" />
                 <key name="log_level" />
-                <key name="optimization_enabled" />
-                <key name="optimization_format" />
-                <key name="optimization_max_size" />
-                <key name="optimization_batch_size" />
             </key>
         </language-selector-options>
     </settings>
@@ -28,28 +24,19 @@
             <key name="dashboard_title">Dashboard</key>
             <key name="settings_title">Settings</key>
             <key name="migration_title">Migration</key>
-            <key name="optimization_title">Optimization</key>
-    
             <key name="logs_title">Logs</key>
             <key name="files_offloaded">Files Offloaded</key>
             <key name="space_saved">Space Saved</key>
             <key name="migration_progress">Migration Progress</key>
             <key name="monthly_savings">Monthly Savings</key>
-            <key name="images_optimized">Images Optimized</key>
-            <key name="optimization_savings">Optimization Savings</key>
-            <key name="compression_ratio">Compression Ratio</key>
             <key name="test_connection">Test Connection</key>
             <key name="start_migration">Start Migration</key>
-            <key name="optimize_images">Optimize Images</key>
             <key name="settings_nav">Settings</key>
         </key>
     </admin-texts>
     
     <!-- Custom fields that should be copied/synchronized -->
     <custom-fields>
-        <custom-field action="copy">_bunny_optimized</custom-field>
-        <custom-field action="copy">_bunny_optimization_data</custom-field>
-        <custom-field action="copy">_bunny_last_optimized</custom-field>
         <custom-field action="copy">_bunny_offloaded</custom-field>
         <custom-field action="copy">_bunny_url</custom-field>
         <custom-field action="copy">_bunny_file_size</custom-field>

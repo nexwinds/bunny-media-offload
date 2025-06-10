@@ -33,7 +33,6 @@ class Bunny_Admin {
         add_action('admin_menu', array($this, 'add_admin_menu'));
         add_action('admin_init', array($this, 'register_settings'));
         add_action('wp_ajax_bunny_test_connection', array($this, 'ajax_test_connection'));
-        add_action('wp_ajax_bunny_test_bmo_connection', array($this, 'ajax_test_bmo_connection'));
         add_action('wp_ajax_bunny_save_settings', array($this, 'ajax_save_settings'));
         add_action('wp_ajax_bunny_get_stats', array($this, 'ajax_get_stats'));
         add_action('wp_ajax_bunny_export_logs', array($this, 'ajax_export_logs'));
@@ -43,14 +42,6 @@ class Bunny_Admin {
         add_action('wp_ajax_bunny_migration_batch', array($this, 'ajax_migration_batch'));
         add_action('wp_ajax_bunny_cancel_migration', array($this, 'ajax_cancel_migration'));
         add_action('wp_ajax_bunny_get_logs', array($this, 'ajax_get_logs'));
-        add_action('wp_ajax_bunny_run_optimization_diagnostics', array($this, 'ajax_run_optimization_diagnostics'));
-        add_action('wp_ajax_bunny_refresh_stats', array($this, 'ajax_refresh_stats'));
-        
-        // Add media library column and filters
-        add_filter('manage_media_columns', array($this, 'add_media_column'));
-        add_action('manage_media_custom_column', array($this, 'display_media_column'), 10, 2);
-        add_action('restrict_manage_posts', array($this, 'add_media_library_filter'));
-        add_filter('parse_query', array($this, 'filter_media_library_query'));
     }
     
     /**
@@ -259,18 +250,14 @@ class Bunny_Admin {
             
                             <!-- Settings Navigation Tabs -->
             <div class="bunny-settings-tabs">
-                <nav class="nav-tab-wrapper">
+                <nav class="nav-tab-wrapper wp-clearfix">
                     <a href="?page=bunny-media-offload-settings&tab=connection" class="nav-tab <?php echo $active_tab === 'connection' ? 'nav-tab-active' : ''; ?>">
-                        <span class="dashicons dashicons-admin-links"></span>
-                        <?php esc_html_e('Connection & CDN', 'bunny-media-offload'); ?>
+                        <span class="dashicons dashicons-admin-generic"></span>
+                        <?php esc_html_e('Connection', 'bunny-media-offload'); ?>
                     </a>
                     <a href="?page=bunny-media-offload-settings&tab=general" class="nav-tab <?php echo $active_tab === 'general' ? 'nav-tab-active' : ''; ?>">
                         <span class="dashicons dashicons-admin-settings"></span>
-                        <?php esc_html_e('General Settings', 'bunny-media-offload'); ?>
-                    </a>
-                    <a href="?page=bunny-media-offload-settings&tab=optimization" class="nav-tab <?php echo $active_tab === 'optimization' ? 'nav-tab-active' : ''; ?>">
-                        <span class="dashicons dashicons-format-image"></span>
-                        <?php esc_html_e('Image Optimization', 'bunny-media-offload'); ?>
+                        <?php esc_html_e('General', 'bunny-media-offload'); ?>
                     </a>
                     <a href="?page=bunny-media-offload-settings&tab=performance" class="nav-tab <?php echo $active_tab === 'performance' ? 'nav-tab-active' : ''; ?>">
                         <span class="dashicons dashicons-performance"></span>
@@ -296,9 +283,6 @@ class Bunny_Admin {
                             break;
                         case 'general':
                             $this->render_general_settings($settings);
-                            break;
-                        case 'optimization':
-                            $this->render_optimization_settings($settings);
                             break;
                         case 'performance':
                             $this->render_performance_settings($settings);
@@ -453,36 +437,6 @@ class Bunny_Admin {
         <?php
     }
     
-    /**
-     * Render Image Optimization Settings
-     */
-    private function render_optimization_settings($settings) {
-        ?>
-        <div class="bunny-settings-section">
-            <h3><?php esc_html_e('Image Optimization', 'bunny-media-offload'); ?></h3>
-            
-            <div class="bunny-info-box">
-                <p><?php esc_html_e('Image optimization converts your images to AVIF format and compresses them to reduce file sizes and improve loading speeds. Optimization can be done manually from the Optimization page.', 'bunny-media-offload'); ?></p>
-            </div>
-            
-            <table class="form-table">
-                <tr>
-                    <th scope="row"><?php esc_html_e('Maximum File Size', 'bunny-media-offload'); ?></th>
-                    <td>
-                        <select name="bunny_json_settings[optimization_max_size]">
-                            <option value="40kb" <?php selected($settings['optimization_max_size'] ?? '50kb', '40kb'); ?>>40 KB</option>
-                            <option value="45kb" <?php selected($settings['optimization_max_size'] ?? '50kb', '45kb'); ?>>45 KB</option>
-                            <option value="50kb" <?php selected($settings['optimization_max_size'] ?? '50kb', '50kb'); ?>>50 KB (recommended)</option>
-                            <option value="55kb" <?php selected($settings['optimization_max_size'] ?? '50kb', '55kb'); ?>>55 KB</option>
-                            <option value="60kb" <?php selected($settings['optimization_max_size'] ?? '50kb', '60kb'); ?>>60 KB</option>
-                        </select>
-                        <p class="description"><?php esc_html_e('Images larger than this threshold will be recompressed to AVIF format. Smaller files are usually already well optimized.', 'bunny-media-offload'); ?></p>
-                    </td>
-                </tr>
-            </table>
-        </div>
-        <?php
-    }
     
     /**
      * Render Performance Settings
@@ -490,44 +444,39 @@ class Bunny_Admin {
     private function render_performance_settings($settings) {
         ?>
         <div class="bunny-settings-section">
-            <h3><?php esc_html_e('Migration Performance', 'bunny-media-offload'); ?></h3>
-            
-            <div class="bunny-info-box">
-                <p><?php esc_html_e('These settings control how many files are processed simultaneously. Higher values may improve speed but can increase server load.', 'bunny-media-offload'); ?></p>
-            </div>
+            <h3><?php esc_html_e('Migration Settings', 'bunny-media-offload'); ?></h3>
             
             <table class="form-table">
                 <tr>
-                    <th scope="row"><?php esc_html_e('Migration Batch Size', 'bunny-media-offload'); ?></th>
+                    <th scope="row"><?php esc_html_e('Concurrent Migration Tasks', 'bunny-media-offload'); ?></th>
                     <td>
-                        <?php if ($this->settings->is_constant_defined('batch_size')): ?>
-                            <input type="text" value="<?php echo esc_attr($this->settings->get('batch_size')); ?>" class="small-text bunny-readonly-field" readonly />
-                            <span class="bunny-config-source"><?php esc_html_e('Configured in wp-config.php', 'bunny-media-offload'); ?></span>
-                        <?php else: ?>
-                            <select name="bunny_json_settings[batch_size]">
-                                <option value="50" <?php selected($settings['batch_size'] ?? 100, 50); ?>>50</option>
-                                <option value="100" <?php selected($settings['batch_size'] ?? 100, 100); ?>>100 (recommended)</option>
-                                <option value="150" <?php selected($settings['batch_size'] ?? 100, 150); ?>>150</option>
-                                <option value="250" <?php selected($settings['batch_size'] ?? 100, 250); ?>>250</option>
-                            </select>
-                        <?php endif; ?>
-                        <p class="description"><?php esc_html_e('Number of files to process in each migration batch. Higher values process more files at once.', 'bunny-media-offload'); ?></p>
+                        <select name="bunny_json_settings[migration_concurrent_limit]">
+                            <option value="2" <?php selected($settings['migration_concurrent_limit'] ?? 4, 2); ?>>2</option>
+                            <option value="4" <?php selected($settings['migration_concurrent_limit'] ?? 4, 4); ?>>4 (recommended)</option>
+                            <option value="8" <?php selected($settings['migration_concurrent_limit'] ?? 4, 8); ?>>8</option>
+                        </select>
+                        <p class="description"><?php esc_html_e('Number of files to upload concurrently during migration. Higher values may improve speed but can cause server issues on shared hosting.', 'bunny-media-offload'); ?></p>
                     </td>
                 </tr>
                 <tr>
-                    <th scope="row"><?php esc_html_e('Migration Concurrent Limit', 'bunny-media-offload'); ?></th>
+                    <th scope="row"><?php esc_html_e('Batch Size', 'bunny-media-offload'); ?></th>
                     <td>
-                        <select name="bunny_json_settings[migration_concurrent_limit]">
-                            <option value="2" <?php selected($settings['migration_concurrent_limit'] ?? 4, 2); ?>>2 (safe)</option>
-                            <option value="4" <?php selected($settings['migration_concurrent_limit'] ?? 4, 4); ?>>4 (recommended)</option>
-                            <option value="8" <?php selected($settings['migration_concurrent_limit'] ?? 4, 8); ?>>8 (fast)</option>
+                        <select name="bunny_json_settings[batch_size]">
+                            <option value="50" <?php selected($settings['batch_size'] ?? 100, 50); ?>>50</option>
+                            <option value="100" <?php selected($settings['batch_size'] ?? 100, 100); ?>>100 (recommended)</option>
+                            <option value="150" <?php selected($settings['batch_size'] ?? 100, 150); ?>>150</option>
+                            <option value="250" <?php selected($settings['batch_size'] ?? 100, 250); ?>>250</option>
                         </select>
-                        <p class="description"><?php esc_html_e('Number of images to migrate simultaneously. Use lower values for shared hosting.', 'bunny-media-offload'); ?></p>
+                        <p class="description"><?php esc_html_e('Number of files to process in each migration batch. Higher values improve speed but require more memory.', 'bunny-media-offload'); ?></p>
                     </td>
                 </tr>
             </table>
         </div>
-        <?php 
+        
+        <div class="bunny-settings-section">
+            <h3><?php esc_html_e('File Type Settings', 'bunny-media-offload'); ?></h3>
+        </div>
+        <?php
     }
     
     /**
@@ -603,7 +552,6 @@ class Bunny_Admin {
     public function migration_page() {
         // Use consolidated stats from the stats class
         $migration_stats = $this->stats->get_migration_progress();
-        $max_file_size = $this->settings->get('optimization_max_size', '50kb');
         
         ?>
         <div class="wrap">
@@ -614,13 +562,7 @@ class Bunny_Admin {
             <div class="bunny-migration-info">
                 <div class="notice notice-info">
                     <h3><?php esc_html_e('Migration Requirements', 'bunny-media-offload'); ?></h3>
-                    <p><?php 
-                        printf(
-                            // translators: %s is the maximum file size setting
-                            esc_html__('Only images in SVG, AVIF or WebP format with a maximum file size lower than %s will be migrated. Images in other formats or exceeding this size limit will be skipped.', 'bunny-media-offload'), 
-                            esc_html($max_file_size)
-                        ); 
-                    ?></p>
+                    <p><?php esc_html_e('Only images in SVG, AVIF or WebP format will be migrated. Images in other formats will be skipped.', 'bunny-media-offload'); ?></p>
                 </div>
             </div>
             
@@ -968,36 +910,6 @@ class Bunny_Admin {
             wp_send_json_error(array('message' => $result->get_error_message()));
         } else {
             wp_send_json_success(array('message' => esc_html__('Connection successful!', 'bunny-media-offload')));
-        }
-    }
-    
-    /**
-     * AJAX: Test BMO connection
-     */
-    public function ajax_test_bmo_connection() {
-        check_ajax_referer('bunny_ajax_nonce', 'nonce');
-        
-        if (!current_user_can('manage_options')) {
-            wp_die(esc_html__('Insufficient permissions.', 'bunny-media-offload'));
-        }
-        
-        // Get BMO API instance
-        $bmo = Bunny_Media_Offload::get_instance();
-        $logger = $bmo->logger;
-        $settings = $bmo->settings;
-        
-        // Create BMO API instance
-        $bmo_api = new Bunny_BMO_API($settings, $logger);
-        
-        $result = $bmo_api->test_connection();
-        
-        if ($result['success']) {
-            wp_send_json_success(array(
-                'message' => $result['message'],
-                'data' => isset($result['data']) ? $result['data'] : null
-            ));
-        } else {
-            wp_send_json_error(array('message' => $result['message']));
         }
     }
     
@@ -1510,147 +1422,6 @@ class Bunny_Admin {
         ));
     }
     
-    /**
-     * Run optimization diagnostics
-     */
-    public function ajax_run_optimization_diagnostics() {
-        check_ajax_referer('bunny_ajax_nonce', 'nonce');
-        
-        if (!current_user_can('manage_options')) {
-            wp_send_json_error(__('Insufficient permissions.', 'bunny-media-offload'));
-        }
-        
-        try {
-            global $wpdb;
-            
-            // Get sample of recent image attachments
-            $sample_size = 50; // Check last 50 image attachments
-            $attachments = $wpdb->get_results($wpdb->prepare("
-                SELECT p.ID, p.post_title, p.post_mime_type, p.post_date
-                FROM {$wpdb->posts} p
-                WHERE p.post_type = 'attachment'
-                AND p.post_mime_type LIKE 'image/%'
-                ORDER BY p.post_date DESC
-                LIMIT %d
-            ", $sample_size));
-            
-            $issues = array();
-            $valid_count = 0;
-            $problematic_count = 0;
-            $recommendations = array();
-            
-            foreach ($attachments as $attachment) {
-                $attachment_id = $attachment->ID;
-                
-                // Check if post exists
-                $post = get_post($attachment_id);
-                if (!$post) {
-                    $issues[] = array(
-                        'id' => $attachment_id,
-                        'title' => $attachment->post_title,
-                        'reason' => 'Post no longer exists in database'
-                    );
-                    $problematic_count++;
-                    continue;
-                }
-                
-                // Check if it's an image
-                if (!wp_attachment_is_image($attachment_id)) {
-                    $issues[] = array(
-                        'id' => $attachment_id,
-                        'title' => $attachment->post_title,
-                        'reason' => 'Not recognized as an image attachment'
-                    );
-                    $problematic_count++;
-                    continue;
-                }
-                
-                // Check file existence
-                $file_path = get_attached_file($attachment_id);
-                if (!$file_path || !file_exists($file_path)) {
-                    $issues[] = array(
-                        'id' => $attachment_id,
-                        'title' => $attachment->post_title,
-                        'reason' => 'File not found on server (' . ($file_path ? $file_path : 'no path') . ')'
-                    );
-                    $problematic_count++;
-                    continue;
-                }
-                
-                // Check file size
-                $file_size = filesize($file_path);
-                if ($file_size < 35840) { // 35KB
-                    $issues[] = array(
-                        'id' => $attachment_id,
-                        'title' => $attachment->post_title,
-                        'reason' => sprintf('File size too small for optimization (%s, minimum 35KB)', size_format($file_size))
-                    );
-                    $problematic_count++;
-                    continue;
-                }
-                
-                // Check URL generation
-                $image_url = wp_get_attachment_url($attachment_id);
-                if (!$image_url) {
-                    $issues[] = array(
-                        'id' => $attachment_id,
-                        'title' => $attachment->post_title,
-                        'reason' => 'Cannot generate URL for attachment'
-                    );
-                    $problematic_count++;
-                    continue;
-                }
-                
-                // Validate URL format
-                if (!filter_var($image_url, FILTER_VALIDATE_URL)) {
-                    $issues[] = array(
-                        'id' => $attachment_id,
-                        'title' => $attachment->post_title,
-                        'reason' => 'Generated URL is not valid: ' . $image_url
-                    );
-                    $problematic_count++;
-                    continue;
-                }
-                
-                $valid_count++;
-            }
-            
-            // Generate recommendations
-            if ($problematic_count > 0) {
-                $recommendations[] = 'Some attachments have missing files. Consider running a media file repair tool.';
-            }
-            
-            if ($problematic_count > ($sample_size * 0.5)) {
-                $recommendations[] = 'High number of problematic attachments detected. Consider checking your uploads directory permissions and WordPress configuration.';
-            }
-            
-            $upload_dir = wp_upload_dir();
-            if ($upload_dir['error']) {
-                $recommendations[] = 'WordPress uploads directory has errors: ' . $upload_dir['error'];
-            }
-            
-            if (empty($recommendations)) {
-                $recommendations[] = 'No major issues detected. If you\'re still experiencing problems, check the detailed logs for more information.';
-            }
-            
-            wp_send_json_success(array(
-                'total_attachments' => count($attachments),
-                'valid_attachments' => $valid_count,
-                'problematic_attachments' => $problematic_count,
-                'issues' => array_slice($issues, 0, 20), // Limit to first 20 issues
-                'recommendations' => $recommendations,
-                'upload_dir_info' => array(
-                    'basedir' => $upload_dir['basedir'],
-                    'baseurl' => $upload_dir['baseurl'],
-                    'error' => $upload_dir['error']
-                )
-            ));
-            
-        } catch (Exception $e) {
-            $this->logger->log('error', 'Diagnostics failed: ' . $e->getMessage());
-            wp_send_json_error('Diagnostics failed: ' . $e->getMessage());
-        }
-    }
     
 
     
@@ -1755,5 +1526,62 @@ class Bunny_Admin {
             'stats' => $unified_stats,
             'message' => __('Statistics refreshed successfully.', 'bunny-media-offload')
         ));
+    }
+    
+    /**
+     * Render Settings Form
+     */
+    private function render_settings_form() {
+        $settings = $this->settings->get_all();
+        ?>
+        <form id="bunny-settings-form" class="bunny-settings-form">
+            <?php wp_nonce_field('bunny_ajax_nonce', 'bunny_ajax_nonce'); ?>
+            
+            <?php $this->render_general_settings($settings); ?>
+            <?php $this->render_storage_settings($settings); ?>
+            <?php $this->render_advanced_settings($settings); ?>
+            <?php $this->render_debug_settings($settings); ?>
+            
+            <div class="bunny-settings-submit">
+                <input type="submit" value="<?php esc_attr_e('Save Settings', 'bunny-media-offload'); ?>" class="button button-primary">
+            </div>
+        </form>
+        <?php
+    }
+    
+    /**
+     * Render Performance Settings
+     */
+    private function render_debug_settings($settings) {
+        ?>
+        <div class="bunny-settings-section">
+            <h3><?php esc_html_e('Debug & Logging', 'bunny-media-offload'); ?></h3>
+            
+            <table class="form-table">
+                <tr>
+                    <th scope="row"><?php esc_html_e('Enable Logging', 'bunny-media-offload'); ?></th>
+                    <td>
+                        <label>
+                            <input type="checkbox" name="bunny_json_settings[enable_logs]" <?php checked($settings['enable_logs'] ?? false); ?>>
+                            <?php esc_html_e('Enable logging for debugging', 'bunny-media-offload'); ?>
+                        </label>
+                        <p class="description"><?php esc_html_e('Logs are stored in the wp-content directory and can be viewed in the Logs page.', 'bunny-media-offload'); ?></p>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row"><?php esc_html_e('Log Level', 'bunny-media-offload'); ?></th>
+                    <td>
+                        <select name="bunny_json_settings[log_level]">
+                            <option value="error" <?php selected($settings['log_level'] ?? 'info', 'error'); ?>><?php esc_html_e('Error only', 'bunny-media-offload'); ?></option>
+                            <option value="warning" <?php selected($settings['log_level'] ?? 'info', 'warning'); ?>><?php esc_html_e('Warning', 'bunny-media-offload'); ?></option>
+                            <option value="info" <?php selected($settings['log_level'] ?? 'info', 'info'); ?>><?php esc_html_e('Info', 'bunny-media-offload'); ?></option>
+                            <option value="debug" <?php selected($settings['log_level'] ?? 'info', 'debug'); ?>><?php esc_html_e('Debug (verbose)', 'bunny-media-offload'); ?></option>
+                        </select>
+                        <p class="description"><?php esc_html_e('More verbose levels include all messages from less verbose levels.', 'bunny-media-offload'); ?></p>
+                    </td>
+                </tr>
+            </table>
+        </div>
+        <?php
     }
 } 

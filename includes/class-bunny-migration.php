@@ -712,18 +712,14 @@ class Bunny_Migration {
     }
     
     /**
-     * Check if file should be migrated based on size
+     * Check if file should be migrated
      */
     private function should_migrate_file($local_path) {
         if (!file_exists($local_path)) {
             return false;
         }
         
-        // Get max file size from settings (with fallback)
-        $max_size_setting = $this->settings->get('optimization_max_size', '50kb');
-        $max_size_bytes = (int) filter_var($max_size_setting, FILTER_SANITIZE_NUMBER_INT) * 1024;
-        
-        $file_size = filesize($local_path);
-        return $file_size <= $max_size_bytes;
+        // Always migrate if file exists
+        return true;
     }
 } 
