@@ -30,8 +30,11 @@ class Bunny_Admin {
      * Initialize WordPress hooks
      */
     private function init_hooks() {
+        // Add menu items and settings
         add_action('admin_menu', array($this, 'add_admin_menu'));
         add_action('admin_init', array($this, 'register_settings'));
+        
+        // Handle AJAX requests
         add_action('wp_ajax_bunny_test_connection', array($this, 'ajax_test_connection'));
         add_action('wp_ajax_bunny_save_settings', array($this, 'ajax_save_settings'));
         add_action('wp_ajax_bunny_get_stats', array($this, 'ajax_get_stats'));
@@ -42,6 +45,12 @@ class Bunny_Admin {
         add_action('wp_ajax_bunny_migration_batch', array($this, 'ajax_migration_batch'));
         add_action('wp_ajax_bunny_cancel_migration', array($this, 'ajax_cancel_migration'));
         add_action('wp_ajax_bunny_get_logs', array($this, 'ajax_get_logs'));
+        
+        // Optimization-related AJAX hooks (added by Bunny_Optimization class)
+        if ($this->optimizer) {
+            add_action('wp_ajax_bunny_get_optimization_stats', array($this, 'ajax_get_optimization_stats'));
+            add_action('wp_ajax_bunny_run_optimization_diagnostics', array($this, 'ajax_run_optimization_diagnostics'));
+        }
     }
     
     /**
@@ -474,6 +483,12 @@ class Bunny_Admin {
         </div>
         
         <div class="bunny-settings-section">
+            <h3><?php esc_html_e('Image Optimization', 'bunny-media-offload'); ?></h3>
+            
+            <?php $this->render_bmo_settings($settings); ?>
+        </div>
+        
+        <div class="bunny-settings-section">
             <h3><?php esc_html_e('File Type Settings', 'bunny-media-offload'); ?></h3>
         </div>
         <?php
@@ -855,6 +870,314 @@ class Bunny_Admin {
                             ?>
                         </span>
                     <?php endif; ?>
+                </div>
+            </div>
+        </div>
+        <?php
+    }
+    
+    /**
+     * Optimization page
+     */
+    public function optimization_page() {
+        // Get optimization statistics
+        $optimizer = $this->optimizer;
+        
+        if (!$optimizer) {
+            echo '<div class="error"><p>' . esc_html__('Optimization module not initialized. Please reactivate the plugin.', 'bunny-media-offload') . '</p></div>';
+            return;
+        }
+        
+        $stats = $optimizer->get_optimization_stats();
+        $settings = $this->settings->get_all();
+        
+        // Check if BMO API key is set
+        $api_key = isset($settings['bmo_api_key']) ? $settings['bmo_api_key'] : '';
+        $api_region = isset($settings['bmo_api_region']) ? $settings['bmo_api_region'] : 'us';
+        $threshold_kb = isset($settings['optimization_threshold']) ? (int) $settings['optimization_threshold'] : 150;
+        
+        ?>
+        <div class="wrap">
+            <h1><?php esc_html_e('Image Optimization', 'bunny-media-offload'); ?></h1>
+            
+            <?php if (empty($api_key)): ?>
+                <div class="notice notice-error">
+                    <p>
+                        <?php 
+                        printf(
+                            // translators: %s is the URL to the settings page
+                            esc_html__('BMO API key is not set. Please configure it in the %s.', 'bunny-media-offload'),
+                            '<a href="' . esc_url(admin_url('admin.php?page=bunny-media-offload-settings')) . '">' . esc_html__('settings', 'bunny-media-offload') . '</a>'
+                        ); 
+                        ?>
+                    </p>
+                </div>
+            <?php endif; ?>
+            
+            <?php if (!is_ssl()): ?>
+                <div class="notice notice-error">
+                    <p><?php esc_html_e('HTTPS is required for the BMO API. Please enable HTTPS on your site.', 'bunny-media-offload'); ?></p>
+                </div>
+            <?php endif; ?>
+            
+            <div class="bunny-optimization-dashboard">
+                <!-- Stats Overview -->
+                <div class="bunny-card">
+                    <h2><?php esc_html_e('Image Statistics', 'bunny-media-offload'); ?></h2>
+                    <div class="bunny-stats-visualization">
+                        <div class="bunny-circular-chart-container">
+                            <svg width="200" height="200" class="bunny-circular-chart">
+                                <circle cx="100" cy="100" r="80" fill="none" stroke="#f1f1f1" stroke-width="20" />
+                                
+                                <?php
+                                // Calculate segment lengths
+                                $total = max(1, $stats['total_images']);
+                                $optimized_percent = ($stats['optimized'] / $total) * 100;
+                                $not_optimized_percent = ($stats['not_optimized'] / $total) * 100;
+                                $in_progress_percent = ($stats['in_progress'] / $total) * 100;
+                                
+                                // Calculate stroke-dasharray values
+                                $circumference = 2 * M_PI * 80;
+                                $optimized_dash = ($optimized_percent / 100) * $circumference;
+                                $not_optimized_dash = ($not_optimized_percent / 100) * $circumference;
+                                $in_progress_dash = ($in_progress_percent / 100) * $circumference;
+                                
+                                // Calculate stroke-dashoffset values
+                                $optimized_offset = 0;
+                                $not_optimized_offset = $optimized_dash;
+                                $in_progress_offset = $optimized_dash + $not_optimized_dash;
+                                ?>
+                                
+                                <!-- Optimized segment -->
+                                <circle 
+                                    cx="100" 
+                                    cy="100" 
+                                    r="80" 
+                                    fill="none" 
+                                    stroke="#10b981" 
+                                    stroke-width="20" 
+                                    stroke-dasharray="<?php echo esc_attr($optimized_dash . ' ' . ($circumference - $optimized_dash)); ?>" 
+                                    stroke-dashoffset="0" 
+                                    class="bunny-donut-segment" 
+                                    style="--final-dasharray: <?php echo esc_attr($optimized_dash . ' ' . ($circumference - $optimized_dash)); ?>;" 
+                                />
+                                
+                                <!-- Not Optimized segment -->
+                                <circle 
+                                    cx="100" 
+                                    cy="100" 
+                                    r="80" 
+                                    fill="none" 
+                                    stroke="#ef4444" 
+                                    stroke-width="20" 
+                                    stroke-dasharray="<?php echo esc_attr($not_optimized_dash . ' ' . ($circumference - $not_optimized_dash)); ?>" 
+                                    stroke-dashoffset="<?php echo esc_attr(-$not_optimized_offset); ?>" 
+                                    class="bunny-donut-segment" 
+                                    style="--final-dasharray: <?php echo esc_attr($not_optimized_dash . ' ' . ($circumference - $not_optimized_dash)); ?>;"
+                                    transform="rotate(-90, 100, 100)"
+                                />
+                                
+                                <!-- In Progress segment -->
+                                <?php if ($in_progress_percent > 0): ?>
+                                <circle 
+                                    cx="100" 
+                                    cy="100" 
+                                    r="80" 
+                                    fill="none" 
+                                    stroke="#f59e0b" 
+                                    stroke-width="20" 
+                                    stroke-dasharray="<?php echo esc_attr($in_progress_dash . ' ' . ($circumference - $in_progress_dash)); ?>" 
+                                    stroke-dashoffset="<?php echo esc_attr(-$in_progress_offset); ?>" 
+                                    class="bunny-donut-segment" 
+                                    style="--final-dasharray: <?php echo esc_attr($in_progress_dash . ' ' . ($circumference - $in_progress_dash)); ?>;"
+                                    transform="rotate(-90, 100, 100)"
+                                />
+                                <?php endif; ?>
+                            </svg>
+                            
+                            <div class="bunny-chart-center">
+                                <div class="bunny-chart-percent"><?php echo esc_html($stats['optimization_percent']); ?>%</div>
+                                <div class="bunny-chart-label"><?php esc_html_e('Optimized', 'bunny-media-offload'); ?></div>
+                            </div>
+                        </div>
+                        
+                        <div class="bunny-stats-legend">
+                            <div class="bunny-legend-item">
+                                <div class="bunny-legend-color bunny-optimized-color"></div>
+                                <div class="bunny-legend-label"><?php esc_html_e('Optimized Images', 'bunny-media-offload'); ?></div>
+                                <div class="bunny-legend-value"><?php echo esc_html(number_format($stats['optimized'])); ?></div>
+                            </div>
+                            
+                            <div class="bunny-legend-item">
+                                <div class="bunny-legend-color bunny-not-optimized-color"></div>
+                                <div class="bunny-legend-label"><?php esc_html_e('Not Optimized', 'bunny-media-offload'); ?></div>
+                                <div class="bunny-legend-value"><?php echo esc_html(number_format($stats['not_optimized'])); ?></div>
+                            </div>
+                            
+                            <?php if ($stats['in_progress'] > 0): ?>
+                            <div class="bunny-legend-item">
+                                <div class="bunny-legend-color bunny-in-progress-color"></div>
+                                <div class="bunny-legend-label"><?php esc_html_e('In Progress', 'bunny-media-offload'); ?></div>
+                                <div class="bunny-legend-value"><?php echo esc_html(number_format($stats['in_progress'])); ?></div>
+                            </div>
+                            <?php endif; ?>
+                            
+                            <div class="bunny-legend-item bunny-legend-total">
+                                <div class="bunny-legend-label"><?php esc_html_e('Total Images', 'bunny-media-offload'); ?></div>
+                                <div class="bunny-legend-value"><?php echo esc_html(number_format($stats['total_images'])); ?></div>
+                            </div>
+                            
+                            <?php if ($stats['space_saved']): ?>
+                            <div class="bunny-legend-item bunny-legend-saved">
+                                <div class="bunny-legend-label"><?php esc_html_e('Space Saved', 'bunny-media-offload'); ?></div>
+                                <div class="bunny-legend-value"><?php echo esc_html($stats['space_saved']); ?></div>
+                            </div>
+                            <?php endif; ?>
+                            
+                            <?php if ($stats['average_reduction'] > 0): ?>
+                            <div class="bunny-legend-item bunny-legend-reduction">
+                                <div class="bunny-legend-label"><?php esc_html_e('Average Reduction', 'bunny-media-offload'); ?></div>
+                                <div class="bunny-legend-value"><?php echo esc_html($stats['average_reduction']); ?>%</div>
+                            </div>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Optimization Controls -->
+                <div class="bunny-card">
+                    <h2><?php esc_html_e('Image Optimization – Not Optimized', 'bunny-media-offload'); ?></h2>
+                    
+                    <div class="bunny-optimization-criteria">
+                        <h3><?php esc_html_e('Optimization Criteria', 'bunny-media-offload'); ?></h3>
+                        <p><?php esc_html_e('The following images will be optimized:', 'bunny-media-offload'); ?></p>
+                        <ul>
+                            <li><?php esc_html_e('JPEG/PNG: Always converted to AVIF format', 'bunny-media-offload'); ?></li>
+                            <li>
+                                <?php 
+                                printf(
+                                    // translators: %d is the threshold in KB
+                                    esc_html__('WebP/AVIF: Only compressed if size exceeds %d KB', 'bunny-media-offload'),
+                                    esc_html($threshold_kb)
+                                ); 
+                                ?>
+                            </li>
+                            <li><?php esc_html_e('All files must be hosted locally (not on CDN)', 'bunny-media-offload'); ?></li>
+                            <li><?php esc_html_e('Files must exceed minimum size (35 KB)', 'bunny-media-offload'); ?></li>
+                        </ul>
+                    </div>
+                    
+                    <div class="bunny-optimization-actions">
+                        <div class="bunny-eligibility-stats">
+                            <strong><?php esc_html_e('Eligible for optimization:', 'bunny-media-offload'); ?></strong>
+                            <span id="eligible-count"><?php echo esc_html(number_format($stats['eligible_for_optimization'])); ?></span> <?php esc_html_e('images', 'bunny-media-offload'); ?>
+                        </div>
+                        
+                        <div class="bunny-optimization-buttons">
+                            <button id="start-optimization" class="button button-primary bunny-optimize-button" <?php echo empty($api_key) || !is_ssl() ? 'disabled' : ''; ?>>
+                                <?php esc_html_e('Start Optimization', 'bunny-media-offload'); ?>
+                            </button>
+                            
+                            <button id="cancel-optimization" class="button bunny-cancel-button" style="display: none;">
+                                <?php esc_html_e('Cancel', 'bunny-media-offload'); ?>
+                            </button>
+                            
+                            <button class="button bunny-diagnostic-button">
+                                <?php esc_html_e('Run Diagnostics', 'bunny-media-offload'); ?>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Progress bar -->
+                    <div id="optimization-progress" class="bunny-optimization-progress" style="display: none;">
+                        <h3><?php esc_html_e('Optimization Progress', 'bunny-media-offload'); ?></h3>
+                        
+                        <div class="bunny-progress-container">
+                            <div class="bunny-progress-bar">
+                                <div class="bunny-progress-fill" style="width: 0%"></div>
+                                <div class="bunny-progress-text">0%</div>
+                            </div>
+                        </div>
+                        
+                        <div class="bunny-batch-info">
+                            <div class="bunny-batch-status">
+                                <?php esc_html_e('Initializing...', 'bunny-media-offload'); ?>
+                            </div>
+                            
+                            <div class="bunny-batch-stats">
+                                <div class="bunny-batch-stat processing">
+                                    <span class="icon"></span>
+                                    <span class="text"><?php esc_html_e('Processing:', 'bunny-media-offload'); ?></span>
+                                    <span class="value" id="processing-count">0</span>
+                                </div>
+                                
+                                <div class="bunny-batch-stat success">
+                                    <span class="icon"></span>
+                                    <span class="text"><?php esc_html_e('Completed:', 'bunny-media-offload'); ?></span>
+                                    <span class="value" id="completed-count">0</span>
+                                </div>
+                                
+                                <div class="bunny-batch-stat failed">
+                                    <span class="icon"></span>
+                                    <span class="text"><?php esc_html_e('Failed:', 'bunny-media-offload'); ?></span>
+                                    <span class="value" id="failed-count">0</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Live log -->
+                    <div id="optimization-log" class="bunny-optimization-log" style="display: none;">
+                        <h4><?php esc_html_e('Optimization Log', 'bunny-media-offload'); ?></h4>
+                        <div class="bunny-log-container" id="optimization-log-container"></div>
+                    </div>
+                    
+                    <!-- Diagnostics results -->
+                    <div id="diagnostics-results" class="bunny-diagnostics-results" style="display: none;">
+                        <!-- Will be filled by JavaScript -->
+                    </div>
+                </div>
+                
+                <!-- API Configuration -->
+                <div class="bunny-card">
+                    <h2><?php esc_html_e('BMO API Configuration', 'bunny-media-offload'); ?></h2>
+                    
+                    <div class="bunny-api-settings">
+                        <p>
+                            <strong><?php esc_html_e('API Status:', 'bunny-media-offload'); ?></strong>
+                            <?php if (!empty($api_key) && is_ssl()): ?>
+                                <span class="bmo-status-indicator connected">
+                                    <span class="bmo-status-dot"></span>
+                                    <?php esc_html_e('Ready', 'bunny-media-offload'); ?>
+                                </span>
+                            <?php else: ?>
+                                <span class="bmo-status-indicator disconnected">
+                                    <span class="bmo-status-dot"></span>
+                                    <?php esc_html_e('Not Configured', 'bunny-media-offload'); ?>
+                                </span>
+                            <?php endif; ?>
+                        </p>
+                        
+                        <p>
+                            <strong><?php esc_html_e('API Region:', 'bunny-media-offload'); ?></strong>
+                            <?php echo esc_html(strtoupper($api_region)); ?>
+                        </p>
+                        
+                        <p>
+                            <strong><?php esc_html_e('Optimization Threshold:', 'bunny-media-offload'); ?></strong>
+                            <?php echo esc_html($threshold_kb); ?> KB
+                        </p>
+                        
+                        <p class="bunny-api-settings-note">
+                            <?php 
+                            printf(
+                                // translators: %s is the URL to the settings page
+                                esc_html__('You can change these settings in the %s page.', 'bunny-media-offload'),
+                                '<a href="' . esc_url(admin_url('admin.php?page=bunny-media-offload-settings')) . '">' . esc_html__('Settings', 'bunny-media-offload') . '</a>'
+                            ); 
+                            ?>
+                        </p>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1582,6 +1905,189 @@ class Bunny_Admin {
                 </tr>
             </table>
         </div>
+        <?php
+    }
+    
+    /**
+     * AJAX: Get optimization statistics
+     */
+    public function ajax_get_optimization_stats() {
+        check_ajax_referer('bunny_ajax_nonce', 'nonce');
+        
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Permission denied');
+        }
+        
+        if (!$this->optimizer) {
+            wp_send_json_error('Optimization module not initialized');
+        }
+        
+        $stats = $this->optimizer->get_optimization_stats();
+        wp_send_json_success($stats);
+    }
+    
+    /**
+     * AJAX: Run optimization diagnostics
+     */
+    public function ajax_run_optimization_diagnostics() {
+        check_ajax_referer('bunny_ajax_nonce', 'nonce');
+        
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Optimization module not initialized');
+        }
+        
+        if (!$this->optimizer) {
+            wp_send_json_error('Optimization module not initialized');
+        }
+        
+        $result = $this->optimizer->ajax_run_diagnostics();
+        if (is_array($result) && isset($result['success'])) {
+            if ($result['success']) {
+                wp_send_json_success($result);
+            } else {
+                wp_send_json_error($result);
+            }
+        } else {
+            wp_send_json_error('Invalid response from optimizer');
+        }
+    }
+    
+    /**
+     * Render BMO API settings
+     */
+    private function render_bmo_settings($settings) {
+        $bmo_api_key = isset($settings['bmo_api_key']) ? $settings['bmo_api_key'] : '';
+        $bmo_api_region = isset($settings['bmo_api_region']) ? $settings['bmo_api_region'] : 'us';
+        $auto_optimize = isset($settings['auto_optimize']) ? (bool) $settings['auto_optimize'] : false;
+        $optimization_threshold = isset($settings['optimization_threshold']) ? (int) $settings['optimization_threshold'] : 150;
+        $max_file_size = isset($settings['max_file_size']) ? (int) $settings['max_file_size'] : 10;
+        
+        $key_from_constant = $this->settings->get_config_source('bmo_api_key') === 'constant';
+        $region_from_constant = $this->settings->get_config_source('bmo_api_region') === 'constant';
+        
+        ?>
+        <h3><?php esc_html_e('BMO API Settings', 'bunny-media-offload'); ?></h3>
+        
+        <table class="form-table">
+            <tbody>
+                <tr>
+                    <th scope="row">
+                        <label for="bmo_api_key"><?php esc_html_e('BMO API Key', 'bunny-media-offload'); ?></label>
+                    </th>
+                    <td>
+                        <?php if ($key_from_constant): ?>
+                            <input type="text" 
+                                id="bmo_api_key"
+                                class="regular-text"
+                                value="<?php echo esc_attr(substr($bmo_api_key, 0, 5) . '...' . substr($bmo_api_key, -5)); ?>"
+                                disabled
+                            />
+                            <p class="description">
+                                <?php esc_html_e('Set in wp-config.php as BMO_API_KEY', 'bunny-media-offload'); ?>
+                            </p>
+                        <?php else: ?>
+                            <input type="text" 
+                                id="bmo_api_key"
+                                name="bunny_json_settings[bmo_api_key]"
+                                class="regular-text"
+                                value="<?php echo esc_attr($bmo_api_key); ?>"
+                                placeholder="<?php esc_attr_e('Enter your BMO API key', 'bunny-media-offload'); ?>"
+                            />
+                            <p class="description">
+                                <?php esc_html_e('Your BMO API key for image optimization. Get one at https://bmo.nexwinds.com/', 'bunny-media-offload'); ?>
+                            </p>
+                        <?php endif; ?>
+                    </td>
+                </tr>
+                
+                <tr>
+                    <th scope="row">
+                        <label for="bmo_api_region"><?php esc_html_e('BMO API Region', 'bunny-media-offload'); ?></label>
+                    </th>
+                    <td>
+                        <?php if ($region_from_constant): ?>
+                            <input type="text" 
+                                id="bmo_api_region"
+                                class="regular-text"
+                                value="<?php echo esc_attr(strtoupper($bmo_api_region)); ?>"
+                                disabled
+                            />
+                            <p class="description">
+                                <?php esc_html_e('Set in wp-config.php as BMO_API_REGION', 'bunny-media-offload'); ?>
+                            </p>
+                        <?php else: ?>
+                            <select id="bmo_api_region" name="bunny_json_settings[bmo_api_region]">
+                                <option value="us" <?php selected($bmo_api_region, 'us'); ?>><?php esc_html_e('US (Default)', 'bunny-media-offload'); ?></option>
+                                <option value="eu" <?php selected($bmo_api_region, 'eu'); ?>><?php esc_html_e('EU (GDPR Compliant)', 'bunny-media-offload'); ?></option>
+                            </select>
+                            <p class="description">
+                                <?php esc_html_e('Select the API region closest to your server location', 'bunny-media-offload'); ?>
+                            </p>
+                        <?php endif; ?>
+                    </td>
+                </tr>
+                
+                <tr>
+                    <th scope="row">
+                        <?php esc_html_e('Auto-Optimize on Upload', 'bunny-media-offload'); ?>
+                    </th>
+                    <td>
+                        <label for="auto_optimize">
+                            <input type="checkbox" 
+                                id="auto_optimize"
+                                name="bunny_json_settings[auto_optimize]"
+                                value="1"
+                                <?php checked($auto_optimize, true); ?>
+                            />
+                            <?php esc_html_e('Automatically optimize images when they are uploaded', 'bunny-media-offload'); ?>
+                        </label>
+                        <p class="description">
+                            <?php esc_html_e('Images will be converted to AVIF format for better compression', 'bunny-media-offload'); ?>
+                        </p>
+                    </td>
+                </tr>
+                
+                <tr>
+                    <th scope="row">
+                        <label for="optimization_threshold"><?php esc_html_e('Optimization Threshold (KB)', 'bunny-media-offload'); ?></label>
+                    </th>
+                    <td>
+                        <input type="number" 
+                            id="optimization_threshold"
+                            name="bunny_json_settings[optimization_threshold]"
+                            class="small-text"
+                            value="<?php echo esc_attr($optimization_threshold); ?>"
+                            min="50"
+                            max="1000"
+                            step="10"
+                        />
+                        <p class="description">
+                            <?php esc_html_e('WebP/AVIF files will only be compressed if they exceed this size (KB)', 'bunny-media-offload'); ?>
+                        </p>
+                    </td>
+                </tr>
+                
+                <tr>
+                    <th scope="row">
+                        <label for="max_file_size"><?php esc_html_e('Maximum File Size (MB)', 'bunny-media-offload'); ?></label>
+                    </th>
+                    <td>
+                        <input type="number" 
+                            id="max_file_size"
+                            name="bunny_json_settings[max_file_size]"
+                            class="small-text"
+                            value="<?php echo esc_attr($max_file_size); ?>"
+                            min="1"
+                            max="10"
+                            step="1"
+                        />
+                        <p class="description">
+                            <?php esc_html_e('Maximum file size for optimization (API limit is 10MB)', 'bunny-media-offload'); ?>
+                        </p>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
         <?php
     }
 } 

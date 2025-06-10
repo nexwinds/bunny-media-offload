@@ -781,6 +781,43 @@
                     }
                 }
             });
+        },
+        
+        /**
+         * Show optimization criteria
+         */
+        showOptimizationCriteria: function() {
+            // Make sure the container exists
+            if ($('.bunny-optimization-criteria').length > 0) {
+                $('.bunny-optimization-criteria').show();
+            }
+        },
+        
+        /**
+         * Update optimization UI
+         */
+        updateOptimizationUI: function(isProcessing) {
+            var $startBtn = $('#start-optimization');
+            var $cancelBtn = $('#cancel-optimization');
+            var $progress = $('#optimization-progress');
+            
+            if (isProcessing) {
+                $startBtn.hide();
+                $cancelBtn.show();
+                $progress.show();
+            } else {
+                $startBtn.show();
+                $cancelBtn.hide();
+                $progress.hide();
+            }
+        },
+        
+        /**
+         * Handle optimization error
+         */
+        onOptimizationError: function(data) {
+            console.log('Optimization error:', data);
+            this.updateOptimizationUI(false);
         }
     };
     
@@ -792,6 +829,11 @@
         if ($('.bunny-optimization-actions').length > 0) {
             BunnyAdmin.showOptimizationCriteria();
         }
+        
+        // Listen for optimization errors
+        $(document).on('bunny_optimization_error', function(e, data) {
+            BunnyAdmin.onOptimizationError(data);
+        });
         
         // Update dashboard stats every 30 seconds
         setInterval(BunnyAdmin.updateDashboardStats, 30000);

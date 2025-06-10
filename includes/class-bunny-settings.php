@@ -153,7 +153,13 @@ class Bunny_Settings {
             'batch_size' => 100,
             'enable_logs' => true,
             'log_level' => 'info',
-            'migration_concurrent_limit' => 4
+            'migration_concurrent_limit' => 4,
+            
+            // BMO API optimization settings
+            'auto_optimize' => false,                  // Auto-optimize on upload
+            'optimization_threshold' => 150,           // Threshold in KB for optimizing WebP/AVIF files
+            'max_file_size' => 10,                     // Maximum file size in MB (10MB is the API limit)
+            'optimization_format' => 'auto'            // AVIF is enforced by the API
         );
     }
     
