@@ -443,8 +443,8 @@ class Bunny_Optimization {
         }
         
         // Prepare API request
-        $api_base_url = ($api_region === 'eu') ? 'https://api-eu.bmo.nexwinds.com' : 'https://api-us.bmo.nexwinds.com';
-        $api_endpoint = '/v1/images/wp/optimize';
+        $api_base_url = 'us' === $api_region ? 'https://api.bunny.net' : "https://api.{$api_region}.bunny.net";
+        $api_endpoint = '/optimizer';
         $api_url = $api_base_url . $api_endpoint;
         
         // Format data for API
@@ -465,7 +465,7 @@ class Bunny_Optimization {
             array(
                 'headers' => array(
                     'Content-Type' => 'application/json',
-                    'x-api-key' => $api_key
+                    'AccessKey' => $api_key
                 ),
                 'body' => json_encode($api_data),
                 'timeout' => 60,
@@ -845,13 +845,14 @@ class Bunny_Optimization {
         // Check API connection and credits
         if ($diagnostics['api_key_set']) {
             $api_region = isset($settings['bmo_api_region']) ? $settings['bmo_api_region'] : 'us';
-            $api_base_url = ($api_region === 'eu') ? 'https://api-eu.bmo.nexwinds.com' : 'https://api-us.bmo.nexwinds.com';
+            $api_base_url = 'us' === $api_region ? 'https://api.bunny.net' : "https://api.{$api_region}.bunny.net";
             
             $response = wp_remote_get(
-                $api_base_url . '/v1/account/credits',
+                $api_base_url . '/account',
                 array(
                     'headers' => array(
-                        'x-api-key' => $api_key
+                        'AccessKey' => $api_key,
+                        'Accept' => 'application/json',
                     ),
                     'timeout' => 15
                 )
@@ -863,8 +864,8 @@ class Bunny_Optimization {
                 $response_body = wp_remote_retrieve_body($response);
                 $response_data = json_decode($response_body, true);
                 
-                if (isset($response_data['credits'])) {
-                    $diagnostics['credits_available'] = intval($response_data['credits']);
+                if (isset($response_data['BillingInfo']['Balance'])) {
+                    $diagnostics['credits_available'] = number_format($response_data['BillingInfo']['Balance']);
                 }
             }
         }
@@ -954,5 +955,84 @@ class Bunny_Optimization {
         }
         
         return null;
+    }
+    
+    /**
+     * Test the BMO API connection
+     */
+    public function test_connection() {
+        // Get API credentials
+        $settings = $this->settings->get_all();
+        $api_key = isset($settings['bmo_api_key']) ? $settings['bmo_api_key'] : '';
+        $region = isset($settings['bmo_api_region']) ? $settings['bmo_api_region'] : 'us';
+        
+        // Check for API key
+        if (empty($api_key)) {
+            return new WP_Error('missing_api_key', __('BMO API key is not configured.', 'bunny-media-offload'));
+        }
+        
+        // Check if HTTPS is enabled
+        if (!is_ssl()) {
+            return new WP_Error('not_https', __('HTTPS is required for the BMO API.', 'bunny-media-offload'));
+        }
+        
+        // Set up the request URL - using account API endpoint
+        $api_base_url = 'us' === $region ? 'https://api.bunny.net' : "https://api.{$region}.bunny.net";
+        $url = "{$api_base_url}/account";
+        
+        // Set up the request arguments
+        $args = array(
+            'headers' => array(
+                'AccessKey' => $api_key,
+                'Accept' => 'application/json',
+            ),
+            'timeout' => 15,
+        );
+        
+        // Make the request
+        $response = wp_remote_get($url, $args);
+        
+        // Check for errors
+        if (is_wp_error($response)) {
+            return $response;
+        }
+        
+        // Check the response code
+        $response_code = wp_remote_retrieve_response_code($response);
+        if ($response_code !== 200) {
+            $error_message = wp_remote_retrieve_response_message($response);
+            if (empty($error_message)) {
+                $error_message = __('Unknown error', 'bunny-media-offload');
+            }
+            
+            return new WP_Error(
+                'api_error',
+                sprintf(
+                    // translators: %1$s is the error code, %2$s is the error message
+                    __('BMO API error: %1$s %2$s', 'bunny-media-offload'),
+                    $response_code,
+                    $error_message
+                )
+            );
+        }
+        
+        // Parse the response
+        $body = wp_remote_retrieve_body($response);
+        $data = json_decode($body, true);
+        
+        if (empty($data)) {
+            return new WP_Error('invalid_response', __('Invalid response from BMO API.', 'bunny-media-offload'));
+        }
+        
+        // Return success with credits information if available
+        $result = array(
+            'success' => true,
+        );
+        
+        if (isset($data['BillingInfo']['Balance'])) {
+            $result['credits'] = number_format($data['BillingInfo']['Balance']);
+        }
+        
+        return $result;
     }
 } 

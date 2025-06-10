@@ -477,6 +477,8 @@
         refreshStatsChart: function(stats) {
             if (!stats) return;
             
+            var self = this; // Store reference to this for use in callbacks
+            
             // Update chart segments if they exist
             var $chart = $('.bunny-circular-chart');
             if ($chart.length) {

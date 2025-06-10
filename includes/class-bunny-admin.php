@@ -27,7 +27,7 @@ class Bunny_Admin {
     }
     
     /**
-     * Initialize WordPress hooks
+     * Initialize hooks
      */
     private function init_hooks() {
         // Add menu items and settings
@@ -36,6 +36,7 @@ class Bunny_Admin {
         
         // Handle AJAX requests
         add_action('wp_ajax_bunny_test_connection', array($this, 'ajax_test_connection'));
+        add_action('wp_ajax_bunny_test_bmo_connection', array($this, 'ajax_test_bmo_connection'));
         add_action('wp_ajax_bunny_save_settings', array($this, 'ajax_save_settings'));
         add_action('wp_ajax_bunny_get_stats', array($this, 'ajax_get_stats'));
         add_action('wp_ajax_bunny_export_logs', array($this, 'ajax_export_logs'));
@@ -1233,6 +1234,39 @@ class Bunny_Admin {
             wp_send_json_error(array('message' => $result->get_error_message()));
         } else {
             wp_send_json_success(array('message' => esc_html__('Connection successful!', 'bunny-media-offload')));
+        }
+    }
+    
+    /**
+     * AJAX: Test BMO connection
+     */
+    public function ajax_test_bmo_connection() {
+        check_ajax_referer('bunny_ajax_nonce', 'nonce');
+        
+        if (!current_user_can('manage_options')) {
+            wp_die(esc_html__('Insufficient permissions.', 'bunny-media-offload'));
+        }
+        
+        if (!$this->optimizer) {
+            wp_send_json_error(esc_html__('Optimizer module not available.', 'bunny-media-offload'));
+            return;
+        }
+        
+        $result = $this->optimizer->test_connection();
+        
+        if (is_wp_error($result)) {
+            wp_send_json_error($result->get_error_message());
+        } else {
+            $response = array(
+                'message' => esc_html__('BMO API connection successful!', 'bunny-media-offload')
+            );
+            
+            // Add credits information if available
+            if (isset($result['credits'])) {
+                $response['credits'] = $result['credits'];
+            }
+            
+            wp_send_json_success($response);
         }
     }
     
