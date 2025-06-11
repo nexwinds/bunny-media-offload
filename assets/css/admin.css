@@ -76,6 +76,36 @@
     font-size: 16px;
 }
 
+/* Two-column layout for Image Overview */
+.bunny-stats-container.bunny-two-column-layout {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 30px;
+}
+
+.bunny-stats-column.bunny-stats-graph {
+    flex: 1;
+    display: flex;
+    justify-content: center;
+}
+
+.bunny-stats-column.bunny-stats-numbers {
+    flex: 1;
+}
+
+@media (max-width: 768px) {
+    .bunny-stats-container.bunny-two-column-layout {
+        flex-direction: column;
+        gap: 20px;
+    }
+    
+    .bunny-stats-column.bunny-stats-graph,
+    .bunny-stats-column.bunny-stats-numbers {
+        width: 100%;
+    }
+}
+
 .bunny-quick-actions {
     display: flex;
     gap: 10px;

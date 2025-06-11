@@ -189,24 +189,42 @@
             var $form = $(this);
             var formData = $form.serialize();
             
+            // Check if the nonce is missing and add it if necessary
+            if (formData.indexOf('bunny_ajax_nonce') === -1 && typeof bunnyAjax !== 'undefined' && bunnyAjax.nonce) {
+                formData += '&bunny_ajax_nonce=' + bunnyAjax.nonce;
+            }
+            
+            // Show loading message
+            var $submitBtn = $form.find('input[type="submit"]');
+            var originalBtnText = $submitBtn.val();
+            $submitBtn.val('Saving...').prop('disabled', true);
+            
             $.ajax({
                 url: bunnyAjax.ajaxurl,
                 type: 'POST',
-                data: formData + '&action=bunny_save_settings',
+                data: formData + '&action=bunny_save_settings&nonce=' + bunnyAjax.nonce,
                 success: function(response) {
                     if (response.success) {
                         BunnyAdmin.showNotice(response.data.message, 'success');
                     } else {
-                        if (response.data.errors) {
+                        if (response.data && response.data.errors) {
                             var errors = Object.values(response.data.errors).join('<br>');
                             BunnyAdmin.showNotice(errors, 'error');
                         } else {
-                            BunnyAdmin.showNotice(response.data.message, 'error');
+                            BunnyAdmin.showNotice(response.data ? response.data.message : 'Unknown error', 'error');
                         }
                     }
                 },
-                error: function() {
-                    BunnyAdmin.showNotice('Failed to save settings.', 'error');
+                error: function(xhr, status, error) {
+                    console.error('AJAX Error:', status, error);
+                    if (xhr.status === 403) {
+                        BunnyAdmin.showNotice('Permission denied. Please refresh the page and try again.', 'error');
+                    } else {
+                        BunnyAdmin.showNotice('Failed to save settings. Error: ' + xhr.status, 'error');
+                    }
+                },
+                complete: function() {
+                    $submitBtn.val(originalBtnText).prop('disabled', false);
                 }
             });
         },

@@ -288,8 +288,8 @@ class Bunny_Admin {
             </div>
 
             <div class="bunny-settings-content">
-            <form method="post" action="options.php">
-                <?php settings_fields('bunny_json_settings'); ?>
+            <form id="bunny-settings-form" class="bunny-settings-form">
+                <?php wp_nonce_field('bunny_ajax_nonce', 'bunny_ajax_nonce'); ?>
                     
                     <?php
                     switch ($active_tab) {
@@ -313,7 +313,7 @@ class Bunny_Admin {
                     ?>
                     
                     <div class="bunny-settings-actions">
-                        <?php submit_button(__('Save Settings', 'bunny-media-offload'), 'primary', 'submit', false); ?>
+                        <input type="submit" class="button button-primary" value="<?php esc_attr_e('Save Settings', 'bunny-media-offload'); ?>">
                         <?php if ($active_tab === 'connection'): ?>
                             <button type="button" class="button" id="test-connection"><?php esc_html_e('Test Connection', 'bunny-media-offload'); ?></button>
                         <?php endif; ?>
@@ -1213,14 +1213,78 @@ class Bunny_Admin {
      * AJAX: Save settings
      */
     public function ajax_save_settings() {
-        check_ajax_referer('bunny_ajax_nonce', 'nonce');
-        
-        if (!current_user_can('manage_options')) {
-            wp_die(esc_html__('Insufficient permissions.', 'bunny-media-offload'));
+        // Check for nonce in different possible parameters
+        $nonce = '';
+        if (isset($_POST['nonce'])) {
+            $nonce = sanitize_text_field(wp_unslash($_POST['nonce']));
+        } elseif (isset($_POST['bunny_ajax_nonce'])) {
+            $nonce = sanitize_text_field(wp_unslash($_POST['bunny_ajax_nonce']));
         }
         
-        // Handle settings save
-        wp_send_json_success(array('message' => esc_html__('Settings saved successfully.', 'bunny-media-offload')));
+        // Verify nonce
+        if (!wp_verify_nonce($nonce, 'bunny_ajax_nonce')) {
+            wp_send_json_error(array('message' => __('Security check failed. Please refresh the page and try again.', 'bunny-media-offload')));
+            return;
+        }
+        
+        // Check user permissions
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(array('message' => __('Insufficient permissions.', 'bunny-media-offload')));
+            return;
+        }
+        
+        // Get settings from POST data
+        if (isset($_POST['bunny_json_settings']) && is_array($_POST['bunny_json_settings'])) {
+            $input = wp_unslash($_POST['bunny_json_settings']);
+            
+            // Process checkbox fields (they don't submit if unchecked)
+            $checkbox_fields = array('auto_optimize', 'delete_local', 'file_versioning', 'enable_logs');
+            foreach ($checkbox_fields as $field) {
+                if (!isset($input[$field])) {
+                    $input[$field] = false;
+                } else {
+                    $input[$field] = true;
+                }
+            }
+            
+            // Process numeric fields
+            $numeric_fields = array('max_file_size', 'batch_size', 'migration_concurrent_limit');
+            foreach ($numeric_fields as $field) {
+                if (isset($input[$field])) {
+                    $input[$field] = intval($input[$field]);
+                }
+            }
+            
+            // Make sure max_file_size has a valid value
+            if (!isset($input['max_file_size']) || empty($input['max_file_size'])) {
+                $input['max_file_size'] = 10240; // Default to 10MB in KB
+            }
+            
+            // Explicitly check for auto_optimize - very important!
+            if (!isset($input['auto_optimize'])) {
+                $input['auto_optimize'] = false;
+            }
+            
+            // Save settings
+            $result = $this->settings->update($input);
+            
+            // Log for debugging
+            if ($this->logger) {
+                $this->logger->log('debug', 'Settings saved: ' . json_encode(array(
+                    'auto_optimize' => $input['auto_optimize'] ?? false,
+                    'max_file_size' => $input['max_file_size'] ?? 0,
+                    'result' => $result
+                )));
+            }
+            
+            if ($result) {
+                wp_send_json_success(array('message' => __('Settings saved successfully.', 'bunny-media-offload')));
+            } else {
+                wp_send_json_error(array('message' => __('Failed to save settings. Please try again.', 'bunny-media-offload')));
+            }
+        } else {
+            wp_send_json_error(array('message' => __('No settings data received.', 'bunny-media-offload')));
+        }
     }
     
     /**
@@ -1746,71 +1810,75 @@ class Bunny_Admin {
         <div class="bunny-card">
             <h2><?php echo esc_html($widget_title); ?></h2>
             
-            <div class="bunny-stats-container">
-                <div class="bunny-donut-chart-container">
-                    <svg width="150" height="150" viewBox="0 0 150 150" class="bunny-stats-donut">
-                        <!-- Background circle -->
-                        <circle cx="75" cy="75" r="65" fill="#1e1e1e" stroke="#333" stroke-width="1" />
-                        
-                        <!-- Segments -->
-                        <?php 
-                        // Calculate angles
-                        $total_angle = 360;
-                        $local_angle = ($stats['not_optimized_percent'] / 100) * $total_angle;
-                        $optimized_angle = ($stats['optimized_percent'] / 100) * $total_angle;
-                        $cdn_angle = ($stats['cloud_percent'] / 100) * $total_angle;
-                        
-                        // Calculate paths
-                        if ($local_angle > 0) {
-                            $this->render_donut_segment(75, 75, 60, 0, $local_angle, '#ef4444', 'bunny-segment-not-optimized');
-                        }
-                        
-                        if ($optimized_angle > 0) {
-                            $this->render_donut_segment(75, 75, 60, $local_angle, $optimized_angle, '#f59e0b', 'bunny-segment-ready-for-migration');
-                        }
-                        
-                        if ($cdn_angle > 0) {
-                            $this->render_donut_segment(75, 75, 60, $local_angle + $optimized_angle, $cdn_angle, '#10b981', 'bunny-segment-on-cdn');
-                        }
-                        ?>
-                        
-                        <!-- Center -->
-                        <circle cx="75" cy="75" r="40" fill="#1e1e1e" />
-                        <text x="75" y="75" text-anchor="middle" dominant-baseline="middle" fill="#fff" font-size="14" class="bunny-total-images">
-                            <?php echo esc_html(number_format($stats['total_images'])); ?>
-                        </text>
-                        <text x="75" y="90" text-anchor="middle" dominant-baseline="middle" fill="#999" font-size="10">
-                            <?php esc_html_e('TOTAL IMAGES', 'bunny-media-offload'); ?>
-                        </text>
-                    </svg>
+            <div class="bunny-stats-container bunny-two-column-layout">
+                <div class="bunny-stats-column bunny-stats-graph">
+                    <div class="bunny-donut-chart-container">
+                        <svg width="150" height="150" viewBox="0 0 150 150" class="bunny-stats-donut">
+                            <!-- Background circle -->
+                            <circle cx="75" cy="75" r="65" fill="#1e1e1e" stroke="#333" stroke-width="1" />
+                            
+                            <!-- Segments -->
+                            <?php 
+                            // Calculate angles
+                            $total_angle = 360;
+                            $local_angle = ($stats['not_optimized_percent'] / 100) * $total_angle;
+                            $optimized_angle = ($stats['optimized_percent'] / 100) * $total_angle;
+                            $cdn_angle = ($stats['cloud_percent'] / 100) * $total_angle;
+                            
+                            // Calculate paths
+                            if ($local_angle > 0) {
+                                $this->render_donut_segment(75, 75, 60, 0, $local_angle, '#ef4444', 'bunny-segment-not-optimized');
+                            }
+                            
+                            if ($optimized_angle > 0) {
+                                $this->render_donut_segment(75, 75, 60, $local_angle, $optimized_angle, '#f59e0b', 'bunny-segment-ready-for-migration');
+                            }
+                            
+                            if ($cdn_angle > 0) {
+                                $this->render_donut_segment(75, 75, 60, $local_angle + $optimized_angle, $cdn_angle, '#10b981', 'bunny-segment-on-cdn');
+                            }
+                            ?>
+                            
+                            <!-- Center -->
+                            <circle cx="75" cy="75" r="40" fill="#1e1e1e" />
+                            <text x="75" y="75" text-anchor="middle" dominant-baseline="middle" fill="#fff" font-size="14" class="bunny-total-images">
+                                <?php echo esc_html(number_format($stats['total_images'])); ?>
+                            </text>
+                            <text x="75" y="90" text-anchor="middle" dominant-baseline="middle" fill="#999" font-size="10">
+                                <?php esc_html_e('TOTAL IMAGES', 'bunny-media-offload'); ?>
+                            </text>
+                        </svg>
+                    </div>
                 </div>
                 
-                <div class="bunny-stats-details">
-                    <div class="bunny-stat-item bunny-stat-not-optimized">
-                        <span class="bunny-stat-indicator" style="background-color: #ef4444;"></span>
-                        <span class="bunny-stat-label"><?php esc_html_e('Not Optimized', 'bunny-media-offload'); ?></span>
-                        <span class="bunny-stat-value">
-                            <span class="bunny-not-optimized-count"><?php echo esc_html(number_format($stats['local_eligible'])); ?></span>
-                            (<span class="bunny-not-optimized-percent"><?php echo esc_html($stats['not_optimized_percent']); ?></span>%)
-                        </span>
-                    </div>
-                    
-                    <div class="bunny-stat-item bunny-stat-ready">
-                        <span class="bunny-stat-indicator" style="background-color: #f59e0b;"></span>
-                        <span class="bunny-stat-label"><?php esc_html_e('Ready for Migration', 'bunny-media-offload'); ?></span>
-                        <span class="bunny-stat-value">
-                            <span class="bunny-ready-for-migration-count"><?php echo esc_html(number_format($stats['already_optimized'])); ?></span>
-                            (<span class="bunny-ready-for-migration-percent"><?php echo esc_html($stats['optimized_percent']); ?></span>%)
-                        </span>
-                    </div>
-                    
-                    <div class="bunny-stat-item bunny-stat-cdn">
-                        <span class="bunny-stat-indicator" style="background-color: #10b981;"></span>
-                        <span class="bunny-stat-label"><?php esc_html_e('On CDN', 'bunny-media-offload'); ?></span>
-                        <span class="bunny-stat-value">
-                            <span class="bunny-on-cdn-count"><?php echo esc_html(number_format($stats['images_migrated'])); ?></span>
-                            (<span class="bunny-on-cdn-percent"><?php echo esc_html($stats['cloud_percent']); ?></span>%)
-                        </span>
+                <div class="bunny-stats-column bunny-stats-numbers">
+                    <div class="bunny-stats-details">
+                        <div class="bunny-stat-item bunny-stat-not-optimized">
+                            <span class="bunny-stat-indicator" style="background-color: #ef4444;"></span>
+                            <span class="bunny-stat-label"><?php esc_html_e('Not Optimized', 'bunny-media-offload'); ?></span>
+                            <span class="bunny-stat-value">
+                                <span class="bunny-not-optimized-count"><?php echo esc_html(number_format($stats['local_eligible'])); ?></span>
+                                (<span class="bunny-not-optimized-percent"><?php echo esc_html($stats['not_optimized_percent']); ?></span>%)
+                            </span>
+                        </div>
+                        
+                        <div class="bunny-stat-item bunny-stat-ready">
+                            <span class="bunny-stat-indicator" style="background-color: #f59e0b;"></span>
+                            <span class="bunny-stat-label"><?php esc_html_e('Ready for Migration', 'bunny-media-offload'); ?></span>
+                            <span class="bunny-stat-value">
+                                <span class="bunny-ready-for-migration-count"><?php echo esc_html(number_format($stats['already_optimized'])); ?></span>
+                                (<span class="bunny-ready-for-migration-percent"><?php echo esc_html($stats['optimized_percent']); ?></span>%)
+                            </span>
+                        </div>
+                        
+                        <div class="bunny-stat-item bunny-stat-cdn">
+                            <span class="bunny-stat-indicator" style="background-color: #10b981;"></span>
+                            <span class="bunny-stat-label"><?php esc_html_e('On CDN', 'bunny-media-offload'); ?></span>
+                            <span class="bunny-stat-value">
+                                <span class="bunny-on-cdn-count"><?php echo esc_html(number_format($stats['images_migrated'])); ?></span>
+                                (<span class="bunny-on-cdn-percent"><?php echo esc_html($stats['cloud_percent']); ?></span>%)
+                            </span>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1884,6 +1952,7 @@ class Bunny_Admin {
             <?php wp_nonce_field('bunny_ajax_nonce', 'bunny_ajax_nonce'); ?>
             
             <?php $this->render_general_settings($settings); ?>
+            <?php $this->render_performance_settings($settings); ?>
             <?php $this->render_storage_settings($settings); ?>
             <?php $this->render_advanced_settings($settings); ?>
             <?php $this->render_debug_settings($settings); ?>
@@ -1987,7 +2056,7 @@ class Bunny_Admin {
         $bmo_api_key = isset($settings['bmo_api_key']) ? $settings['bmo_api_key'] : '';
         $bmo_api_region = isset($settings['bmo_api_region']) ? $settings['bmo_api_region'] : 'us';
         $auto_optimize = isset($settings['auto_optimize']) ? (bool) $settings['auto_optimize'] : false;
-        $max_file_size = isset($settings['max_file_size']) ? (int) $settings['max_file_size'] : 10;
+        $max_file_size = isset($settings['max_file_size']) ? (int) $settings['max_file_size'] : 50;
         
         $key_from_constant = $this->settings->get_config_source('bmo_api_key') === 'constant';
         $region_from_constant = $this->settings->get_config_source('bmo_api_region') === 'constant';
@@ -2009,32 +2078,19 @@ class Bunny_Admin {
                         <label for="bmo_api_key"><?php esc_html_e('BMO API Key', 'bunny-media-offload'); ?></label>
                     </th>
                     <td>
-                        <?php if ($key_from_constant): ?>
                         <input type="text" 
                             id="bmo_api_key"
                             value="<?php echo esc_attr($this->mask_key($bmo_api_key)); ?>"
                             class="regular-text bunny-readonly-field"
                             readonly
                         />
-                        <span class="bunny-config-source"><?php esc_html_e('Configured in wp-config.php', 'bunny-media-offload'); ?></span>
-                        <?php else: ?>
-                        <input type="password" 
-                            id="bmo_api_key"
-                            name="bunny_json_settings[bmo_api_key]"
-                            class="regular-text"
-                            value="<?php echo esc_attr($bmo_api_key); ?>"
-                            autocomplete="new-password"
-                        />
-                        <?php endif; ?>
                         <p class="description">
                             <?php esc_html_e('Enter your Bunny Media Optimizer API key. Available in your BMO dashboard.', 'bunny-media-offload'); ?>
                         </p>
-                        <?php if (!$key_from_constant): ?>
                         <button type="button" id="test-bmo-connection" class="button bunny-test-button">
                             <?php esc_html_e('Test BMO Connection', 'bunny-media-offload'); ?>
                         </button>
                         <span id="bmo-connection-result"></span>
-                        <?php endif; ?>
                     </td>
                 </tr>
                 
@@ -2043,20 +2099,12 @@ class Bunny_Admin {
                         <label for="bmo_api_region"><?php esc_html_e('API Region', 'bunny-media-offload'); ?></label>
                     </th>
                     <td>
-                        <?php if ($region_from_constant): ?>
                         <input type="text" 
                             id="bmo_api_region"
                             value="<?php echo esc_attr($bmo_api_region === 'us' ? 'United States (US)' : 'Europe (EU)'); ?>"
                             class="regular-text bunny-readonly-field"
                             readonly
                         />
-                        <span class="bunny-config-source"><?php esc_html_e('Configured in wp-config.php', 'bunny-media-offload'); ?></span>
-                        <?php else: ?>
-                        <select id="bmo_api_region" name="bunny_json_settings[bmo_api_region]">
-                            <option value="us" <?php selected($bmo_api_region, 'us'); ?>><?php esc_html_e('United States (US)', 'bunny-media-offload'); ?></option>
-                            <option value="eu" <?php selected($bmo_api_region, 'eu'); ?>><?php esc_html_e('Europe (EU)', 'bunny-media-offload'); ?></option>
-                        </select>
-                        <?php endif; ?>
                         <p class="description">
                             <?php esc_html_e('Select the region that matches your Bunny Media Optimizer account.', 'bunny-media-offload'); ?>
                         </p>
@@ -2088,43 +2136,73 @@ class Bunny_Admin {
                         <label for="max_file_size"><?php esc_html_e('Maximum File Size (KB)', 'bunny-media-offload'); ?></label>
                     </th>
                     <td>
-                        <input type="number" 
-                            id="max_file_size"
-                            name="bunny_json_settings[max_file_size]"
-                            class="small-text"
-                            value="<?php echo esc_attr($max_file_size); ?>"
-                            min="35"
-                            max="9216"
-                            step="1"
-                        />
-                        <p class="description">
-                            <?php esc_html_e('Maximum file size for images to be optimized or migrated directly (range: 35KB - 9MB)', 'bunny-media-offload'); ?>
-                        </p>
-                        
-                        <div class="bunny-converter" style="margin-top: 10px;">
-                            <label>
-                                <span><?php esc_html_e('MB to KB Converter:', 'bunny-media-offload'); ?></span>
-                                <input type="number" id="mb_converter" min="0.04" max="9" step="0.01" style="width: 70px;" placeholder="MB">
-                            </label>
-                            <span id="kb_result" style="margin-left: 10px;"></span>
-                            <script>
-                                jQuery(document).ready(function($) {
-                                    $('#mb_converter').on('input', function() {
-                                        var mbValue = parseFloat($(this).val());
-                                        if (!isNaN(mbValue)) {
-                                            var kbValue = Math.round(mbValue * 1024);
-                                            $('#kb_result').text('= ' + kbValue + ' KB');
-                                            
-                                            if (kbValue >= 35 && kbValue <= 9216) {
-                                                $('#max_file_size').val(kbValue);
-                                            }
-                                        } else {
-                                            $('#kb_result').text('');
-                                        }
-                                    });
-                                });
-                            </script>
+                        <div class="bunny-slider-container" style="padding: 10px 0;">
+                            <input type="range" id="max_file_size_slider" min="0" max="9" step="1" value="<?php echo $this->get_size_slider_value($max_file_size); ?>" style="width: 100%; max-width: 400px;" />
+                            <div class="bunny-slider-ticks" style="display: flex; justify-content: space-between; width: 100%; max-width: 400px; margin-top: 5px; font-size: 11px; color: #666;">
+                                <span>40KB</span>
+                                <span>50KB</span>
+                                <span>70KB</span>
+                                <span>100KB</span>
+                                <span>150KB</span>
+                                <span>200KB</span>
+                                <span>500KB</span>
+                                <span>1MB</span>
+                                <span>2MB</span>
+                                <span>4MB</span>
+                            </div>
                         </div>
+                        <div style="margin-top: 5px;">
+                            <strong><?php esc_html_e('Selected:', 'bunny-media-offload'); ?></strong> 
+                            <span id="max_file_size_display"></span>
+                            <input type="hidden" name="bunny_json_settings[max_file_size]" id="max_file_size" value="<?php echo esc_attr($max_file_size); ?>" />
+                        </div>
+                        <script>
+                            jQuery(document).ready(function($) {
+                                // Define size values corresponding to slider positions
+                                var sizeValues = [40, 50, 70, 100, 150, 200, 500, 1024, 2048, 4096];
+                                
+                                // Set initial display
+                                updateSizeDisplay($("#max_file_size").val());
+                                
+                                // Update hidden input and display when slider changes
+                                $("#max_file_size_slider").on("input change", function() {
+                                    var sliderPos = parseInt($(this).val());
+                                    var sizeValue = sizeValues[sliderPos];
+                                    $("#max_file_size").val(sizeValue);
+                                    updateSizeDisplay(sizeValue);
+                                });
+                                
+                                // Format and display the selected size
+                                function updateSizeDisplay(size) {
+                                    var displayText = '';
+                                    if (size >= 1024) {
+                                        displayText = (size / 1024).toFixed(1) + ' MB';
+                                    } else {
+                                        displayText = size + ' KB';
+                                    }
+                                    $("#max_file_size_display").text(displayText);
+                                    
+                                    // Set slider to correct position
+                                    var position = sizeValues.indexOf(parseInt(size));
+                                    if (position === -1) {
+                                        // Find closest value if exact match not found
+                                        position = 0;
+                                        var minDiff = Math.abs(sizeValues[0] - size);
+                                        for (var i = 1; i < sizeValues.length; i++) {
+                                            var diff = Math.abs(sizeValues[i] - size);
+                                            if (diff < minDiff) {
+                                                minDiff = diff;
+                                                position = i;
+                                            }
+                                        }
+                                    }
+                                    $("#max_file_size_slider").val(position);
+                                }
+                            });
+                        </script>
+                        <p class="description">
+                            <?php esc_html_e('Maximum file size for images to be optimized or migrated directly (range: 40KB - 5MB)', 'bunny-media-offload'); ?>
+                        </p>
                     </td>
                 </tr>
             </tbody>
@@ -2212,5 +2290,48 @@ class Bunny_Admin {
             esc_attr($color),
             esc_attr($class)
         );
+    }
+    
+    /**
+     * Mask sensitive keys for display
+     * 
+     * @param string $key The API key to mask
+     * @return string The masked API key
+     */
+    private function mask_key($key) {
+        if (empty($key)) {
+            return '';
+        }
+        
+        $length = strlen($key);
+        $visible_chars = min(4, $length);
+        $masked_length = $length - $visible_chars;
+        
+        return str_repeat('•', $masked_length) . substr($key, -$visible_chars);
+    }
+    
+    /**
+     * Convert file size to slider position value
+     * 
+     * @param int $size File size in KB
+     * @return int Slider position (0-9)
+     */
+    private function get_size_slider_value($size) {
+        // Define size values corresponding to slider positions
+        $size_values = array(40, 50, 70, 100, 150, 200, 500, 1024, 2048, 4096);
+        
+        // Find closest position
+        $position = 0;
+        $min_diff = abs($size_values[0] - $size);
+        
+        for ($i = 1; $i < count($size_values); $i++) {
+            $diff = abs($size_values[$i] - $size);
+            if ($diff < $min_diff) {
+                $min_diff = $diff;
+                $position = $i;
+            }
+        }
+        
+        return $position;
     }
 } 
