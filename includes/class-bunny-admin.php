@@ -930,12 +930,15 @@ class Bunny_Admin {
             return;
         }
         
-        // Clear stats cache to ensure fresh data
+        // Force clear all caches to ensure fresh data
         $this->stats->clear_cache();
         
         // Get unified statistics for consistency across all pages
         $stats = $this->stats->get_unified_image_stats();
         $optimization_stats = $optimizer->get_optimization_stats(); // For optimization-specific data
+        
+        // Log stats for debugging
+        error_log('OPTIMIZATION PAGE - Not Optimized: ' . $stats['local_eligible'] . ', Eligible: ' . $optimization_stats['eligible_for_optimization']);
         
         $settings = $this->settings->get_all();
         
@@ -1000,10 +1003,9 @@ class Bunny_Admin {
                             <li>
                                 <?php 
                                 printf(
-                                    // translators: %d is the minimum size in KB
-                                    esc_html__('Larger than %d KB but less than %d MB.', 'bunny-media-offload'),
-                                    35,
-                                    esc_html($max_file_size_kb/1024)
+                                    // translators: %d is the minimum size in KB, %d is the maximum size in MB
+                                    esc_html__('Larger than %d KB but less than 9 MB.', 'bunny-media-offload'),
+                                    35
                                 ); 
                                 ?>
                             </li>

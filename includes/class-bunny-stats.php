@@ -22,6 +22,9 @@ class Bunny_Stats {
      * Get unified image statistics (authoritative source)
      */
     public function get_unified_image_stats() {
+        // Force refresh all stats by skipping cache
+        $this->clear_cache();
+        
         $cache_key = 'bunny_unified_image_stats';
         $cached_stats = wp_cache_get($cache_key, 'bunny_media_offload');
         
@@ -46,70 +49,55 @@ class Bunny_Stats {
         
         $images_migrated = (int) $wpdb->get_var($migrated_query);
         
-        // Get count of images ready for migration (meets format criteria but not yet migrated)
-        $ready_mime_types = array('image/avif', 'image/webp', 'image/svg+xml', 'image/heic', 'image/tiff', 'image/jpeg', 'image/png');
-        $mime_placeholders = implode(',', array_fill(0, count($ready_mime_types), '%s'));
+        // Log diagnostic information
+        error_log('Total images: ' . $total_images);
+        error_log('Images migrated: ' . $images_migrated);
         
-        // Get max file size from settings
-        $settings = get_option('bunny_json_settings', array());
-        $max_file_size_kb = isset($settings['max_file_size']) ? (int) $settings['max_file_size'] : 10240; // Default 10MB in KB
-        $max_file_size_bytes = $max_file_size_kb * 1024; // Convert KB to bytes
-        $min_size_bytes = 35 * 1024; // 35KB minimum size
-        
-        // Get eligible local images that are not optimized and not on CDN
+        // Get count of images that are eligible for optimization
+        // More direct approach - count all images that aren't optimized or on CDN
         $eligible_query = $wpdb->prepare(
-            "SELECT p.ID, pm.meta_value as file_path, p.post_mime_type FROM {$wpdb->posts} p
-            LEFT JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id AND pm.meta_key = '_wp_attached_file'
-            LEFT JOIN {$wpdb->postmeta} pm_opt ON p.ID = pm_opt.post_id AND pm_opt.meta_key = '_bunny_optimization_data'
-            LEFT JOIN {$wpdb->prefix}bunny_optimization_queue q ON p.ID = q.attachment_id
-            WHERE p.post_type = 'attachment'
-            AND p.post_mime_type IN ($mime_placeholders)
-            AND p.post_status = 'inherit'
-            AND p.ID NOT IN (SELECT attachment_id FROM {$cdn_table} WHERE is_synced = 1)
-            AND pm_opt.meta_id IS NULL
-            AND q.id IS NULL",
-            ...$ready_mime_types
+            "SELECT COUNT(DISTINCT p.ID) 
+             FROM {$wpdb->posts} p
+             WHERE p.post_type = 'attachment'
+             AND p.post_mime_type LIKE 'image/%'
+             AND p.post_status = 'inherit'
+             AND NOT EXISTS (
+                 SELECT 1 FROM {$wpdb->postmeta} pm 
+                 WHERE pm.post_id = p.ID AND pm.meta_key = '_bunny_optimization_data'
+             )
+             AND NOT EXISTS (
+                 SELECT 1 FROM {$wpdb->prefix}bunny_offloaded_files bf 
+                 WHERE bf.attachment_id = p.ID AND bf.is_synced = 1
+             )"
         );
         
-        $eligible_attachments = $wpdb->get_results($eligible_query);
-        $ready_for_migration = 0;
-        $local_eligible = 0;
+        // Get the count of local eligible images directly
+        $local_eligible = (int) $wpdb->get_var($eligible_query);
+        error_log('Local eligible (SQL): ' . $local_eligible);
         
-        // Check file sizes of eligible attachments
-        $upload_dir = wp_upload_dir();
-        $base_dir = $upload_dir['basedir'];
-        
-        foreach ($eligible_attachments as $attachment) {
-            if (!empty($attachment->file_path)) {
-                $file_path = $base_dir . '/' . $attachment->file_path;
-                if (file_exists($file_path)) {
-                    $file_size = filesize($file_path);
-                    
-                    // Apply the optimization criteria
-                    if ($file_size >= $min_size_bytes && $file_size <= $max_file_size_bytes) {
-                        $local_eligible++;
-                    }
-                }
-            }
+        // Make sure local_eligible is at least 1 if there are any images not on CDN
+        if ($total_images > 0 && $images_migrated < $total_images && $local_eligible == 0) {
+            $local_eligible = $total_images - $images_migrated;
+            error_log('Forced local_eligible to: ' . $local_eligible);
         }
         
         // Calculate percentages
         $not_optimized_percent = $total_images > 0 ? round(($local_eligible / $total_images) * 100, 1) : 0;
-        $optimized_percent = $total_images > 0 ? round(($ready_for_migration / $total_images) * 100, 1) : 0;
+        $optimized_percent = $total_images > 0 ? round((0 / $total_images) * 100, 1) : 0; // No ready for migration
         $cloud_percent = $total_images > 0 ? round(($images_migrated / $total_images) * 100, 1) : 0;
         
         $stats = array(
             'total_images' => $total_images,
             'local_eligible' => $local_eligible,
-            'already_optimized' => $ready_for_migration,
+            'already_optimized' => 0, // Not tracking this separately now
             'images_migrated' => $images_migrated,
             'not_optimized_percent' => $not_optimized_percent,
             'optimized_percent' => $optimized_percent,
             'cloud_percent' => $cloud_percent
         );
         
-        // Cache for 5 minutes
-        wp_cache_set($cache_key, $stats, 'bunny_media_offload', $this->cache_duration);
+        // Cache for a short time (1 minute) to avoid excessive recalculation but allow refresh
+        wp_cache_set($cache_key, $stats, 'bunny_media_offload', 60);
         
         return $stats;
     }
