@@ -930,6 +930,9 @@ class Bunny_Admin {
             return;
         }
         
+        // Clear stats cache to ensure fresh data
+        $this->stats->clear_cache();
+        
         // Get unified statistics for consistency across all pages
         $stats = $this->stats->get_unified_image_stats();
         $optimization_stats = $optimizer->get_optimization_stats(); // For optimization-specific data
@@ -993,18 +996,18 @@ class Bunny_Admin {
                         <h3><?php esc_html_e('Optimization Criteria', 'bunny-media-offload'); ?></h3>
                         <p><?php esc_html_e('The following images will be optimized:', 'bunny-media-offload'); ?></p>
                         <ul>
-                            <li><?php esc_html_e('JPEG/PNG: Always converted to AVIF format', 'bunny-media-offload'); ?></li>
+                            <li><?php esc_html_e('All local images.', 'bunny-media-offload'); ?></li>
                             <li>
                                 <?php 
                                 printf(
-                                    // translators: %d is the threshold in KB
-                                    esc_html__('WebP/AVIF: Only compressed if size exceeds %d KB', 'bunny-media-offload'),
-                                    esc_html($threshold_kb)
+                                    // translators: %d is the minimum size in KB
+                                    esc_html__('Larger than %d KB but less than %d MB.', 'bunny-media-offload'),
+                                    35,
+                                    esc_html($max_file_size_kb/1024)
                                 ); 
                                 ?>
                             </li>
-                            <li><?php esc_html_e('All files must be hosted locally (not on CDN)', 'bunny-media-offload'); ?></li>
-                            <li><?php esc_html_e('Files must exceed minimum size (35 KB)', 'bunny-media-offload'); ?></li>
+                            <li><?php esc_html_e('In AVIF, WEBP, SVG, JPEG, PNG, HEIC, TIFF formats.', 'bunny-media-offload'); ?></li>
                         </ul>
                     </div>
                     

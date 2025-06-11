@@ -92,19 +92,16 @@ class Bunny_Optimization {
         // Check if stats class is available through global
         global $bunny_stats;
         if ($bunny_stats) {
-            // Get eligible images count first
-            $eligible_count = $this->get_eligible_images_count();
-            
             // Use unified stats for consistency across all plugin pages
             $unified_stats = $bunny_stats->get_unified_image_stats();
             
             $stats = array(
                 'total_images' => $unified_stats['total_images'],
                 'optimized' => $unified_stats['already_optimized'] + $unified_stats['images_migrated'],
-                'not_optimized' => $eligible_count, // Use the same count as eligible_for_optimization
+                'not_optimized' => $unified_stats['local_eligible'], // Use local_eligible from unified stats
                 'in_progress' => $this->get_queue_count('pending') + $this->get_queue_count('processing'),
                 'optimization_percent' => $unified_stats['optimized_percent'] + $unified_stats['cloud_percent'],
-                'eligible_for_optimization' => $eligible_count,
+                'eligible_for_optimization' => $unified_stats['local_eligible'], // Use local_eligible from unified stats
             );
             
             // Get space saved and average reduction data from optimization metadata
@@ -160,16 +157,16 @@ class Bunny_Optimization {
         $in_progress_query = "SELECT COUNT(id) FROM {$wpdb->prefix}bunny_optimization_queue WHERE status IN ('pending', 'processing')";
         $stats['in_progress'] = (int) $wpdb->get_var($in_progress_query);
         
-        // Calculate not optimized
-        $stats['not_optimized'] = $stats['total_images'] - $stats['optimized'] - $stats['in_progress'];
+        // Get eligible images (files that should be optimized)
+        $stats['eligible_for_optimization'] = $this->get_eligible_images_count();
+        
+        // Set not_optimized to match eligible_for_optimization
+        $stats['not_optimized'] = $stats['eligible_for_optimization'];
         
         // Calculate optimization percentage
         if ($stats['total_images'] > 0) {
             $stats['optimization_percent'] = round(($stats['optimized'] / $stats['total_images']) * 100, 1);
         }
-        
-        // Get eligible images (files that should be optimized)
-        $stats['eligible_for_optimization'] = $this->get_eligible_images_count();
         
         // Get space saved and average reduction
         $meta_values = $wpdb->get_col("SELECT meta_value FROM $wpdb->postmeta WHERE meta_key = '_bunny_optimization_data'");
@@ -212,14 +209,14 @@ class Bunny_Optimization {
         $threshold_bytes = $threshold_kb * 1024; // Convert KB to bytes
         $min_size_bytes = 35 * 1024; // 35KB minimum size
         
-        // Get attachment IDs that are not optimized and not in queue
+        // Get attachment IDs that are not optimized, not in queue, and not on CDN
         $attachments_query = $wpdb->prepare(
             "SELECT p.ID, p.post_mime_type FROM $wpdb->posts p
             LEFT JOIN $wpdb->postmeta pm1 ON p.ID = pm1.post_id AND pm1.meta_key = '_bunny_optimization_data'
             LEFT JOIN {$wpdb->prefix}bunny_optimization_queue q ON p.ID = q.attachment_id
             LEFT JOIN {$wpdb->prefix}bunny_offloaded_files bf ON p.ID = bf.attachment_id
             WHERE p.post_type = 'attachment'
-            AND p.post_mime_type IN ('image/jpeg', 'image/png', 'image/webp', 'image/avif')
+            AND p.post_mime_type IN ('image/jpeg', 'image/png', 'image/webp', 'image/avif', 'image/svg+xml', 'image/heic', 'image/tiff')
             AND pm1.meta_id IS NULL
             AND q.id IS NULL
             AND bf.id IS NULL
@@ -241,26 +238,18 @@ class Bunny_Optimization {
             $mime_type = $attachment->post_mime_type;
             
             // Apply the optimization criteria:
-            // 1. JPEG/PNG: Process regardless of size (convert to AVIF)
-            // 2. WebP/AVIF: Only optimize if larger than threshold but smaller than max_file_size
-            // 3. All files must be at least 35KB in size
-            
+            // 1. All images must be at least 35KB in size
             if ($file_size < $min_size_bytes) {
                 continue; // Skip files smaller than minimum size
             }
             
+            // 2. All images must be less than the maximum file size (9MB)
             if ($file_size > $max_file_size_bytes) {
                 continue; // Skip files larger than maximum size
             }
             
-            // For JPEG/PNG, count as eligible for optimization
-            if ($mime_type === 'image/jpeg' || $mime_type === 'image/png') {
-                $eligible_count++;
-            }
-            // For WebP/AVIF, only count if size exceeds threshold
-            else if (($mime_type === 'image/webp' || $mime_type === 'image/avif') && $file_size > $threshold_bytes) {
-                $eligible_count++;
-            }
+            // 3. Count all local images in the supported formats that meet size criteria
+            $eligible_count++;
         }
         
         return $eligible_count;
@@ -276,7 +265,7 @@ class Bunny_Optimization {
         }
         
         // Check if it's a supported file type
-        $supported_types = array('image/jpeg', 'image/png', 'image/webp', 'image/avif');
+        $supported_types = array('image/jpeg', 'image/png', 'image/webp', 'image/avif', 'image/svg+xml', 'image/heic', 'image/tiff');
         if (!in_array($mime_type, $supported_types)) {
             return false;
         }
@@ -290,11 +279,7 @@ class Bunny_Optimization {
             return false;
         }
         
-        // For WebP and AVIF, only optimize if they exceed the threshold
-        if (($mime_type === 'image/webp' || $mime_type === 'image/avif') && $file_size <= $threshold_bytes) {
-            return false;
-        }
-        
+        // All files meeting the criteria above are eligible
         return true;
     }
     
@@ -312,14 +297,14 @@ class Bunny_Optimization {
         $threshold_bytes = $threshold_kb * 1024; // Convert KB to bytes
         $min_size_bytes = 35 * 1024; // 35KB minimum size
         
-        // Get attachment IDs that are not optimized and not in queue
+        // Get attachment IDs that are not optimized, not in queue, and not on CDN
         $attachments_query = $wpdb->prepare(
             "SELECT p.ID, p.post_mime_type FROM $wpdb->posts p
             LEFT JOIN $wpdb->postmeta pm1 ON p.ID = pm1.post_id AND pm1.meta_key = '_bunny_optimization_data'
             LEFT JOIN {$wpdb->prefix}bunny_optimization_queue q ON p.ID = q.attachment_id
             LEFT JOIN {$wpdb->prefix}bunny_offloaded_files bf ON p.ID = bf.attachment_id
             WHERE p.post_type = 'attachment'
-            AND p.post_mime_type IN ('image/jpeg', 'image/png', 'image/webp', 'image/avif')
+            AND p.post_mime_type IN ('image/jpeg', 'image/png', 'image/webp', 'image/avif', 'image/svg+xml', 'image/heic', 'image/tiff')
             AND pm1.meta_id IS NULL
             AND q.id IS NULL
             AND bf.id IS NULL
@@ -341,49 +326,35 @@ class Bunny_Optimization {
             $mime_type = $attachment->post_mime_type;
             
             // Apply the optimization criteria:
-            // 1. JPEG/PNG: Process regardless of size (convert to AVIF)
-            // 2. WebP/AVIF: Only optimize if larger than threshold but smaller than max_file_size
-            // 3. All files must be at least 35KB in size
-            
+            // 1. All images must be at least 35KB in size
             if ($file_size < $min_size_bytes) {
                 continue; // Skip files smaller than minimum size
             }
             
+            // 2. All images must be less than the maximum file size (9MB)
             if ($file_size > $max_file_size_bytes) {
                 continue; // Skip files larger than maximum size
             }
             
-            $is_eligible = false;
-            
-            // For JPEG/PNG, count as eligible for optimization
-            if ($mime_type === 'image/jpeg' || $mime_type === 'image/png') {
-                $is_eligible = true;
-            }
-            // For WebP/AVIF, only count if size exceeds threshold
-            else if (($mime_type === 'image/webp' || $mime_type === 'image/avif') && $file_size > $threshold_bytes) {
-                $is_eligible = true;
+            // 3. All local images in supported formats are eligible
+            // Get the file's data
+            $file_data = file_get_contents($file_path);
+            if (!$file_data) {
+                continue;
             }
             
-            if ($is_eligible) {
-                // Get the file's data
-                $file_data = file_get_contents($file_path);
-                if (!$file_data) {
-                    continue;
-                }
-                
-                $eligible_attachments[] = array(
-                    'id' => $attachment->ID,
-                    'attachment_id' => $attachment->ID, // Include for consistency
-                    'imageData' => base64_encode($file_data),
-                    'mimeType' => $mime_type,
-                    'file_path' => $file_path,
-                    'file_size' => $file_size
-                );
-                
-                // Limit the number of attachments we return
-                if (count($eligible_attachments) >= $limit) {
-                    break;
-                }
+            $eligible_attachments[] = array(
+                'id' => $attachment->ID,
+                'attachment_id' => $attachment->ID, // Include for consistency
+                'imageData' => base64_encode($file_data),
+                'mimeType' => $mime_type,
+                'file_path' => $file_path,
+                'file_size' => $file_size
+            );
+            
+            // Limit the number of attachments we return
+            if (count($eligible_attachments) >= $limit) {
+                break;
             }
         }
         

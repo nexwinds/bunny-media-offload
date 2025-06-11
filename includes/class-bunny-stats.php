@@ -47,39 +47,33 @@ class Bunny_Stats {
         $images_migrated = (int) $wpdb->get_var($migrated_query);
         
         // Get count of images ready for migration (meets format criteria but not yet migrated)
-        // These include AVIF, SVG, and WebP images that are below the size threshold
-        $ready_mime_types = array('image/avif', 'image/webp', 'image/svg+xml');
+        $ready_mime_types = array('image/avif', 'image/webp', 'image/svg+xml', 'image/heic', 'image/tiff', 'image/jpeg', 'image/png');
         $mime_placeholders = implode(',', array_fill(0, count($ready_mime_types), '%s'));
         
         // Get max file size from settings
         $settings = get_option('bunny_json_settings', array());
         $max_file_size_kb = isset($settings['max_file_size']) ? (int) $settings['max_file_size'] : 10240; // Default 10MB in KB
         $max_file_size_bytes = $max_file_size_kb * 1024; // Convert KB to bytes
+        $min_size_bytes = 35 * 1024; // 35KB minimum size
         
-        // Query to find eligible files (correct criteria implementation)
-        $ready_query = $wpdb->prepare(
-            "SELECT COUNT(DISTINCT p.ID) FROM {$wpdb->posts} p
+        // Get eligible local images that are not optimized and not on CDN
+        $eligible_query = $wpdb->prepare(
+            "SELECT p.ID, pm.meta_value as file_path, p.post_mime_type FROM {$wpdb->posts} p
             LEFT JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id AND pm.meta_key = '_wp_attached_file'
+            LEFT JOIN {$wpdb->postmeta} pm_opt ON p.ID = pm_opt.post_id AND pm_opt.meta_key = '_bunny_optimization_data'
+            LEFT JOIN {$wpdb->prefix}bunny_optimization_queue q ON p.ID = q.attachment_id
             WHERE p.post_type = 'attachment'
             AND p.post_mime_type IN ($mime_placeholders)
             AND p.post_status = 'inherit'
-            AND p.ID NOT IN (SELECT attachment_id FROM {$cdn_table} WHERE is_synced = 1)",
-            $ready_mime_types
+            AND p.ID NOT IN (SELECT attachment_id FROM {$cdn_table} WHERE is_synced = 1)
+            AND pm_opt.meta_id IS NULL
+            AND q.id IS NULL",
+            ...$ready_mime_types
         );
         
-        // Get all eligible attachment IDs for file size checking
-        $eligible_ids_query = $wpdb->prepare(
-            "SELECT p.ID, pm.meta_value as file_path FROM {$wpdb->posts} p
-            LEFT JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id AND pm.meta_key = '_wp_attached_file'
-            WHERE p.post_type = 'attachment'
-            AND p.post_mime_type IN ($mime_placeholders)
-            AND p.post_status = 'inherit'
-            AND p.ID NOT IN (SELECT attachment_id FROM {$cdn_table} WHERE is_synced = 1)",
-            $ready_mime_types
-        );
-        
-        $eligible_attachments = $wpdb->get_results($eligible_ids_query);
+        $eligible_attachments = $wpdb->get_results($eligible_query);
         $ready_for_migration = 0;
+        $local_eligible = 0;
         
         // Check file sizes of eligible attachments
         $upload_dir = wp_upload_dir();
@@ -88,15 +82,16 @@ class Bunny_Stats {
         foreach ($eligible_attachments as $attachment) {
             if (!empty($attachment->file_path)) {
                 $file_path = $base_dir . '/' . $attachment->file_path;
-                if (file_exists($file_path) && filesize($file_path) <= $max_file_size_bytes) {
-                    $ready_for_migration++;
+                if (file_exists($file_path)) {
+                    $file_size = filesize($file_path);
+                    
+                    // Apply the optimization criteria
+                    if ($file_size >= $min_size_bytes && $file_size <= $max_file_size_bytes) {
+                        $local_eligible++;
+                    }
                 }
             }
         }
-        
-        // Local files that need optimization are those that aren't ready for migration and aren't migrated
-        $local_eligible = $total_images - $ready_for_migration - $images_migrated;
-        if ($local_eligible < 0) $local_eligible = 0;
         
         // Calculate percentages
         $not_optimized_percent = $total_images > 0 ? round(($local_eligible / $total_images) * 100, 1) : 0;
