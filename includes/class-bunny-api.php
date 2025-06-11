@@ -57,56 +57,84 @@ class Bunny_API {
      * Upload file to Bunny.net
      */
     public function upload_file($file_path, $remote_path) {
+        error_log('[Bunny API Debug] Starting upload_file: ' . $file_path . ' to ' . $remote_path);
+        
         $api_key = $this->settings->get('api_key');
         $storage_zone = $this->settings->get('storage_zone');
         
+        error_log('[Bunny API Debug] Credentials: Storage Zone=' . $storage_zone . ', API Key=' . substr($api_key, 0, 3) . '...[redacted]');
+        
         if (empty($api_key) || empty($storage_zone)) {
-            return new WP_Error('missing_credentials', __('API key and storage zone are required.', 'bunny-media-offload'));
+            error_log('[Bunny API Debug] Missing credentials');
+            return array('success' => false, 'message' => __('API key and storage zone are required.', 'bunny-media-offload'));
         }
         
         if (!file_exists($file_path)) {
-            return new WP_Error('file_not_found', __('Local file not found.', 'bunny-media-offload'));
+            error_log('[Bunny API Debug] File not found: ' . $file_path);
+            return array('success' => false, 'message' => __('Local file not found.', 'bunny-media-offload'));
         }
         
+        error_log('[Bunny API Debug] File exists, getting contents');
         $file_content = file_get_contents($file_path);
         if ($file_content === false) {
-            return new WP_Error('file_read_error', __('Could not read local file.', 'bunny-media-offload'));
+            error_log('[Bunny API Debug] Failed to read file: ' . $file_path);
+            return array('success' => false, 'message' => __('Could not read local file.', 'bunny-media-offload'));
         }
         
         $url = $this->base_url . '/' . $storage_zone . '/' . ltrim($remote_path, '/');
+        error_log('[Bunny API Debug] Upload URL: ' . $url);
+        error_log('[Bunny API Debug] File size: ' . strlen($file_content) . ' bytes');
         
-        $response = wp_remote_request($url, array(
-            'method' => 'PUT',
-            'headers' => array(
-                'AccessKey' => $api_key,
-                'Content-Type' => 'application/octet-stream',
-            ),
-            'body' => $file_content,
-            'timeout' => 120
-        ));
+        try {
+            error_log('[Bunny API Debug] Making wp_remote_request');
+            $response = wp_remote_request($url, array(
+                'method' => 'PUT',
+                'headers' => array(
+                    'AccessKey' => $api_key,
+                    'Content-Type' => 'application/octet-stream',
+                ),
+                'body' => $file_content,
+                'timeout' => 120
+            ));
+            error_log('[Bunny API Debug] wp_remote_request completed');
+        } catch (Exception $e) {
+            error_log('[Bunny API Debug] Exception in wp_remote_request: ' . $e->getMessage());
+            return array('success' => false, 'message' => 'Request exception: ' . $e->getMessage());
+        }
         
         if (is_wp_error($response)) {
+            $error_message = $response->get_error_message();
+            error_log('[Bunny API Debug] wp_error in response: ' . $error_message);
             $this->logger->error('File upload failed', array(
                 'file' => $remote_path,
-                'error' => $response->get_error_message()
+                'error' => $error_message
             ));
-            return $response;
+            return array('success' => false, 'message' => $error_message);
         }
         
         $response_code = wp_remote_retrieve_response_code($response);
+        $response_body = wp_remote_retrieve_body($response);
+        error_log('[Bunny API Debug] Response code: ' . $response_code);
+        error_log('[Bunny API Debug] Response body: ' . $response_body);
         
         if ($response_code === 201) {
             $this->logger->info('File uploaded successfully', array('file' => $remote_path));
-            return $this->get_public_url($remote_path);
+            $public_url = $this->get_public_url($remote_path);
+            error_log('[Bunny API Debug] Upload successful, public URL: ' . print_r($public_url, true));
+            return array('success' => true, 'url' => is_wp_error($public_url) ? '' : $public_url);
         }
+        
+        $error_message = sprintf(__('Upload failed with response code: %d', 'bunny-media-offload'), $response_code);
+        error_log('[Bunny API Debug] Upload failed with response code: ' . $response_code);
         
         $this->logger->error('File upload failed', array(
             'file' => $remote_path,
-            'response_code' => $response_code
+            'response_code' => $response_code,
+            'response_body' => $response_body
         ));
         
         // translators: %d is the HTTP response code
-        return new WP_Error('upload_failed', sprintf(__('Upload failed with response code: %d', 'bunny-media-offload'), $response_code));
+        return array('success' => false, 'message' => $error_message);
     }
     
     /**
@@ -209,13 +237,19 @@ class Bunny_API {
      * Get public URL for a file
      */
     public function get_public_url($remote_path) {
+        error_log('[Bunny API Debug] Getting public URL for: ' . $remote_path);
+        
         $custom_hostname = $this->settings->get('custom_hostname');
+        error_log('[Bunny API Debug] Custom hostname: ' . $custom_hostname);
         
         if (empty($custom_hostname)) {
+            error_log('[Bunny API Debug] Missing custom hostname');
             return new WP_Error('missing_hostname', __('Custom hostname is required.', 'bunny-media-offload'));
         }
         
-        return 'https://' . $custom_hostname . '/' . ltrim($remote_path, '/');
+        $url = 'https://' . $custom_hostname . '/' . ltrim($remote_path, '/');
+        error_log('[Bunny API Debug] Generated public URL: ' . $url);
+        return $url;
     }
     
     /**

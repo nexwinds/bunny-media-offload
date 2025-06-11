@@ -92,16 +92,19 @@ class Bunny_Optimization {
         // Check if stats class is available through global
         global $bunny_stats;
         if ($bunny_stats) {
+            // Get eligible images count first
+            $eligible_count = $this->get_eligible_images_count();
+            
             // Use unified stats for consistency across all plugin pages
             $unified_stats = $bunny_stats->get_unified_image_stats();
             
             $stats = array(
                 'total_images' => $unified_stats['total_images'],
                 'optimized' => $unified_stats['already_optimized'] + $unified_stats['images_migrated'],
-                'not_optimized' => $unified_stats['local_eligible'],
+                'not_optimized' => $eligible_count, // Use the same count as eligible_for_optimization
                 'in_progress' => $this->get_queue_count('pending') + $this->get_queue_count('processing'),
                 'optimization_percent' => $unified_stats['optimized_percent'] + $unified_stats['cloud_percent'],
-                'eligible_for_optimization' => $this->get_eligible_images_count(),
+                'eligible_for_optimization' => $eligible_count,
             );
             
             // Get space saved and average reduction data from optimization metadata
@@ -196,7 +199,7 @@ class Bunny_Optimization {
     }
     
     /**
-     * Get eligible images count
+     * Get count of images eligible for optimization
      */
     public function get_eligible_images_count() {
         global $wpdb;
@@ -205,32 +208,57 @@ class Bunny_Optimization {
         $settings = $this->settings->get_all();
         $max_file_size_kb = isset($settings['max_file_size']) ? (int) $settings['max_file_size'] : 10240;  // Default 10MB in KB
         $max_file_size_bytes = $max_file_size_kb * 1024; // Convert KB to bytes
+        $threshold_kb = isset($settings['optimization_threshold']) ? (int) $settings['optimization_threshold'] : 50; // Default threshold is 50KB
+        $threshold_bytes = $threshold_kb * 1024; // Convert KB to bytes
+        $min_size_bytes = 35 * 1024; // 35KB minimum size
         
         // Get attachment IDs that are not optimized and not in queue
         $attachments_query = $wpdb->prepare(
-            "SELECT p.ID FROM $wpdb->posts p
+            "SELECT p.ID, p.post_mime_type FROM $wpdb->posts p
             LEFT JOIN $wpdb->postmeta pm1 ON p.ID = pm1.post_id AND pm1.meta_key = '_bunny_optimization_data'
             LEFT JOIN {$wpdb->prefix}bunny_optimization_queue q ON p.ID = q.attachment_id
+            LEFT JOIN {$wpdb->prefix}bunny_offloaded_files bf ON p.ID = bf.attachment_id
             WHERE p.post_type = 'attachment'
             AND p.post_mime_type IN ('image/jpeg', 'image/png', 'image/webp', 'image/avif')
             AND pm1.meta_id IS NULL
             AND q.id IS NULL
+            AND bf.id IS NULL
             LIMIT %d",
             1000 // Limit to avoid performance issues
         );
         
         $eligible_count = 0;
-        $attachment_ids = $wpdb->get_col($attachments_query);
+        $attachments = $wpdb->get_results($attachments_query);
         
-        // Check each file's size against the max_file_size
-        foreach ($attachment_ids as $attachment_id) {
-            $file_path = get_attached_file($attachment_id);
+        // Check each file against the optimization criteria
+        foreach ($attachments as $attachment) {
+            $file_path = get_attached_file($attachment->ID);
             if (!$file_path || !file_exists($file_path)) {
                 continue;
             }
             
             $file_size = filesize($file_path);
+            $mime_type = $attachment->post_mime_type;
+            
+            // Apply the optimization criteria:
+            // 1. JPEG/PNG: Process regardless of size (convert to AVIF)
+            // 2. WebP/AVIF: Only optimize if larger than threshold but smaller than max_file_size
+            // 3. All files must be at least 35KB in size
+            
+            if ($file_size < $min_size_bytes) {
+                continue; // Skip files smaller than minimum size
+            }
+            
             if ($file_size > $max_file_size_bytes) {
+                continue; // Skip files larger than maximum size
+            }
+            
+            // For JPEG/PNG, count as eligible for optimization
+            if ($mime_type === 'image/jpeg' || $mime_type === 'image/png') {
+                $eligible_count++;
+            }
+            // For WebP/AVIF, only count if size exceeds threshold
+            else if (($mime_type === 'image/webp' || $mime_type === 'image/avif') && $file_size > $threshold_bytes) {
                 $eligible_count++;
             }
         }
@@ -280,46 +308,82 @@ class Bunny_Optimization {
         $settings = $this->settings->get_all();
         $max_file_size_kb = isset($settings['max_file_size']) ? (int) $settings['max_file_size'] : 10240;  // Default 10MB in KB
         $max_file_size_bytes = $max_file_size_kb * 1024; // Convert KB to bytes
+        $threshold_kb = isset($settings['optimization_threshold']) ? (int) $settings['optimization_threshold'] : 50; // Default threshold is 50KB
+        $threshold_bytes = $threshold_kb * 1024; // Convert KB to bytes
+        $min_size_bytes = 35 * 1024; // 35KB minimum size
         
         // Get attachment IDs that are not optimized and not in queue
         $attachments_query = $wpdb->prepare(
-            "SELECT p.ID FROM $wpdb->posts p
+            "SELECT p.ID, p.post_mime_type FROM $wpdb->posts p
             LEFT JOIN $wpdb->postmeta pm1 ON p.ID = pm1.post_id AND pm1.meta_key = '_bunny_optimization_data'
             LEFT JOIN {$wpdb->prefix}bunny_optimization_queue q ON p.ID = q.attachment_id
+            LEFT JOIN {$wpdb->prefix}bunny_offloaded_files bf ON p.ID = bf.attachment_id
             WHERE p.post_type = 'attachment'
             AND p.post_mime_type IN ('image/jpeg', 'image/png', 'image/webp', 'image/avif')
             AND pm1.meta_id IS NULL
             AND q.id IS NULL
+            AND bf.id IS NULL
             LIMIT %d",
-            $limit
+            1000 // Get more than needed to filter by size criteria
         );
         
-        $attachment_ids = $wpdb->get_col($attachments_query);
+        $attachments = $wpdb->get_results($attachments_query);
         $eligible_attachments = array();
         
-        // Check each file's size against the max_file_size
-        foreach ($attachment_ids as $attachment_id) {
-            $file_path = get_attached_file($attachment_id);
+        // Check each file against the optimization criteria - use same logic as get_eligible_images_count
+        foreach ($attachments as $attachment) {
+            $file_path = get_attached_file($attachment->ID);
             if (!$file_path || !file_exists($file_path)) {
                 continue;
             }
             
             $file_size = filesize($file_path);
+            $mime_type = $attachment->post_mime_type;
+            
+            // Apply the optimization criteria:
+            // 1. JPEG/PNG: Process regardless of size (convert to AVIF)
+            // 2. WebP/AVIF: Only optimize if larger than threshold but smaller than max_file_size
+            // 3. All files must be at least 35KB in size
+            
+            if ($file_size < $min_size_bytes) {
+                continue; // Skip files smaller than minimum size
+            }
+            
             if ($file_size > $max_file_size_bytes) {
+                continue; // Skip files larger than maximum size
+            }
+            
+            $is_eligible = false;
+            
+            // For JPEG/PNG, count as eligible for optimization
+            if ($mime_type === 'image/jpeg' || $mime_type === 'image/png') {
+                $is_eligible = true;
+            }
+            // For WebP/AVIF, only count if size exceeds threshold
+            else if (($mime_type === 'image/webp' || $mime_type === 'image/avif') && $file_size > $threshold_bytes) {
+                $is_eligible = true;
+            }
+            
+            if ($is_eligible) {
                 // Get the file's data
                 $file_data = file_get_contents($file_path);
                 if (!$file_data) {
                     continue;
                 }
                 
-                $mime_type = get_post_mime_type($attachment_id);
                 $eligible_attachments[] = array(
-                    'id' => $attachment_id,
+                    'id' => $attachment->ID,
+                    'attachment_id' => $attachment->ID, // Include for consistency
                     'imageData' => base64_encode($file_data),
                     'mimeType' => $mime_type,
                     'file_path' => $file_path,
                     'file_size' => $file_size
                 );
+                
+                // Limit the number of attachments we return
+                if (count($eligible_attachments) >= $limit) {
+                    break;
+                }
             }
         }
         
@@ -799,7 +863,7 @@ class Bunny_Optimization {
         }
         
         // Add to queue
-        $attachment_ids = array_column($eligible_images, 'attachment_id');
+        $attachment_ids = array_column($eligible_images, 'id');
         $added = $this->add_to_optimization_queue($attachment_ids);
         
         wp_send_json_success(array(

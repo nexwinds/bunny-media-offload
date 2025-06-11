@@ -940,6 +940,7 @@ class Bunny_Admin {
         $api_key = isset($settings['bmo_api_key']) ? $settings['bmo_api_key'] : '';
         $api_region = isset($settings['bmo_api_region']) ? $settings['bmo_api_region'] : 'us';
         $max_file_size_kb = isset($settings['max_file_size']) ? (int) $settings['max_file_size'] : 10240; // Default 10MB in KB
+        $threshold_kb = isset($settings['optimization_threshold']) ? (int) $settings['optimization_threshold'] : 50; // Default threshold is 50KB
         
         ?>
         <div class="wrap">
@@ -974,7 +975,7 @@ class Bunny_Admin {
                     <p><?php printf(
                         /* translators: %s is the size threshold in KB */
                         esc_html__('Images larger than %s KB will be optimized to reduce file size while maintaining quality.', 'bunny-media-offload'),
-                        $max_file_size_kb
+                        $threshold_kb
                     ); ?></p>
                     
                     <?php if (!$api_key): ?>
@@ -1010,7 +1011,7 @@ class Bunny_Admin {
                     <div class="bunny-optimization-actions">
                         <div class="bunny-eligibility-stats">
                             <strong><?php esc_html_e('Eligible for optimization:', 'bunny-media-offload'); ?></strong>
-                            <span id="eligible-count"><?php echo esc_html(number_format($stats['eligible_for_optimization'])); ?></span> <?php esc_html_e('images', 'bunny-media-offload'); ?>
+                            <span id="eligible-count"><?php echo esc_html(number_format($optimization_stats['eligible_for_optimization'])); ?></span> <?php esc_html_e('images', 'bunny-media-offload'); ?>
                         </div>
                         
                         <div class="bunny-optimization-buttons">

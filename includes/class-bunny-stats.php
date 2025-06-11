@@ -51,8 +51,14 @@ class Bunny_Stats {
         $ready_mime_types = array('image/avif', 'image/webp', 'image/svg+xml');
         $mime_placeholders = implode(',', array_fill(0, count($ready_mime_types), '%s'));
         
+        // Get max file size from settings
+        $settings = get_option('bunny_json_settings', array());
+        $max_file_size_kb = isset($settings['max_file_size']) ? (int) $settings['max_file_size'] : 10240; // Default 10MB in KB
+        $max_file_size_bytes = $max_file_size_kb * 1024; // Convert KB to bytes
+        
+        // Query to find eligible files (correct criteria implementation)
         $ready_query = $wpdb->prepare(
-            "SELECT COUNT(*) FROM {$wpdb->posts} p
+            "SELECT COUNT(DISTINCT p.ID) FROM {$wpdb->posts} p
             LEFT JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id AND pm.meta_key = '_wp_attached_file'
             WHERE p.post_type = 'attachment'
             AND p.post_mime_type IN ($mime_placeholders)
@@ -61,7 +67,32 @@ class Bunny_Stats {
             $ready_mime_types
         );
         
-        $ready_for_migration = (int) $wpdb->get_var($ready_query);
+        // Get all eligible attachment IDs for file size checking
+        $eligible_ids_query = $wpdb->prepare(
+            "SELECT p.ID, pm.meta_value as file_path FROM {$wpdb->posts} p
+            LEFT JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id AND pm.meta_key = '_wp_attached_file'
+            WHERE p.post_type = 'attachment'
+            AND p.post_mime_type IN ($mime_placeholders)
+            AND p.post_status = 'inherit'
+            AND p.ID NOT IN (SELECT attachment_id FROM {$cdn_table} WHERE is_synced = 1)",
+            $ready_mime_types
+        );
+        
+        $eligible_attachments = $wpdb->get_results($eligible_ids_query);
+        $ready_for_migration = 0;
+        
+        // Check file sizes of eligible attachments
+        $upload_dir = wp_upload_dir();
+        $base_dir = $upload_dir['basedir'];
+        
+        foreach ($eligible_attachments as $attachment) {
+            if (!empty($attachment->file_path)) {
+                $file_path = $base_dir . '/' . $attachment->file_path;
+                if (file_exists($file_path) && filesize($file_path) <= $max_file_size_bytes) {
+                    $ready_for_migration++;
+                }
+            }
+        }
         
         // Local files that need optimization are those that aren't ready for migration and aren't migrated
         $local_eligible = $total_images - $ready_for_migration - $images_migrated;
@@ -156,13 +187,13 @@ class Bunny_Stats {
      */
     public function get_migration_progress() {
         $unified_stats = $this->get_unified_image_stats();
-        $total_relevant_images = $unified_stats['local_eligible'] + $unified_stats['already_optimized'] + $unified_stats['images_migrated'];
+        $total_relevant_images = $unified_stats['already_optimized'] + $unified_stats['images_migrated'];
         $migration_progress = $total_relevant_images > 0 ? round(($unified_stats['images_migrated'] / $total_relevant_images) * 100, 1) : 0;
         
         return array(
             'total_images' => $total_relevant_images,
             'images_migrated' => $unified_stats['images_migrated'],
-            'images_pending' => $unified_stats['local_eligible'] + $unified_stats['already_optimized'],
+            'images_pending' => $unified_stats['already_optimized'],
             'progress_percentage' => $migration_progress
         );
     }
