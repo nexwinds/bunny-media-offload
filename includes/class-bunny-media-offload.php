@@ -22,7 +22,6 @@ class Bunny_Media_Offload {
     public $logger;
     public $cli;
     public $wpml;
-    public $optimizer;
     
     /**
      * Get singleton instance
@@ -55,7 +54,6 @@ class Bunny_Media_Offload {
         require_once BMO_PLUGIN_DIR . 'includes/class-bunny-uploader.php';
         require_once BMO_PLUGIN_DIR . 'includes/class-bunny-migration.php';
         require_once BMO_PLUGIN_DIR . 'includes/class-bunny-stats.php';
-        require_once BMO_PLUGIN_DIR . 'includes/class-bunny-optimization.php';
         require_once BMO_PLUGIN_DIR . 'includes/class-bunny-wpml.php';
         require_once BMO_PLUGIN_DIR . 'includes/class-bunny-admin.php';
     }
@@ -79,9 +77,8 @@ class Bunny_Media_Offload {
         $this->uploader = new Bunny_Uploader($this->api, $this->settings, $this->logger);
         $this->migration = new Bunny_Migration($this->api, $this->settings, $this->logger);
         $this->stats = new Bunny_Stats($this->api, $this->settings, $this->migration);
-        $this->optimizer = new Bunny_Optimization($this->api, $this->settings, $this->logger);
         $this->wpml = new Bunny_WPML($this->settings, $this->logger);
-        $this->admin = new Bunny_Admin($this->settings, $this->stats, $this->migration, $this->logger, $this->optimizer, $this->wpml);
+        $this->admin = new Bunny_Admin($this->settings, $this->stats, $this->migration, $this->logger, null, $this->wpml);
     }
     
     /**

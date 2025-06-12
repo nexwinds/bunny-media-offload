@@ -7,20 +7,17 @@ class Bunny_Admin {
     private $settings;
     private $stats;
     private $migration;
-    private $sync;
     private $logger;
-    private $optimizer;
     private $wpml;
     
     /**
      * Constructor
      */
-    public function __construct($settings, $stats, $migration, $logger, $optimizer = null, $wpml = null) {
+    public function __construct($settings, $stats, $migration, $logger, $wpml = null) {
         $this->settings = $settings;
         $this->stats = $stats;
         $this->migration = $migration;
         $this->logger = $logger;
-        $this->optimizer = $optimizer;
         $this->wpml = $wpml;
         
         $this->init_hooks();
@@ -41,7 +38,6 @@ class Bunny_Admin {
         
         // AJAX handlers
         add_action('wp_ajax_bunny_test_connection', array($this, 'ajax_test_connection'));
-        add_action('wp_ajax_bunny_test_bmo_connection', array($this, 'ajax_test_bmo_connection'));
         add_action('wp_ajax_bunny_save_settings', array($this, 'ajax_save_settings'));
         add_action('wp_ajax_bunny_get_stats', array($this, 'ajax_get_stats'));
         add_action('wp_ajax_bunny_refresh_stats', array($this, 'ajax_refresh_stats'));
@@ -49,8 +45,6 @@ class Bunny_Admin {
         add_action('wp_ajax_bunny_export_logs', array($this, 'ajax_export_logs'));
         add_action('wp_ajax_bunny_clear_logs', array($this, 'ajax_clear_logs'));
         add_action('wp_ajax_bunny_regenerate_thumbnails', array($this, 'ajax_regenerate_thumbnails'));
-        add_action('wp_ajax_bunny_get_optimization_stats', array($this, 'ajax_get_optimization_stats'));
-        add_action('wp_ajax_bunny_run_optimization_diagnostics', array($this, 'ajax_run_optimization_diagnostics'));
         
         // Media library integration
         add_filter('manage_media_columns', array($this, 'add_media_column'));
@@ -98,17 +92,6 @@ class Bunny_Admin {
             'manage_options',
             'bunny-media-offload-migration',
             array($this, 'migration_page')
-        );
-        
-
-        
-        add_submenu_page(
-            'bunny-media-offload',
-            __('Optimization', 'bunny-media-offload'),
-            __('Optimization', 'bunny-media-offload'),
-            'manage_options',
-            'bunny-media-offload-optimization',
-            array($this, 'optimization_page')
         );
         
         add_submenu_page(
@@ -1173,15 +1156,25 @@ class Bunny_Admin {
     public function documentation_page() {
         ?>
         <div class="wrap">
-            <h1><?php esc_html_e('Bunny Media Offload Documentation', 'bunny-media-offload'); ?></h1>
+            <h1><?php esc_html_e('Documentation', 'bunny-media-offload'); ?></h1>
+            <p><?php esc_html_e('View the plugin documentation for help and usage instructions.', 'bunny-media-offload'); ?></p>
             
-            <?php include plugin_dir_path(__FILE__) . 'documentation-tabs.php'; ?>
+            <div class="bunny-card">
+                <h2><?php esc_html_e('Getting Started', 'bunny-media-offload'); ?></h2>
+                <p><?php esc_html_e('To get started with Bunny Media Offload, follow these steps:', 'bunny-media-offload'); ?></p>
+                <ol>
+                    <li><?php esc_html_e('Configure your API key and storage zone in the Settings page.', 'bunny-media-offload'); ?></li>
+                    <li><?php esc_html_e('Test your connection to ensure everything is working properly.', 'bunny-media-offload'); ?></li>
+                    <li><?php esc_html_e('Use the Migration tool to offload existing media files.', 'bunny-media-offload'); ?></li>
+                </ol>
+                <p><?php esc_html_e('For detailed documentation, please visit:', 'bunny-media-offload'); ?> <a href="https://nexwinds.com/docs/bunny-media-offload" target="_blank">https://nexwinds.com/docs/bunny-media-offload</a></p>
+            </div>
         </div>
         <?php
     }
     
     /**
-     * Test Connection page
+     * Test connection page
      */
     public function test_connection_page() {
         $settings = $this->settings->get_all();
@@ -1216,39 +1209,6 @@ class Bunny_Admin {
             wp_send_json_error(array('message' => $result->get_error_message()));
         } else {
             wp_send_json_success(array('message' => esc_html__('Connection successful!', 'bunny-media-offload')));
-        }
-    }
-    
-    /**
-     * AJAX: Test BMO connection
-     */
-    public function ajax_test_bmo_connection() {
-        check_ajax_referer('bunny_ajax_nonce', 'nonce');
-        
-        if (!current_user_can('manage_options')) {
-            wp_die(esc_html__('Insufficient permissions.', 'bunny-media-offload'));
-        }
-        
-        if (!$this->optimizer) {
-            wp_send_json_error(esc_html__('Optimizer module not available.', 'bunny-media-offload'));
-            return;
-        }
-        
-        $result = $this->optimizer->test_connection();
-        
-        if (is_wp_error($result)) {
-            wp_send_json_error($result->get_error_message());
-        } else {
-            $response = array(
-                'message' => esc_html__('BMO API connection successful!', 'bunny-media-offload')
-            );
-            
-            // Add credits information if available
-            if (isset($result['credits'])) {
-                $response['credits'] = $result['credits'];
-            }
-            
-            wp_send_json_success($response);
         }
     }
     
