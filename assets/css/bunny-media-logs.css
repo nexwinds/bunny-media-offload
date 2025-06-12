@@ -1,316 +1,182 @@
 /* Bunny Media Logs Page Styles - WordPress Upload.php Style */
 
-/* WordPress-style statistics counts */
-.bunny-count-error {
-    color: #d63638;
-    font-weight: 600;
+/* Filters bar */
+.bunny-logs-filters {
+    margin: 1em 0;
+    padding: 8px 12px;
+    background: #fff;
+    border: 1px solid #ccd0d4;
+    box-shadow: 0 1px 1px rgba(0,0,0,.04);
 }
 
-.bunny-count-warning {
-    color: #dba617;
-    font-weight: 600;
+.bunny-logs-filter-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 15px;
 }
 
-.bunny-count-info {
-    color: #0073aa;
-    font-weight: 600;
+.bunny-logs-filter-group {
+    display: flex;
+    align-items: center;
+    margin-right: 10px;
 }
 
-/* Table styling improvements */
-.wp-list-table.logs {
-    margin-top: 0;
+.bunny-logs-filter-group label {
+    margin-right: 5px;
+    font-weight: 500;
 }
 
-.wp-list-table.logs .column-date {
-    width: 15%;
+.bunny-logs-filter-actions {
+    margin-left: auto;
+    display: flex;
+    gap: 5px;
 }
 
-.wp-list-table.logs .column-type {
-    width: 15%;
+/* Actions bar */
+.bunny-logs-actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin: 1em 0;
+    padding: 5px 0;
 }
 
-.wp-list-table.logs .column-level {
-    width: 10%;
+.bunny-logs-bulk-actions {
+    display: flex;
+    gap: 10px;
 }
 
-.wp-list-table.logs .column-message {
-    width: 60%;
+.bunny-logs-bulk-actions .button {
+    display: flex;
+    align-items: center;
 }
 
-/* Pagination styling */
-.tablenav .pagination-links {
-    font-size: 12px;
-}
-
-.tablenav .pagination-links a,
-.tablenav .pagination-links span {
-    display: inline-block;
-    min-width: 17px;
-    border: 1px solid #ddd;
-    padding: 3px 5px;
-    margin: 1px;
-    border-radius: 3px;
-    text-align: center;
-    text-decoration: none;
-    font-size: 12px;
-    line-height: 18px;
-}
-
-.tablenav .pagination-links a:hover,
-.tablenav .pagination-links a:focus {
-    border-color: #2271b1;
-    color: #2271b1;
-}
-
-.tablenav .pagination-links .current {
-    background: #2271b1;
-    border-color: #2271b1;
-    color: #fff;
-}
-
-.tablenav .pagination-links .prev-page,
-.tablenav .pagination-links .next-page {
-    font-size: 16px;
-    line-height: 1;
-}
-
-.tablenav .pagination-links .disabled {
-    color: #a7aaad;
-    border-color: #ddd;
-    background: #f6f7f7;
-}
-
-/* Button styling for export/clear actions */
-#export-logs {
-    background: #00a32a;
-    color: #fff;
-    border-color: #00a32a;
-}
-
-#export-logs:hover {
-    background: #008a20;
-    border-color: #008a20;
-}
-
-#clear-logs {
-    background: #d63638;
-    color: #fff;
-    border-color: #d63638;
-    margin-left: 8px;
-}
-
-#clear-logs:hover {
-    background: #b32d2e;
-    border-color: #b32d2e;
-}
-
-/* Log Level Styling */
-.bunny-log-level {
-    display: inline-block;
-    padding: 4px 8px;
-    border-radius: 4px;
-    font-size: 12px;
-    font-weight: 600;
-    text-transform: uppercase;
-}
-
-.bunny-log-level-error {
-    background: #ffeaea;
-    color: #d63638;
-}
-
-.bunny-log-level-warning {
-    background: #fff8dc;
-    color: #b8860b;
-}
-
-.bunny-log-level-info {
-    background: #e8f4f8;
-    color: #0073aa;
-}
-
-.bunny-log-level-debug {
-    background: #f0f0f1;
-    color: #646970;
-}
-
-/* Log Type Styling */
-.bunny-log-type {
-    display: inline-block;
-    padding: 4px 8px;
-    border-radius: 4px;
-    font-size: 12px;
-    font-weight: 600;
-    text-transform: capitalize;
-}
-
-.bunny-log-type-offload {
-    background: #e8f4f8;
-    color: #0073aa;
-}
-
-.bunny-log-type-optimization {
-    background: #f0f8ff;
-    color: #2271b1;
-}
-
-.bunny-log-type-general {
-    background: #f0f0f1;
-    color: #646970;
-}
-
-/* Log Row Coloring */
-.bunny-log-entry.bunny-log-error {
-    border-left: 3px solid #d63638;
-}
-
-.bunny-log-entry.bunny-log-warning {
-    border-left: 3px solid #dba617;
-}
-
-.bunny-log-entry.bunny-log-info {
-    border-left: 3px solid #0073aa;
-}
-
-.bunny-log-entry.bunny-log-debug {
-    border-left: 3px solid #646970;
-}
-
-/* Empty State */
-.bunny-empty-state {
-    text-align: center;
-    padding: 40px 20px;
-    color: #646970;
-}
-
-.bunny-empty-icon {
-    font-size: 48px;
-    margin-bottom: 16px;
-    opacity: 0.5;
-}
-
-.bunny-empty-state p {
-    font-size: 16px;
-    font-weight: 600;
-    margin-bottom: 8px;
-}
-
-.bunny-empty-state small {
-    font-size: 14px;
-    color: #8c8f94;
+.bunny-logs-bulk-actions .button .dashicons {
+    margin-right: 5px;
 }
 
 /* Pagination */
 .bunny-logs-pagination {
     display: flex;
-    justify-content: center;
     align-items: center;
-    padding: 20px;
-    background: #f8f9fa;
-    border: 1px solid #e9ecef;
-    border-radius: 8px;
-    margin-top: 16px;
+    gap: 10px;
 }
 
-.bunny-logs-pagination p {
-    margin: 0;
-    color: #6b7280;
-    font-style: italic;
-    font-size: 14px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
+.bunny-pagination-text {
+    margin: 0 5px;
 }
 
-.bunny-logs-pagination p::before {
-    content: "ℹ️";
+.bunny-pagination-prev .dashicons,
+.bunny-pagination-next .dashicons {
     font-size: 16px;
+    line-height: 1.3;
+    vertical-align: middle;
 }
 
-/* Loading States */
-.bunny-logs-loading {
-    position: relative;
-    opacity: 0.6;
-    pointer-events: none;
+/* Table styles */
+.bunny-logs-table-container {
+    margin-top: 10px;
+    margin-bottom: 20px;
 }
 
-.bunny-logs-loading::after {
-    content: '';
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    width: 24px;
-    height: 24px;
-    margin: -12px 0 0 -12px;
-    border: 3px solid #f3f3f3;
-    border-top: 3px solid #0073aa;
-    border-radius: 50%;
-    animation: bunny-spin 1s linear infinite;
+.bunny-logs-table {
+    border-spacing: 0;
+    width: 100%;
+    clear: both;
 }
 
-@keyframes bunny-spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
+.bunny-logs-table .column-date {
+    width: 15%;
 }
 
-/* Success/Error Messages */
-.bunny-logs-notice {
-    margin: 16px 0;
-    padding: 12px 16px;
-    border-radius: 4px;
-    font-size: 14px;
-    font-weight: 600;
+.bunny-logs-table .column-type {
+    width: 10%;
 }
 
-.bunny-logs-notice.success {
-    background: #d1eddb;
-    color: #155724;
-    border: 1px solid #c3e6cb;
+.bunny-logs-table .column-level {
+    width: 10%;
 }
 
-.bunny-logs-notice.error {
-    background: #f8d7da;
-    color: #721c24;
-    border: 1px solid #f5c6cb;
+.bunny-logs-table .column-message {
+    width: 65%;
 }
 
-/* Responsive Design */
-@media (max-width: 768px) {
-    .tablenav .alignleft,
-    .tablenav .alignright {
-        float: none;
-        text-align: left;
+/* Log level indicators */
+.bunny-log-level {
+    display: inline-block;
+    padding: 3px 8px;
+    border-radius: 3px;
+    font-size: 12px;
+    font-weight: 500;
+    text-align: center;
+    min-width: 70px;
+}
+
+.bunny-log-level-error {
+    background-color: #f8d7da;
+    color: #842029;
+}
+
+.bunny-log-level-warning {
+    background-color: #fff3cd;
+    color: #664d03;
+}
+
+.bunny-log-level-info {
+    background-color: #cfe2ff;
+    color: #084298;
+}
+
+.bunny-log-level-debug {
+    background-color: #d1e7dd;
+    color: #0f5132;
+}
+
+/* Row colors */
+.bunny-log-error {
+    background-color: rgba(248, 215, 218, 0.1);
+}
+
+.bunny-log-warning {
+    background-color: rgba(255, 243, 205, 0.1);
+}
+
+.bunny-log-debug {
+    background-color: rgba(209, 231, 221, 0.1);
+}
+
+.bunny-no-logs {
+    text-align: center;
+    padding: 20px;
+    color: #666;
+    font-style: italic;
+}
+
+/* Responsive styles */
+@media screen and (max-width: 782px) {
+    .bunny-logs-filter-row {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    
+    .bunny-logs-filter-group {
         margin-bottom: 10px;
-    }
-    
-    .tablenav .alignleft form {
-        flex-wrap: wrap;
-        gap: 8px;
-    }
-    
-    .wp-list-table.logs .column-date,
-    .wp-list-table.logs .column-type,
-    .wp-list-table.logs .column-level {
-        display: none;
-    }
-    
-    .wp-list-table.logs .column-message {
         width: 100%;
     }
     
-    .bunny-log-entry {
-        position: relative;
+    .bunny-logs-filter-actions {
+        margin-left: 0;
+        margin-top: 10px;
     }
     
-    /* Show log metadata for mobile in the message column */
-    .bunny-log-entry .column-message::before {
-        content: attr(data-log-time) " • " attr(data-log-type) " • " attr(data-log-level);
-        display: block;
-        font-size: 12px;
-        color: #666;
-        margin-bottom: 8px;
-        padding-bottom: 4px;
-        border-bottom: 1px solid #eee;
+    .bunny-logs-actions {
+        flex-direction: column;
+        gap: 10px;
     }
-} 
+    
+    .bunny-logs-pagination {
+        margin-top: 10px;
+    }
+}
+
