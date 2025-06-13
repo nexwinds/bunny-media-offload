@@ -93,6 +93,15 @@ class Bunny_Admin {
             'bunny-media-offload-migration',
             array($this, 'migration_page')
         );
+
+        add_submenu_page(
+            'bunny-media-offload',
+            __('Optimization', 'bunny-media-offload'),
+            __('Optimization', 'bunny-media-offload'),
+            'manage_options',
+            'bunny-media-offload-migration',
+            array($this, 'optimization_page')
+        );
         
         add_submenu_page(
             'bunny-media-offload',
