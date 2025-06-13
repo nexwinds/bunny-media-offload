@@ -83,7 +83,6 @@
             
             // Update basic stats
             this.updateElement(this.selectors.totalImages, this.data.total_images);
-            this.updateElement(this.selectors.notOptimized, this.data.local_eligible);
             this.updateElement(this.selectors.readyForMigration, this.data.already_optimized);
             this.updateElement(this.selectors.onCDN, this.data.images_migrated);
             

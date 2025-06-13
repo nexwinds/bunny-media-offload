@@ -27,14 +27,6 @@ class Bunny_Stats {
         // Force refresh all stats by skipping cache
         $this->clear_cache();
         
-        $cache_key = 'bunny_unified_image_stats';
-        $cached_stats = wp_cache_get($cache_key, 'bunny_media_offload');
-        
-        if ($cached_stats !== false) {
-            error_log('Returning cached stats');
-            return $cached_stats;
-        }
-        
         global $wpdb;
         
         // Get total image count first
@@ -54,20 +46,11 @@ class Bunny_Stats {
         $images_migrated = (int) $wpdb->get_var($migrated_query);
         error_log('Images migrated: ' . $images_migrated);
         
-        // First, let's get a count of images by format
-        $format_query = "SELECT post_mime_type, COUNT(*) as count 
-                        FROM {$wpdb->posts} 
-                        WHERE post_type = 'attachment' 
-                        AND post_mime_type LIKE 'image/%'
-                        AND post_status = 'inherit'
-                        GROUP BY post_mime_type";
-        $format_counts = $wpdb->get_results($format_query);
-        error_log('Format counts: ' . print_r($format_counts, true));
-        
-        // Get count of images that are eligible for migration (meet criteria)
-        $eligible_query = $wpdb->prepare(
-            "SELECT COUNT(DISTINCT p.ID) 
+        // Get all potential eligible images first
+        $potential_eligible_query = $wpdb->prepare(
+            "SELECT p.ID, p.post_mime_type, pm.meta_value as file_path
              FROM {$wpdb->posts} p
+             LEFT JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id AND pm.meta_key = '_wp_attached_file'
              WHERE p.post_type = 'attachment'
              AND p.post_mime_type IN ('image/jpeg', 'image/png', 'image/webp', 'image/avif', 'image/heic', 'image/tiff')
              AND p.post_status = 'inherit'
@@ -77,74 +60,36 @@ class Bunny_Stats {
              )"
         );
         
-        $eligible_for_migration = (int) $wpdb->get_var($eligible_query);
-        error_log('Eligible for migration (before size check): ' . $eligible_for_migration);
+        $potential_eligible = $wpdb->get_results($potential_eligible_query);
+        error_log('Found ' . count($potential_eligible) . ' potential eligible images');
         
-        // Get count of images that are not eligible for migration
-        $not_eligible_query = $wpdb->prepare(
-            "SELECT COUNT(DISTINCT p.ID) 
-             FROM {$wpdb->posts} p
-             WHERE p.post_type = 'attachment'
-             AND p.post_mime_type LIKE 'image/%'
-             AND p.post_status = 'inherit'
-             AND NOT EXISTS (
-                 SELECT 1 FROM {$wpdb->prefix}bunny_offloaded_files bf 
-                 WHERE bf.attachment_id = p.ID AND bf.is_synced = 1
-             )
-             AND p.post_mime_type NOT IN ('image/jpeg', 'image/png', 'image/webp', 'image/avif', 'image/heic', 'image/tiff')"
-        );
+        // Get maximum file size from settings
+        $settings = $this->settings->get_all();
+        $max_file_size_kb = isset($settings['max_file_size']) ? (int) $settings['max_file_size'] : 10240; // Default 10MB in KB
+        $max_file_size_bytes = $max_file_size_kb * 1024; // Convert KB to bytes
         
-        $not_eligible = (int) $wpdb->get_var($not_eligible_query);
-        error_log('Not eligible (format only): ' . $not_eligible);
+        // Filter by actual file size
+        $eligible_for_migration = 0;
+        $upload_dir = wp_upload_dir();
+        $base_dir = $upload_dir['basedir'];
         
-        // Check file sizes for all supported formats
-        $large_files_query = $wpdb->prepare(
-            "SELECT COUNT(DISTINCT p.ID) 
-             FROM {$wpdb->posts} p
-             JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id
-             WHERE p.post_type = 'attachment'
-             AND p.post_mime_type IN ('image/jpeg', 'image/png', 'image/webp', 'image/avif', 'image/heic', 'image/tiff')
-             AND p.post_status = 'inherit'
-             AND pm.meta_key = '_wp_attachment_metadata'
-             AND pm.meta_value LIKE '%filesize%'
-             AND CAST(SUBSTRING_INDEX(SUBSTRING_INDEX(pm.meta_value, 'filesize\":', -1), ',', 1) AS UNSIGNED) > 9437184"
-        );
+        foreach ($potential_eligible as $file) {
+            if (!empty($file->file_path)) {
+                $file_path = $base_dir . '/' . $file->file_path;
+                if (file_exists($file_path) && filesize($file_path) <= $max_file_size_bytes) {
+                    $eligible_for_migration++;
+                }
+            }
+        }
         
-        $large_files = (int) $wpdb->get_var($large_files_query);
-        error_log('Large files (>9MB): ' . $large_files);
+        error_log('Eligible for migration after size check: ' . $eligible_for_migration);
         
-        // Get a breakdown of large files by format
-        $large_files_breakdown_query = $wpdb->prepare(
-            "SELECT p.post_mime_type, COUNT(DISTINCT p.ID) as count
-             FROM {$wpdb->posts} p
-             JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id
-             WHERE p.post_type = 'attachment'
-             AND p.post_mime_type IN ('image/jpeg', 'image/png', 'image/webp', 'image/avif', 'image/heic', 'image/tiff')
-             AND p.post_status = 'inherit'
-             AND pm.meta_key = '_wp_attachment_metadata'
-             AND pm.meta_value LIKE '%filesize%'
-             AND CAST(SUBSTRING_INDEX(SUBSTRING_INDEX(pm.meta_value, 'filesize\":', -1), ',', 1) AS UNSIGNED) > 9437184
-             GROUP BY p.post_mime_type"
-        );
-        
-        $large_files_breakdown = $wpdb->get_results($large_files_breakdown_query);
-        error_log('Large files breakdown by format: ' . print_r($large_files_breakdown, true));
-        
-        // Get detailed info about all images
-        $detailed_query = "SELECT p.ID, p.post_mime_type, 
-                          (SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id = p.ID AND meta_key = '_wp_attachment_metadata' LIMIT 1) as metadata,
-                          (SELECT COUNT(*) FROM {$wpdb->prefix}bunny_offloaded_files WHERE attachment_id = p.ID AND is_synced = 1) as is_migrated
-                          FROM {$wpdb->posts} p
-                          WHERE p.post_type = 'attachment'
-                          AND p.post_mime_type LIKE 'image/%'
-                          AND p.post_status = 'inherit'
-                          LIMIT 10";
-        
-        $detailed_info = $wpdb->get_results($detailed_query);
-        error_log('Detailed info for first 10 images: ' . print_r($detailed_info, true));
+        // Get count of images that are not eligible (either wrong format or too large)
+        $not_eligible = $total_images - $eligible_for_migration - $images_migrated;
+        error_log('Not eligible (format or size): ' . $not_eligible);
         
         // Calculate percentages
-        $not_optimized_percent = $total_images > 0 ? round(($not_eligible / $total_images) * 100, 1) : 0;
+        $not_eligible_percent = $total_images > 0 ? round(($not_eligible / $total_images) * 100, 1) : 0;
         $optimized_percent = $total_images > 0 ? round(($eligible_for_migration / $total_images) * 100, 1) : 0;
         $cloud_percent = $total_images > 0 ? round(($images_migrated / $total_images) * 100, 1) : 0;
         
@@ -152,18 +97,15 @@ class Bunny_Stats {
             'total_images' => $total_images,
             'local_eligible' => $eligible_for_migration,
             'already_optimized' => $eligible_for_migration, // Ready for migration
-            'images_migrated' => $images_migrated,
-            'not_optimized' => $not_eligible,
-            'not_optimized_percent' => $not_optimized_percent,
+            'images_migrated' => $images_migrated, //
+            'not_optimized' => $not_eligible,//
+            'not_optimized_percent' => $not_eligible_percent,
             'optimized_percent' => $optimized_percent,
             'cloud_percent' => $cloud_percent
         );
         
         error_log('Final stats: ' . print_r($stats, true));
         error_log('=== Ending get_unified_image_stats ===');
-        
-        // Cache for a short time (1 minute) to avoid excessive recalculation but allow refresh
-        wp_cache_set($cache_key, $stats, 'bunny_media_offload', 60);
         
         return $stats;
     }

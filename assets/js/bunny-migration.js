@@ -511,44 +511,7 @@
          * Refresh migration statistics
          */
         refreshMigrationStats: function() {
-            $.ajax({
-                url: bunnyAjax.ajaxurl,
-                type: 'POST',
-                data: {
-                    action: 'bunny_get_stats',
-                    nonce: bunnyAjax.nonce
-                },
-                dataType: 'json',
-                success: function(response) {
-                    if (response.success) {
-                        // If page has stats widgets, refresh them
-                        if (typeof BunnyAdmin !== 'undefined' && BunnyAdmin.updateDashboardStats) {
-                            BunnyAdmin.updateDashboardStats();
-                        }
-                        
-                        // Also update the page directly if possible
-                        if (response.data && response.data.total_images) {
-                            // Try to update eligible count in the UI
-                            $('#eligible-count').text(BunnyMigration.formatNumber(response.data.already_optimized));
-                            
-                            // Update all stats displays on the page
-                            $('.bunny-legend-value').each(function() {
-                                var $legendItem = $(this).closest('.bunny-legend-item');
-                                if ($legendItem.find('.bunny-legend-label').text().includes('Not Optimized')) {
-                                    $(this).text(BunnyMigration.formatNumber(response.data.local_eligible) + ' (' + response.data.not_optimized_percent + '%)');
-                                } else if ($legendItem.find('.bunny-legend-label').text().includes('Ready for Migration')) {
-                                    $(this).text(BunnyMigration.formatNumber(response.data.already_optimized) + ' (' + response.data.optimized_percent + '%)');
-                                } else if ($legendItem.find('.bunny-legend-label').text().includes('On CDN')) {
-                                    $(this).text(BunnyMigration.formatNumber(response.data.images_migrated) + ' (' + response.data.cloud_percent + '%)');
-                                }
-                            });
-                            
-                            // Update total images display
-                            $('.bunny-total-number').text(BunnyMigration.formatNumber(response.data.total_images));
-                        }
-                    }
-                }
-            });
+            
         },
         
         /**
