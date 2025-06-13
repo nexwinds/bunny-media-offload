@@ -22,6 +22,8 @@ class Bunny_Stats {
      * Get unified image statistics (authoritative source)
      */
     public function get_unified_image_stats() {
+        error_log('=== Starting get_unified_image_stats ===');
+        
         // Force refresh all stats by skipping cache
         $this->clear_cache();
         
@@ -29,6 +31,7 @@ class Bunny_Stats {
         $cached_stats = wp_cache_get($cache_key, 'bunny_media_offload');
         
         if ($cached_stats !== false) {
+            error_log('Returning cached stats');
             return $cached_stats;
         }
         
@@ -41,6 +44,7 @@ class Bunny_Stats {
                         AND post_status = 'inherit'";
         
         $total_images = (int) $wpdb->get_var($total_query);
+        error_log('Total images: ' . $total_images);
         
         // Get count of images already migrated to CDN
         $cdn_table = $wpdb->prefix . 'bunny_offloaded_files';
@@ -48,53 +52,115 @@ class Bunny_Stats {
                            WHERE is_synced = 1";
         
         $images_migrated = (int) $wpdb->get_var($migrated_query);
-        
-        // Log diagnostic information
-        error_log('Total images: ' . $total_images);
         error_log('Images migrated: ' . $images_migrated);
         
-        // Get count of images that are eligible for optimization
-        // More direct approach - count all images that aren't optimized or on CDN
+        // First, let's get a count of images by format
+        $format_query = "SELECT post_mime_type, COUNT(*) as count 
+                        FROM {$wpdb->posts} 
+                        WHERE post_type = 'attachment' 
+                        AND post_mime_type LIKE 'image/%'
+                        AND post_status = 'inherit'
+                        GROUP BY post_mime_type";
+        $format_counts = $wpdb->get_results($format_query);
+        error_log('Format counts: ' . print_r($format_counts, true));
+        
+        // Get count of images that are eligible for migration (meet criteria)
         $eligible_query = $wpdb->prepare(
             "SELECT COUNT(DISTINCT p.ID) 
              FROM {$wpdb->posts} p
              WHERE p.post_type = 'attachment'
-             AND p.post_mime_type LIKE 'image/%'
+             AND p.post_mime_type IN ('image/jpeg', 'image/png', 'image/webp', 'image/avif', 'image/heic', 'image/tiff')
              AND p.post_status = 'inherit'
-             AND NOT EXISTS (
-                 SELECT 1 FROM {$wpdb->postmeta} pm 
-                 WHERE pm.post_id = p.ID AND pm.meta_key = '_bunny_optimization_data'
-             )
              AND NOT EXISTS (
                  SELECT 1 FROM {$wpdb->prefix}bunny_offloaded_files bf 
                  WHERE bf.attachment_id = p.ID AND bf.is_synced = 1
              )"
         );
         
-        // Get the count of local eligible images directly
-        $local_eligible = (int) $wpdb->get_var($eligible_query);
-        error_log('Local eligible (SQL): ' . $local_eligible);
+        $eligible_for_migration = (int) $wpdb->get_var($eligible_query);
+        error_log('Eligible for migration (before size check): ' . $eligible_for_migration);
         
-        // Make sure local_eligible is at least 1 if there are any images not on CDN
-        if ($total_images > 0 && $images_migrated < $total_images && $local_eligible == 0) {
-            $local_eligible = $total_images - $images_migrated;
-            error_log('Forced local_eligible to: ' . $local_eligible);
-        }
+        // Get count of images that are not eligible for migration
+        $not_eligible_query = $wpdb->prepare(
+            "SELECT COUNT(DISTINCT p.ID) 
+             FROM {$wpdb->posts} p
+             WHERE p.post_type = 'attachment'
+             AND p.post_mime_type LIKE 'image/%'
+             AND p.post_status = 'inherit'
+             AND NOT EXISTS (
+                 SELECT 1 FROM {$wpdb->prefix}bunny_offloaded_files bf 
+                 WHERE bf.attachment_id = p.ID AND bf.is_synced = 1
+             )
+             AND p.post_mime_type NOT IN ('image/jpeg', 'image/png', 'image/webp', 'image/avif', 'image/heic', 'image/tiff')"
+        );
+        
+        $not_eligible = (int) $wpdb->get_var($not_eligible_query);
+        error_log('Not eligible (format only): ' . $not_eligible);
+        
+        // Check file sizes for all supported formats
+        $large_files_query = $wpdb->prepare(
+            "SELECT COUNT(DISTINCT p.ID) 
+             FROM {$wpdb->posts} p
+             JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id
+             WHERE p.post_type = 'attachment'
+             AND p.post_mime_type IN ('image/jpeg', 'image/png', 'image/webp', 'image/avif', 'image/heic', 'image/tiff')
+             AND p.post_status = 'inherit'
+             AND pm.meta_key = '_wp_attachment_metadata'
+             AND pm.meta_value LIKE '%filesize%'
+             AND CAST(SUBSTRING_INDEX(SUBSTRING_INDEX(pm.meta_value, 'filesize\":', -1), ',', 1) AS UNSIGNED) > 9437184"
+        );
+        
+        $large_files = (int) $wpdb->get_var($large_files_query);
+        error_log('Large files (>9MB): ' . $large_files);
+        
+        // Get a breakdown of large files by format
+        $large_files_breakdown_query = $wpdb->prepare(
+            "SELECT p.post_mime_type, COUNT(DISTINCT p.ID) as count
+             FROM {$wpdb->posts} p
+             JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id
+             WHERE p.post_type = 'attachment'
+             AND p.post_mime_type IN ('image/jpeg', 'image/png', 'image/webp', 'image/avif', 'image/heic', 'image/tiff')
+             AND p.post_status = 'inherit'
+             AND pm.meta_key = '_wp_attachment_metadata'
+             AND pm.meta_value LIKE '%filesize%'
+             AND CAST(SUBSTRING_INDEX(SUBSTRING_INDEX(pm.meta_value, 'filesize\":', -1), ',', 1) AS UNSIGNED) > 9437184
+             GROUP BY p.post_mime_type"
+        );
+        
+        $large_files_breakdown = $wpdb->get_results($large_files_breakdown_query);
+        error_log('Large files breakdown by format: ' . print_r($large_files_breakdown, true));
+        
+        // Get detailed info about all images
+        $detailed_query = "SELECT p.ID, p.post_mime_type, 
+                          (SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id = p.ID AND meta_key = '_wp_attachment_metadata' LIMIT 1) as metadata,
+                          (SELECT COUNT(*) FROM {$wpdb->prefix}bunny_offloaded_files WHERE attachment_id = p.ID AND is_synced = 1) as is_migrated
+                          FROM {$wpdb->posts} p
+                          WHERE p.post_type = 'attachment'
+                          AND p.post_mime_type LIKE 'image/%'
+                          AND p.post_status = 'inherit'
+                          LIMIT 10";
+        
+        $detailed_info = $wpdb->get_results($detailed_query);
+        error_log('Detailed info for first 10 images: ' . print_r($detailed_info, true));
         
         // Calculate percentages
-        $not_optimized_percent = $total_images > 0 ? round(($local_eligible / $total_images) * 100, 1) : 0;
-        $optimized_percent = $total_images > 0 ? round((0 / $total_images) * 100, 1) : 0; // No ready for migration
+        $not_optimized_percent = $total_images > 0 ? round(($not_eligible / $total_images) * 100, 1) : 0;
+        $optimized_percent = $total_images > 0 ? round(($eligible_for_migration / $total_images) * 100, 1) : 0;
         $cloud_percent = $total_images > 0 ? round(($images_migrated / $total_images) * 100, 1) : 0;
         
         $stats = array(
             'total_images' => $total_images,
-            'local_eligible' => $local_eligible,
-            'already_optimized' => 0, // Not tracking this separately now
+            'local_eligible' => $eligible_for_migration,
+            'already_optimized' => $eligible_for_migration, // Ready for migration
             'images_migrated' => $images_migrated,
+            'not_optimized' => $not_eligible,
             'not_optimized_percent' => $not_optimized_percent,
             'optimized_percent' => $optimized_percent,
             'cloud_percent' => $cloud_percent
         );
+        
+        error_log('Final stats: ' . print_r($stats, true));
+        error_log('=== Ending get_unified_image_stats ===');
         
         // Cache for a short time (1 minute) to avoid excessive recalculation but allow refresh
         wp_cache_set($cache_key, $stats, 'bunny_media_offload', 60);

@@ -1860,8 +1860,8 @@ class Bunny_Admin {
                             <span class="bunny-stat-indicator" style="background-color: #ef4444;"></span>
                             <span class="bunny-stat-label"><?php esc_html_e('Not Optimized', 'bunny-media-offload'); ?></span>
                             <span class="bunny-stat-value">
-                                <span class="bunny-not-optimized-count"><?php echo esc_html(number_format($stats['local_eligible'])); ?></span>
-                                (<span class="bunny-not-optimized-percent"><?php echo esc_html($stats['not_optimized_percent']); ?></span>%)
+                                <span class="bunny-not-optimized-count"><?php echo esc_html(number_format($stats['not_optimized'])); ?></span>
+                                (<span class="bunny-not-optimized-percent"><?php echo esc_html($stats['not_optimized_percent']); ?></span>)
                             </span>
                         </div>
                         
@@ -1870,7 +1870,7 @@ class Bunny_Admin {
                             <span class="bunny-stat-label"><?php esc_html_e('Ready for Migration', 'bunny-media-offload'); ?></span>
                             <span class="bunny-stat-value">
                                 <span class="bunny-ready-for-migration-count"><?php echo esc_html(number_format($stats['already_optimized'])); ?></span>
-                                (<span class="bunny-ready-for-migration-percent"><?php echo esc_html($stats['optimized_percent']); ?></span>%)
+                                (<span class="bunny-ready-for-migration-percent"><?php echo esc_html($stats['optimized_percent']); ?></span>)
                             </span>
                         </div>
                         
@@ -1879,7 +1879,7 @@ class Bunny_Admin {
                             <span class="bunny-stat-label"><?php esc_html_e('On CDN', 'bunny-media-offload'); ?></span>
                             <span class="bunny-stat-value">
                                 <span class="bunny-on-cdn-count"><?php echo esc_html(number_format($stats['images_migrated'])); ?></span>
-                                (<span class="bunny-on-cdn-percent"><?php echo esc_html($stats['cloud_percent']); ?></span>%)
+                                (<span class="bunny-on-cdn-percent"><?php echo esc_html($stats['cloud_percent']); ?></span>)
                             </span>
                         </div>
                     </div>
