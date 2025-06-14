@@ -482,7 +482,7 @@ class Bunny_Migration {
         
         // Get maximum file size from settings
         $settings = $this->settings->get_all();
-        $max_file_size_kb = isset($settings['max_file_size']) ? (int) $settings['max_file_size'] : 10240; // Default 10MB in KB
+        $max_file_size_kb = isset($settings['max_file_size']) ? (int) $settings['max_file_size'] : 50; // Default to 50 KB
         $max_file_size_bytes = $max_file_size_kb * 1024; // Convert KB to bytes
         
         foreach ($results as $file) {
@@ -513,7 +513,7 @@ class Bunny_Migration {
         
         // Get maximum file size from settings
         $settings = $this->settings->get_all();
-        $max_file_size_kb = isset($settings['max_file_size']) ? (int) $settings['max_file_size'] : 10240; // Default 10MB in KB
+        $max_file_size_kb = isset($settings['max_file_size']) ? (int) $settings['max_file_size'] : 50; // Default to 50 KB
         $max_file_size_bytes = $max_file_size_kb * 1024; // Convert KB to bytes
         
         // Filter by file size
@@ -856,6 +856,10 @@ class Bunny_Migration {
     public function get_migration_stats($detailed = false) {
         global $wpdb;
         
+        // Get settings for the current max file size
+        $settings = $this->settings->get_all();
+        $max_file_size_kb = isset($settings['max_file_size']) ? (int) $settings['max_file_size'] : 50; // Default to 50 KB
+        
         // Use the existing method to get accurate file counts
         $file_types = array('svg', 'avif', 'webp');
         $total_eligible_files = $this->get_files_to_migrate_count($file_types);
@@ -956,12 +960,12 @@ class Bunny_Migration {
         
         // Get maximum file size (KB) from settings
         $settings = $this->settings->get_all();
-        $max_file_size_kb = isset($settings['max_file_size']) ? (int) $settings['max_file_size'] : 10240; // Default 10MB in KB
+        $max_file_size_kb = isset($settings['max_file_size']) ? (int) $settings['max_file_size'] : 50; // Default to 50 KB
         $max_file_size_bytes = $max_file_size_kb * 1024; // Convert KB to bytes
         
-        // Check if file size is within the limit
+        // Check if file size is less than the max file size limit
         $file_size = filesize($local_path);
-        if ($file_size > $max_file_size_bytes) {
+        if ($file_size <= 0 || $file_size >= $max_file_size_bytes) {
             return false;
         }
         

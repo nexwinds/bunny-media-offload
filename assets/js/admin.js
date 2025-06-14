@@ -577,7 +577,7 @@
                             BunnyAdmin.updateDashboardStats();
                             
                             // Refresh optimization stats if on optimization page
-                            if (window.location.href.indexOf('optimization') !== -1 && 
+                            if (window.location.href.indexOf('bunny-media-offload-optimization') !== -1 && 
                                 typeof window.bunnyOptimizationInstance !== 'undefined') {
                                 window.bunnyOptimizationInstance.refreshOptimizationStats();
                             }

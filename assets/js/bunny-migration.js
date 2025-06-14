@@ -139,7 +139,7 @@
             // Start time tracking
             this.state.startTime = new Date();
             
-            // Get images eligible for migration
+            // Get images Ready for Migration
             $.ajax({
                 url: bunnyAjax.ajaxurl,
                 type: 'POST',

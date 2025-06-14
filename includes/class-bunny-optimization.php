@@ -95,17 +95,20 @@ class Bunny_Optimization {
             // Use unified stats for consistency across all plugin pages
             $unified_stats = $bunny_stats->get_unified_image_stats();
             
+            // Get eligible images count from direct query with optimization criteria
+            $eligible_count = $this->get_eligible_images_count();
+            
             $stats = array(
                 'total_images' => $unified_stats['total_images'],
                 'optimized' => $unified_stats['already_optimized'] + $unified_stats['images_migrated'],
-                'not_optimized' => $unified_stats['local_eligible'], // Use local_eligible from unified stats
+                'not_optimized' => $unified_stats['not_optimized'], // Use stats for non-eligible images
                 'in_progress' => $this->get_queue_count('pending') + $this->get_queue_count('processing'),
                 'optimization_percent' => $unified_stats['optimized_percent'] + $unified_stats['cloud_percent'],
-                'eligible_for_optimization' => $unified_stats['local_eligible'], // Use local_eligible from unified stats
+                'eligible_for_optimization' => $eligible_count, // Use the correct count based on size criteria
             );
             
             // Log for debugging
-            error_log('Optimization stats - total: ' . $stats['total_images'] . ', eligible: ' . $stats['eligible_for_optimization']);
+            error_log('Optimization stats - total: ' . $stats['total_images'] . ', eligible: ' . $stats['eligible_for_optimization'] . ', not_optimized: ' . $stats['not_optimized']);
             
             // Get space saved and average reduction data from optimization metadata
             $meta_values = $wpdb->get_col("SELECT meta_value FROM $wpdb->postmeta WHERE meta_key = '_bunny_optimization_data'");
@@ -161,34 +164,9 @@ class Bunny_Optimization {
         $stats['in_progress'] = (int) $wpdb->get_var($in_progress_query);
         
         // Get eligible images directly with a SQL query
-        $eligible_query = "SELECT COUNT(DISTINCT p.ID) 
-                          FROM $wpdb->posts p
-                          WHERE p.post_type = 'attachment'
-                          AND p.post_mime_type LIKE 'image/%'
-                          AND p.post_status = 'inherit'
-                          AND NOT EXISTS (
-                              SELECT 1 FROM $wpdb->postmeta pm 
-                              WHERE pm.post_id = p.ID AND pm.meta_key = '_bunny_optimization_data'
-                          )
-                          AND NOT EXISTS (
-                              SELECT 1 FROM {$wpdb->prefix}bunny_optimization_queue q
-                              WHERE q.attachment_id = p.ID
-                          )
-                          AND NOT EXISTS (
-                              SELECT 1 FROM {$wpdb->prefix}bunny_offloaded_files bf 
-                              WHERE bf.attachment_id = p.ID AND bf.is_synced = 1
-                          )";
-        
-        $stats['eligible_for_optimization'] = (int) $wpdb->get_var($eligible_query);
-        
-        // If we have any total images but no eligible ones found, make sure we show at least 1
-        if ($stats['total_images'] > 0 && $stats['eligible_for_optimization'] == 0 && 
-            $stats['total_images'] > $stats['optimized'] + $stats['in_progress']) {
-            $stats['eligible_for_optimization'] = $stats['total_images'] - $stats['optimized'] - $stats['in_progress'];
-        }
-        
-        // Set not_optimized to match eligible_for_optimization
-        $stats['not_optimized'] = $stats['eligible_for_optimization'];
+        $eligible_count = $this->get_eligible_images_count();
+        $stats['eligible_for_optimization'] = $eligible_count;
+        $stats['not_optimized'] = $eligible_count; // Use the same count
         
         // Calculate optimization percentage
         if ($stats['total_images'] > 0) {
@@ -228,45 +206,75 @@ class Bunny_Optimization {
     public function get_eligible_images_count() {
         global $wpdb;
         
-        // Direct SQL approach - more reliable than checking individual files
-        $eligible_query = "SELECT COUNT(DISTINCT p.ID) 
-                          FROM $wpdb->posts p
-                          WHERE p.post_type = 'attachment'
-                          AND p.post_mime_type LIKE 'image/%'
-                          AND p.post_status = 'inherit'
-                          AND NOT EXISTS (
-                              SELECT 1 FROM $wpdb->postmeta pm 
-                              WHERE pm.post_id = p.ID AND pm.meta_key = '_bunny_optimization_data'
-                          )
-                          AND NOT EXISTS (
-                              SELECT 1 FROM {$wpdb->prefix}bunny_optimization_queue q
-                              WHERE q.attachment_id = p.ID
-                          )
-                          AND NOT EXISTS (
-                              SELECT 1 FROM {$wpdb->prefix}bunny_offloaded_files bf 
-                              WHERE bf.attachment_id = p.ID AND bf.is_synced = 1
-                          )";
+        // Get the max file size from settings
+        $settings = $this->settings->get_all();
+        $max_file_size_kb = isset($settings['max_file_size']) ? (int) $settings['max_file_size'] : 50; // Default to 50 KB
+        $max_file_size_bytes = $max_file_size_kb * 1024;
         
-        $eligible_count = (int) $wpdb->get_var($eligible_query);
+        // Define 9MB in bytes for upper limit
+        $nine_mb_bytes = 9 * 1024 * 1024; // 9MB in bytes
         
-        // If we have no eligible images but we do have total images, ensure we show at least 1
-        if ($eligible_count == 0) {
-            $total_images_query = "SELECT COUNT(ID) FROM $wpdb->posts WHERE post_type = 'attachment' AND post_mime_type LIKE 'image/%'";
-            $total_images = (int) $wpdb->get_var($total_images_query);
-            
-            $optimized_query = "SELECT COUNT(post_id) FROM $wpdb->postmeta WHERE meta_key = '_bunny_optimization_data'";
-            $optimized = (int) $wpdb->get_var($optimized_query);
-            
-            $migrated_query = "SELECT COUNT(*) FROM {$wpdb->prefix}bunny_offloaded_files WHERE is_synced = 1";
-            $migrated = (int) $wpdb->get_var($migrated_query);
-            
-            if ($total_images > 0 && $total_images > ($optimized + $migrated)) {
-                $eligible_count = $total_images - $optimized - $migrated;
+        // Get supported image types
+        $supported_types = array(
+            'image/jpeg', 
+            'image/png', 
+            'image/webp', 
+            'image/avif', 
+            'image/heic', 
+            'image/tiff'
+        );
+        $supported_types_placeholders = implode(',', array_fill(0, count($supported_types), '%s'));
+        
+        // Find all potential eligible images (not yet optimized, not in queue, not On Bunny SSD)
+        $query_args = $supported_types;
+        $eligible_query = $wpdb->prepare(
+            "SELECT p.ID, pm.meta_value as file_path
+             FROM $wpdb->posts p
+             LEFT JOIN $wpdb->postmeta pm ON p.ID = pm.post_id AND pm.meta_key = '_wp_attached_file'
+             WHERE p.post_type = 'attachment'
+             AND p.post_mime_type IN ($supported_types_placeholders)
+             AND p.post_status = 'inherit'
+             AND NOT EXISTS (
+                 SELECT 1 FROM $wpdb->postmeta pm2 
+                 WHERE pm2.post_id = p.ID AND pm2.meta_key = '_bunny_optimization_data'
+             )
+             AND NOT EXISTS (
+                 SELECT 1 FROM {$wpdb->prefix}bunny_optimization_queue q
+                 WHERE q.attachment_id = p.ID
+             )
+             AND NOT EXISTS (
+                 SELECT 1 FROM {$wpdb->prefix}bunny_offloaded_files bf 
+                 WHERE bf.attachment_id = p.ID AND bf.is_synced = 1
+             )",
+            $query_args
+        );
+        
+        $potential_images = $wpdb->get_results($eligible_query);
+        
+        // Count images that meet the file size criteria
+        $eligible_count = 0;
+        $upload_dir = wp_upload_dir();
+        $base_dir = $upload_dir['basedir'];
+        
+        foreach ($potential_images as $image) {
+            if (!empty($image->file_path)) {
+                $file_path = $base_dir . '/' . $image->file_path;
+                if (file_exists($file_path)) {
+                    try {
+                        $file_size = filesize($file_path);
+                        if ($file_size > 0 && $file_size > $max_file_size_bytes && $file_size <= $nine_mb_bytes) {
+                            $eligible_count++;
+                        }
+                    } catch (Exception $e) {
+                        // Skip if file can't be read
+                        continue;
+                    }
+                }
             }
         }
         
         // Log for debugging
-        error_log('get_eligible_images_count: ' . $eligible_count);
+        error_log('get_eligible_images_count: ' . $eligible_count . ' out of ' . count($potential_images) . ' potential images');
         
         return $eligible_count;
     }
@@ -274,25 +282,24 @@ class Bunny_Optimization {
     /**
      * Check if a file is eligible for optimization
      */
-    public function is_eligible_for_optimization($file_path, $file_size, $mime_type, $threshold_bytes, $max_file_size_bytes) {
+    public function is_eligible_for_optimization($file_path, $file_size, $mime_type, $max_file_size_bytes) {
         // Check file existence
         if (!file_exists($file_path)) {
             return false;
         }
         
         // Check if it's a supported file type
-        $supported_types = array('image/jpeg', 'image/png', 'image/webp', 'image/avif', 'image/svg+xml', 'image/heic', 'image/tiff');
+        $supported_types = array('image/jpeg', 'image/png', 'image/webp', 'image/avif', 'image/heic', 'image/tiff');
         if (!in_array($mime_type, $supported_types)) {
             return false;
         }
         
-        // Check if file size is within the allowed range
-        if ($file_size < 35 * 1024) { // 35KB minimum (API will bypass)
-            return false;
-        }
+        // Define 9MB in bytes
+        $nine_mb_bytes = 9 * 1024 * 1024; // 9MB in bytes
         
-        $max_allowed_size_bytes = 9 * 1024 * 1024; // 9MB maximum allowed size
-        if ($file_size > $max_allowed_size_bytes) {
+        // Check if file size is within the allowed range
+        // Must be greater than max_file_size_bytes and not greater than 9MB
+        if ($file_size <= 0 || $file_size <= $max_file_size_bytes || $file_size > $nine_mb_bytes) {
             return false;
         }
         
@@ -306,11 +313,30 @@ class Bunny_Optimization {
     public function get_images_for_optimization($limit = 100) {
         global $wpdb;
         
+        // Get max file size from settings
+        $settings = $this->settings->get_all();
+        $max_file_size_kb = isset($settings['max_file_size']) ? (int) $settings['max_file_size'] : 50; // Default to 50 KB
+        $max_file_size_bytes = $max_file_size_kb * 1024;
+        
+        // Get supported image types
+        $supported_types = array(
+            'image/jpeg', 
+            'image/png', 
+            'image/webp', 
+            'image/avif', 
+            'image/heic', 
+            'image/tiff'
+        );
+        $supported_types_placeholders = implode(',', array_fill(0, count($supported_types), '%s'));
+        
+        // Prepare arguments for the query
+        $query_args = array_merge($supported_types, array($limit * 2));
+        
         // Get all non-optimized, non-queued, non-CDN images
         $attachments_query = $wpdb->prepare(
             "SELECT p.ID, p.post_mime_type FROM $wpdb->posts p
             WHERE p.post_type = 'attachment'
-            AND p.post_mime_type LIKE 'image/%'
+            AND p.post_mime_type IN ($supported_types_placeholders)
             AND p.post_status = 'inherit'
             AND NOT EXISTS (
                 SELECT 1 FROM $wpdb->postmeta pm 
@@ -325,7 +351,7 @@ class Bunny_Optimization {
                 WHERE bf.attachment_id = p.ID AND bf.is_synced = 1
             )
             LIMIT %d",
-            $limit * 2 // Get more than needed to filter by size criteria
+            $query_args
         );
         
         $attachments = $wpdb->get_results($attachments_query);
@@ -333,10 +359,6 @@ class Bunny_Optimization {
         
         // Log count of attachments found
         error_log('Found ' . count($attachments) . ' potential images for optimization');
-        
-        // Minimum and maximum size settings
-        $min_size_bytes = 35 * 1024; // 35KB minimum size
-        $max_allowed_size_bytes = 9 * 1024 * 1024; // 9MB maximum allowed size
         
         // Process each attachment
         foreach ($attachments as $attachment) {
@@ -355,13 +377,8 @@ class Bunny_Optimization {
                 $file_size = filesize($file_path);
                 $mime_type = $attachment->post_mime_type;
                 
-                // Skip small files
-                if ($file_size < $min_size_bytes) {
-                    continue;
-                }
-                
-                // Skip extremely large files
-                if ($file_size > $max_allowed_size_bytes) {
+                // Check eligibility based on new criteria
+                if (!$this->is_eligible_for_optimization($file_path, $file_size, $mime_type, $max_file_size_bytes)) {
                     continue;
                 }
                 
@@ -382,32 +399,6 @@ class Bunny_Optimization {
             } catch (Exception $e) {
                 error_log('Error processing file ' . $file_path . ': ' . $e->getMessage());
                 continue;
-            }
-        }
-        
-        // If no eligible images found but we should have some, add a default one
-        if (empty($eligible_attachments) && !empty($attachments)) {
-            // Try one more time with the first attachment, ignoring size constraints
-            $first_attachment = $attachments[0];
-            $file_path = get_attached_file($first_attachment->ID);
-            
-            if ($file_path && file_exists($file_path)) {
-                try {
-                    $file_data = file_get_contents($file_path);
-                    if ($file_data) {
-                        $eligible_attachments[] = array(
-                            'id' => $first_attachment->ID,
-                            'attachment_id' => $first_attachment->ID,
-                            'imageData' => base64_encode($file_data),
-                            'mimeType' => $first_attachment->post_mime_type,
-                            'file_path' => $file_path,
-                            'file_size' => filesize($file_path)
-                        );
-                        error_log('Added fallback image for optimization: ' . $file_path);
-                    }
-                } catch (Exception $e) {
-                    error_log('Error adding fallback image: ' . $e->getMessage());
-                }
             }
         }
         
@@ -559,7 +550,7 @@ class Bunny_Optimization {
         // Get API settings
         $api_key = isset($settings['bmo_api_key']) ? $settings['bmo_api_key'] : '';
         $api_region = isset($settings['bmo_api_region']) ? $settings['bmo_api_region'] : 'us';
-        $max_file_size_kb = isset($settings['max_file_size']) ? (int) $settings['max_file_size'] : 10240; // Default 10MB in KB
+        $max_file_size_kb = isset($settings['max_file_size']) ? (int) $settings['max_file_size'] : 50; // Default to 50 KB
         
         if (empty($api_key)) {
             $this->logger->log('error', 'BMO API key is not set');

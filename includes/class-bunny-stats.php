@@ -65,42 +65,59 @@ class Bunny_Stats {
         
         // Get maximum file size from settings
         $settings = $this->settings->get_all();
-        $max_file_size_kb = isset($settings['max_file_size']) ? (int) $settings['max_file_size'] : 10240; // Default 10MB in KB
+        $max_file_size_kb = isset($settings['max_file_size']) ? (int) $settings['max_file_size'] : 50; // Default to 50 KB
         $max_file_size_bytes = $max_file_size_kb * 1024; // Convert KB to bytes
         
-        // Filter by actual file size
-        $eligible_for_migration = 0;
+        // Define 9MB in bytes for upper limit
+        $nine_mb_bytes = 9 * 1024 * 1024; // 9MB in bytes
+        
+        // Filter by actual file size - matching the Optimization class criteria
+        $eligible_for_optimization = 0;
+        $ready_for_migration = 0;
         $upload_dir = wp_upload_dir();
         $base_dir = $upload_dir['basedir'];
         
         foreach ($potential_eligible as $file) {
             if (!empty($file->file_path)) {
                 $file_path = $base_dir . '/' . $file->file_path;
-                if (file_exists($file_path) && filesize($file_path) <= $max_file_size_bytes) {
-                    $eligible_for_migration++;
+                if (file_exists($file_path)) {
+                    $file_size = filesize($file_path);
+                    
+                    // Eligible for optimization: > max_file_size_bytes but <= 9MB
+                    if ($file_size > $max_file_size_bytes && $file_size <= $nine_mb_bytes) {
+                        $eligible_for_optimization++;
+                    }
+                    
+                    // Ready for migration: <= max_file_size_bytes
+                    if ($file_size > 0 && $file_size <= $max_file_size_bytes) {
+                        $ready_for_migration++;
+                    }
                 }
             }
         }
         
-        error_log('Eligible for migration after size check: ' . $eligible_for_migration);
+        error_log('Eligible for optimization after size check: ' . $eligible_for_optimization);
+        error_log('Ready for migration after size check: ' . $ready_for_migration);
         
-        // Get count of images that are not eligible (either wrong format or too large)
-        $not_eligible = $total_images - $eligible_for_migration - $images_migrated;
+        // Get count of images that are NOT eligible for optimization or migration (wrong format or too large)
+        $not_eligible = $total_images - $eligible_for_optimization - $ready_for_migration - $images_migrated;
         error_log('Not eligible (format or size): ' . $not_eligible);
         
         // Calculate percentages
         $not_eligible_percent = $total_images > 0 ? round(($not_eligible / $total_images) * 100, 1) : 0;
-        $optimized_percent = $total_images > 0 ? round(($eligible_for_migration / $total_images) * 100, 1) : 0;
+        $optimized_percent = $total_images > 0 ? round(($eligible_for_optimization / $total_images) * 100, 1) : 0;
+        $migration_percent = $total_images > 0 ? round(($ready_for_migration / $total_images) * 100, 1) : 0;
         $cloud_percent = $total_images > 0 ? round(($images_migrated / $total_images) * 100, 1) : 0;
         
         $stats = array(
             'total_images' => $total_images,
-            'local_eligible' => $eligible_for_migration,
-            'already_optimized' => $eligible_for_migration, // Ready for migration
-            'images_migrated' => $images_migrated, //
-            'not_optimized' => $not_eligible,//
+            'local_eligible' => $eligible_for_optimization,
+            'already_optimized' => $ready_for_migration, // Ready for migration
+            'images_migrated' => $images_migrated, 
+            'not_optimized' => $not_eligible, // These are NOT eligible for optimization
             'not_optimized_percent' => $not_eligible_percent,
             'optimized_percent' => $optimized_percent,
+            'migration_percent' => $migration_percent,
             'cloud_percent' => $cloud_percent
         );
         
@@ -119,7 +136,7 @@ class Bunny_Stats {
         $allowed_mime_types = array('image/jpeg', 'image/png', 'image/gif');
         $mime_type_placeholders = implode(',', array_fill(0, count($allowed_mime_types), '%s'));
         
-        // Get count of local images that are eligible for migration
+        // Get count of local images that are Ready for Migration
         $query = $wpdb->prepare(
             "SELECT COUNT(*) FROM {$wpdb->posts} 
             WHERE post_type = 'attachment' 
@@ -132,7 +149,7 @@ class Bunny_Stats {
     }
     
     /**
-     * Count images on CDN by checking their URLs
+     * Count images On Bunny SSD by checking their URLs
      */
     private function count_cdn_images_by_url() {
         $cache_key = 'bunny_cdn_images_count';
