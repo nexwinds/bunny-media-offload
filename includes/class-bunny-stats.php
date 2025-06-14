@@ -107,24 +107,26 @@ class Bunny_Stats {
         error_log('Eligible for optimization after size check: ' . $eligible_for_optimization);
         error_log('Ready for migration after size check: ' . $ready_for_migration);
         
-        // Get count of images that are NOT eligible for optimization or migration (wrong format or too large)
-        $not_eligible = $total_images - $eligible_for_optimization - $ready_for_migration - $images_migrated;
-        error_log('Not eligible (format or size): ' . $not_eligible);
-        
-        // Calculate percentages
-        $not_eligible_percent = $total_images > 0 ? round(($not_eligible / $total_images) * 100, 1) : 0;
-        $optimized_percent = $total_images > 0 ? round(($eligible_for_optimization / $total_images) * 100, 1) : 0;
+        // Calculate percentages correctly based on the total images count
+        $eligible_percent = $total_images > 0 ? round(($eligible_for_optimization / $total_images) * 100, 1) : 0;
         $migration_percent = $total_images > 0 ? round(($ready_for_migration / $total_images) * 100, 1) : 0;
         $cloud_percent = $total_images > 0 ? round(($images_migrated / $total_images) * 100, 1) : 0;
+        
+        // Calculate "not eligible" as images that don't fit into any of the other categories
+        $not_eligible = $total_images - $eligible_for_optimization - $ready_for_migration - $images_migrated;
+        $not_eligible_percent = $total_images > 0 ? round(($not_eligible / $total_images) * 100, 1) : 0;
+        
+        error_log('Not eligible (format or size): ' . $not_eligible);
+        error_log('Percentages - Not eligible: ' . $not_eligible_percent . '%, Eligible: ' . $eligible_percent . '%, Migration: ' . $migration_percent . '%, Cloud: ' . $cloud_percent . '%');
         
         $stats = array(
             'total_images' => $total_images,
             'local_eligible' => $eligible_for_optimization,
-            'already_optimized' => $ready_for_migration, // Ready for migration
+            'already_optimized' => $ready_for_migration, // Ready for migration count
             'images_migrated' => $images_migrated, 
             'not_optimized' => $not_eligible, // These are NOT eligible for optimization
             'not_optimized_percent' => $not_eligible_percent,
-            'optimized_percent' => $optimized_percent,
+            'optimized_percent' => $eligible_percent, // Renamed from 'optimized_percent' to make it clearer
             'migration_percent' => $migration_percent,
             'cloud_percent' => $cloud_percent
         );
