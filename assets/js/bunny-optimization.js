@@ -142,7 +142,22 @@
                     }
                 })
                 .catch(function(error) {
-                    self.handleError('Failed to start optimization: ' + error);
+                    // Better error handling
+                    var errorMessage = 'Failed to start optimization';
+                    
+                    if (error) {
+                        errorMessage += ': ' + error;
+                        
+                        // Provide specific guidance for common issues
+                        if (error.indexOf('API key') !== -1) {
+                            self.addLogEntry('info', 'Please check your Bunny Optimizer API key in the settings');
+                        } else if (error.indexOf('too small') !== -1 || error.indexOf('too large') !== -1) {
+                            self.addLogEntry('info', 'Try adjusting the minimum file size threshold in the optimization settings');
+                        }
+                    }
+                    
+                    self.handleError(errorMessage);
+                    self.ui.batchStatus.text('Optimization failed - see log for details');
                 });
         },
         
@@ -586,7 +601,25 @@
                         if (response.success) {
                             resolve(response.data);
                         } else {
-                            reject(response.data || 'Unknown error');
+                            // Show more detailed error message
+                            var errorMsg = response.data || 'Unknown error';
+                            self.addLogEntry('warning', errorMsg);
+                            
+                            // If the error is about no eligible images, provide more guidance
+                            if (errorMsg.indexOf('No eligible images found') !== -1) {
+                                self.addLogEntry('info', 'To be eligible for optimization, images must be:');
+                                self.addLogEntry('info', '1. Not already optimized');
+                                self.addLogEntry('info', '2. Not already in the optimization queue');
+                                self.addLogEntry('info', '3. Not stored on Bunny SSD (CDN)');
+                                self.addLogEntry('info', '4. Larger than the minimum size threshold in settings');
+                                self.addLogEntry('info', '5. Not larger than 9MB');
+                                
+                                // Check settings
+                                var settingsLink = '<a href="admin.php?page=bunny-media-offload&tab=optimization" class="bunny-link">Check settings</a>';
+                                self.ui.batchStatus.html('Check eligibility criteria &mdash; ' + settingsLink);
+                            }
+                            
+                            reject(errorMsg);
                         }
                     },
                     error: function(xhr, status, error) {
@@ -661,6 +694,17 @@
             html += '<h4>Queue Status</h4>';
             html += '<ul class="bunny-diagnostics-list">';
             html += '<li>Eligible Images: ' + data.eligible_images + '</li>';
+            
+            // Add more detailed information if no eligible images found
+            if (data.eligible_images === 0) {
+                html += '<li class="warning"><strong>No eligible images found</strong>. Possible reasons:</li>';
+                html += '<li>&#8226; All images are already optimized</li>';
+                html += '<li>&#8226; Images are too small (check min size threshold)</li>';
+                html += '<li>&#8226; Images are too large (>9MB)</li>';
+                html += '<li>&#8226; Images are already in the optimization queue</li>';
+                html += '<li>&#8226; Images are stored on Bunny SSD (CDN)</li>';
+            }
+            
             html += '<li>Pending in Queue: ' + data.pending_in_queue + '</li>';
             html += '<li>Failed in Queue: ' + data.failed_in_queue + '</li>';
             html += '</ul>';
@@ -687,8 +731,20 @@
                 html += '</div>';
             }
             
+            // Add a Run Diagnostics button
+            html += '<div class="bunny-diagnostics-section">';
+            html += '<a href="#" class="bunny-diagnostic-button button button-primary">Run Diagnostics Again</a>';
+            html += '</div>';
+            
             // Display results
             this.ui.diagnosticsResults.html(html);
+            
+            // Re-bind the diagnostic button
+            var self = this;
+            $('.bunny-diagnostic-button').on('click', function(e) {
+                e.preventDefault();
+                self.runDiagnostics();
+            });
         }
     };
     

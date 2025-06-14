@@ -23,6 +23,7 @@ class Bunny_Media_Offload {
     public $cli;
     public $wpml;
     public $optimizer;
+    public $criteria;
     
     /**
      * Get singleton instance
@@ -51,6 +52,7 @@ class Bunny_Media_Offload {
         require_once BMO_PLUGIN_DIR . 'includes/class-bunny-logger.php';
         require_once BMO_PLUGIN_DIR . 'includes/class-bunny-settings.php';
         require_once BMO_PLUGIN_DIR . 'includes/class-bunny-api.php';
+        require_once BMO_PLUGIN_DIR . 'includes/class-bunny-media-criteria.php';
         
         require_once BMO_PLUGIN_DIR . 'includes/class-bunny-uploader.php';
         require_once BMO_PLUGIN_DIR . 'includes/class-bunny-migration.php';
@@ -75,11 +77,12 @@ class Bunny_Media_Offload {
     private function init_components() {
         $this->logger = new Bunny_Logger();
         $this->settings = new Bunny_Settings();
+        $this->criteria = new Bunny_Media_Criteria($this->settings);
         $this->api = new Bunny_API($this->settings, $this->logger);
         $this->uploader = new Bunny_Uploader($this->api, $this->settings, $this->logger);
-        $this->migration = new Bunny_Migration($this->api, $this->settings, $this->logger);
-        $this->optimizer = new Bunny_Optimization($this->api, $this->settings, $this->logger);
-        $this->stats = new Bunny_Stats($this->api, $this->settings, $this->migration);
+        $this->migration = new Bunny_Migration($this->api, $this->settings, $this->logger, $this->criteria);
+        $this->optimizer = new Bunny_Optimization($this->api, $this->settings, $this->logger, $this->criteria);
+        $this->stats = new Bunny_Stats($this->api, $this->settings, $this->migration, $this->criteria);
         $this->wpml = new Bunny_WPML($this->settings, $this->logger);
         $this->admin = new Bunny_Admin($this->settings, $this->stats, $this->migration, $this->logger, $this->optimizer, $this->wpml);
     }

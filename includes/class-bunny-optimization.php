@@ -22,12 +22,18 @@ class Bunny_Optimization {
     private $api;
     
     /**
+     * Criteria instance
+     */
+    private $criteria;
+    
+    /**
      * Constructor
      */
-    public function __construct($api, $settings, $logger) {
+    public function __construct($api, $settings, $logger, $criteria = null) {
         $this->api = $api;
         $this->settings = $settings;
         $this->logger = $logger;
+        $this->criteria = $criteria;
         
         $this->init_hooks();
     }
@@ -206,23 +212,28 @@ class Bunny_Optimization {
     public function get_eligible_images_count() {
         global $wpdb;
         
-        // Get the max file size from settings
-        $settings = $this->settings->get_all();
-        $max_file_size_kb = isset($settings['max_file_size']) ? (int) $settings['max_file_size'] : 50; // Default to 50 KB
-        $max_file_size_bytes = $max_file_size_kb * 1024;
+        // If criteria class is available, use it for consistency
+        if ($this->criteria) {
+            $max_file_size_bytes = $this->criteria->get_max_file_size_bytes();
+            $nine_mb_bytes = $this->criteria->get_nine_mb_bytes();
+            $supported_types = $this->criteria->get_optimization_supported_mime_types();
+        } else {
+            // Fallback to direct calculations
+            $settings = $this->settings->get_all();
+            $max_file_size_kb = isset($settings['max_file_size']) ? (int) $settings['max_file_size'] : 50;
+            $max_file_size_bytes = $max_file_size_kb * 1024;
+            $nine_mb_bytes = 9 * 1024 * 1024;
+            
+            $supported_types = array(
+                'image/jpeg', 
+                'image/png', 
+                'image/webp', 
+                'image/avif', 
+                'image/heic', 
+                'image/tiff'
+            );
+        }
         
-        // Define 9MB in bytes for upper limit
-        $nine_mb_bytes = 9 * 1024 * 1024; // 9MB in bytes
-        
-        // Get supported image types
-        $supported_types = array(
-            'image/jpeg', 
-            'image/png', 
-            'image/webp', 
-            'image/avif', 
-            'image/heic', 
-            'image/tiff'
-        );
         $supported_types_placeholders = implode(',', array_fill(0, count($supported_types), '%s'));
         
         // Find all potential eligible images (not yet optimized, not in queue, not On Bunny SSD)
@@ -251,6 +262,8 @@ class Bunny_Optimization {
         
         $potential_images = $wpdb->get_results($eligible_query);
         
+        error_log('Optimization query found ' . count($potential_images) . ' potential images for optimization');
+        
         // Count images that meet the file size criteria
         $eligible_count = 0;
         $upload_dir = wp_upload_dir();
@@ -261,28 +274,44 @@ class Bunny_Optimization {
                 $file_path = $base_dir . '/' . $image->file_path;
                 if (file_exists($file_path)) {
                     try {
-                        $file_size = filesize($file_path);
-                        if ($file_size > 0 && $file_size > $max_file_size_bytes && $file_size <= $nine_mb_bytes) {
-                            $eligible_count++;
+                        if ($this->criteria) {
+                            // Use the unified criteria class
+                            if ($this->criteria->is_eligible_for_optimization($file_path)) {
+                                $eligible_count++;
+                                error_log("Eligible image ID {$image->ID}: {$file_path}");
+                            }
+                        } else {
+                            // Fallback to direct check
+                            $file_size = filesize($file_path);
+                            if ($file_size > 0) {
+                                if ($file_size > $max_file_size_bytes && $file_size <= $nine_mb_bytes) {
+                                    $eligible_count++;
+                                    error_log("Eligible image ID {$image->ID}: {$file_path} (size: {$file_size} bytes)");
+                                }
+                            }
                         }
                     } catch (Exception $e) {
-                        // Skip if file can't be read
-                        continue;
+                        error_log("Error checking file size for ID {$image->ID}: {$file_path} - " . $e->getMessage());
                     }
                 }
             }
         }
         
-        // Log for debugging
-        error_log('get_eligible_images_count: ' . $eligible_count . ' out of ' . count($potential_images) . ' potential images');
-        
+        error_log('Total eligible images for optimization: ' . $eligible_count);
         return $eligible_count;
     }
     
     /**
-     * Check if a file is eligible for optimization
+     * Check if an image is eligible for optimization
+     * This method is kept for backward compatibility but now uses the criteria class
      */
-    public function is_eligible_for_optimization($file_path, $file_size, $mime_type, $max_file_size_bytes) {
+    public function is_eligible_for_optimization($file_path, $file_size, $mime_type, $max_file_size_bytes = null) {
+        // Use criteria class if available
+        if ($this->criteria) {
+            return $this->criteria->is_eligible_for_optimization($file_path, $file_size, $mime_type);
+        }
+        
+        // Fallback to original implementation
         // Check file existence
         if (!file_exists($file_path)) {
             return false;
@@ -294,16 +323,25 @@ class Bunny_Optimization {
             return false;
         }
         
+        // Get max file size if not provided
+        if ($max_file_size_bytes === null) {
+            $settings = $this->settings->get_all();
+            $max_file_size_kb = isset($settings['max_file_size']) ? (int) $settings['max_file_size'] : 50; // Default to 50 KB
+            $max_file_size_bytes = $max_file_size_kb * 1024;
+        }
+        
         // Define 9MB in bytes
         $nine_mb_bytes = 9 * 1024 * 1024; // 9MB in bytes
         
         // Check if file size is within the allowed range
-        // Must be greater than max_file_size_bytes and not greater than 9MB
+        // Files should be optimized if they are larger than min threshold (max_file_size_bytes) and smaller than max threshold (9MB)
         if ($file_size <= 0 || $file_size <= $max_file_size_bytes || $file_size > $nine_mb_bytes) {
+            error_log('File not eligible: ' . $file_path . ' (size: ' . $file_size . ' bytes, min: ' . $max_file_size_bytes . ' bytes, max: ' . $nine_mb_bytes . ' bytes)');
             return false;
         }
         
         // All files meeting the criteria above are eligible
+        error_log('File eligible for optimization: ' . $file_path . ' (size: ' . $file_size . ' bytes)');
         return true;
     }
     
@@ -546,18 +584,23 @@ class Bunny_Optimization {
      */
     private function optimize_images($batch) {
         $settings = $this->settings->get_all();
-        
-        // Get API settings
         $api_key = isset($settings['bmo_api_key']) ? $settings['bmo_api_key'] : '';
         $api_region = isset($settings['bmo_api_region']) ? $settings['bmo_api_region'] : 'us';
-        $max_file_size_kb = isset($settings['max_file_size']) ? (int) $settings['max_file_size'] : 50; // Default to 50 KB
+        
+        // Direct check for the constant if settings didn't find it
+        if (empty($api_key) && defined('BMO_API_KEY')) {
+            $api_key = constant('BMO_API_KEY');
+            $this->logger->log('debug', 'Retrieved BMO_API_KEY directly from constant: ' . substr($api_key, 0, 10) . '...');
+        }
         
         if (empty($api_key)) {
             $this->logger->log('error', 'BMO API key is not set');
             return array(
                 'success' => false,
                 'message' => 'BMO API key is not set',
-                'results' => array()
+                'optimized' => 0,
+                'failed' => count($batch),
+                'errors' => array('BMO API key is not configured')
             );
         }
         
@@ -604,7 +647,9 @@ class Bunny_Optimization {
             return array(
                 'success' => false,
                 'message' => 'API error: ' . $error_message,
-                'results' => array()
+                'optimized' => 0,
+                'failed' => count($batch),
+                'errors' => array($error_message)
             );
         }
         
@@ -624,7 +669,9 @@ class Bunny_Optimization {
             return array(
                 'success' => false,
                 'message' => 'API error: ' . $error_message,
-                'results' => array()
+                'optimized' => 0,
+                'failed' => count($batch),
+                'errors' => array($error_message)
             );
         }
         
@@ -871,11 +918,35 @@ class Bunny_Optimization {
             wp_send_json_error('Permission denied');
         }
         
+        // Log settings
+        $settings = $this->settings->get_all();
+        $max_file_size_kb = isset($settings['max_file_size']) ? (int) $settings['max_file_size'] : 50;
+        error_log("Starting optimization with settings: max_file_size = {$max_file_size_kb}KB");
+        
         // Get eligible images
         $eligible_images = $this->get_images_for_optimization(100);
         
+        // Get eligible count from count function for comparison
+        $eligible_count = $this->get_eligible_images_count();
+        error_log("Eligible count from counter: {$eligible_count}, Images returned from getter: " . count($eligible_images));
+        
         if (empty($eligible_images)) {
-            wp_send_json_error('No eligible images found for optimization');
+            // Add more detailed error message
+            $error_message = 'No eligible images found for optimization';
+            
+            // Check for potential causes
+            $total_images_query = "SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_type = 'attachment' AND post_mime_type LIKE 'image/%'";
+            global $wpdb;
+            $total_images = $wpdb->get_var($total_images_query);
+            
+            if ($total_images == 0) {
+                $error_message .= ' - No images found in the media library';
+            } elseif ($eligible_count == 0) {
+                $error_message .= " - All images are either already optimized, too small (≤{$max_file_size_kb}KB), or too large (>9MB)";
+            }
+            
+            error_log("Optimization error: " . $error_message);
+            wp_send_json_error($error_message);
         }
         
         // Add to queue
@@ -1085,6 +1156,17 @@ class Bunny_Optimization {
      * Test the BMO API connection
      */
     public function test_connection() {
+        // Debug the API key detection
+        $this->logger->log('debug', 'BMO_API_KEY defined directly: ' . (defined('BMO_API_KEY') ? 'Yes' : 'No'));
+        if (defined('BMO_API_KEY')) {
+            $this->logger->log('debug', 'Direct BMO_API_KEY value: ' . substr(constant('BMO_API_KEY'), 0, 10) . '...');
+        }
+        
+        // Check settings detection
+        $settings = $this->settings->get_all();
+        $api_key = isset($settings['bmo_api_key']) ? $settings['bmo_api_key'] : '';
+        $this->logger->log('debug', 'Settings bmo_api_key: ' . (empty($api_key) ? 'Empty' : substr($api_key, 0, 10) . '...'));
+        
         // Get API credentials
         $settings = $this->settings->get_all();
         $api_key = isset($settings['bmo_api_key']) ? $settings['bmo_api_key'] : '';

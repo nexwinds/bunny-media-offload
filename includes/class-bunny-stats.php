@@ -7,46 +7,45 @@ class Bunny_Stats {
     private $api;
     private $settings;
     private $migration;
-    private $cache_duration = 300; // 5 minutes standard cache
+    private $criteria;
+    private $stats_cache;
+    private $cache_expiration = 300; // 5 minutes
     
     /**
      * Constructor
      */
-    public function __construct($api, $settings, $migration = null) {
+    public function __construct($api, $settings, $migration, $criteria = null) {
         $this->api = $api;
         $this->settings = $settings;
         $this->migration = $migration;
+        $this->criteria = $criteria;
+        $this->stats_cache = array();
     }
     
     /**
-     * Get unified image statistics (authoritative source)
+     * Get unified image stats
      */
     public function get_unified_image_stats() {
         error_log('=== Starting get_unified_image_stats ===');
         
-        // Force refresh all stats by skipping cache
-        $this->clear_cache();
+        if (isset($this->stats_cache['unified_image_stats']) && time() < $this->stats_cache['unified_image_stats']['expires']) {
+            error_log('Returning cached stats');
+            return $this->stats_cache['unified_image_stats']['data'];
+        }
         
         global $wpdb;
         
-        // Get total image count first
-        $total_query = "SELECT COUNT(*) FROM {$wpdb->posts} 
-                        WHERE post_type = 'attachment' 
-                        AND post_mime_type LIKE 'image/%'
-                        AND post_status = 'inherit'";
-        
+        // Get total images in media library
+        $total_query = "SELECT COUNT(ID) FROM {$wpdb->posts} WHERE post_type = 'attachment' AND post_mime_type LIKE 'image/%'";
         $total_images = (int) $wpdb->get_var($total_query);
-        error_log('Total images: ' . $total_images);
+        error_log('Total images in media library: ' . $total_images);
         
-        // Get count of images already migrated to CDN
-        $cdn_table = $wpdb->prefix . 'bunny_offloaded_files';
-        $migrated_query = "SELECT COUNT(*) FROM {$cdn_table} 
-                           WHERE is_synced = 1";
-        
+        // Get images migrated to Bunny Storage
+        $migrated_query = "SELECT COUNT(DISTINCT attachment_id) FROM {$wpdb->prefix}bunny_offloaded_files WHERE is_synced = 1";
         $images_migrated = (int) $wpdb->get_var($migrated_query);
-        error_log('Images migrated: ' . $images_migrated);
+        error_log('Images migrated to Bunny: ' . $images_migrated);
         
-        // Get all potential eligible images first
+        // Get potential eligible images for optimization
         $potential_eligible_query = $wpdb->prepare(
             "SELECT p.ID, p.post_mime_type, pm.meta_value as file_path
              FROM {$wpdb->posts} p
@@ -63,13 +62,8 @@ class Bunny_Stats {
         $potential_eligible = $wpdb->get_results($potential_eligible_query);
         error_log('Found ' . count($potential_eligible) . ' potential eligible images');
         
-        // Get maximum file size from settings
-        $settings = $this->settings->get_all();
-        $max_file_size_kb = isset($settings['max_file_size']) ? (int) $settings['max_file_size'] : 50; // Default to 50 KB
-        $max_file_size_bytes = $max_file_size_kb * 1024; // Convert KB to bytes
-        
-        // Define 9MB in bytes for upper limit
-        $nine_mb_bytes = 9 * 1024 * 1024; // 9MB in bytes
+        $max_file_size_bytes = $this->criteria ? $this->criteria->get_max_file_size_bytes() : 50 * 1024;
+        $nine_mb_bytes = $this->criteria ? $this->criteria->get_nine_mb_bytes() : 9 * 1024 * 1024;
         
         // Filter by actual file size - matching the Optimization class criteria
         $eligible_for_optimization = 0;
@@ -80,17 +74,31 @@ class Bunny_Stats {
         foreach ($potential_eligible as $file) {
             if (!empty($file->file_path)) {
                 $file_path = $base_dir . '/' . $file->file_path;
+                
                 if (file_exists($file_path)) {
                     $file_size = filesize($file_path);
+                    $mime_type = $file->post_mime_type;
                     
-                    // Eligible for optimization: > max_file_size_bytes but <= 9MB
-                    if ($file_size > $max_file_size_bytes && $file_size <= $nine_mb_bytes) {
-                        $eligible_for_optimization++;
-                    }
-                    
-                    // Ready for migration: <= max_file_size_bytes
-                    if ($file_size > 0 && $file_size <= $max_file_size_bytes) {
-                        $ready_for_migration++;
+                    // Use criteria class if available
+                    if ($this->criteria) {
+                        if ($this->criteria->is_eligible_for_optimization($file_path, $file_size, $mime_type)) {
+                            $eligible_for_optimization++;
+                        }
+                        
+                        if ($this->criteria->is_ready_for_migration($file_path, $file_size, $mime_type)) {
+                            $ready_for_migration++;
+                        }
+                    } else {
+                        // Fallback to original logic
+                        // Eligible for optimization: > max_file_size_bytes but <= 9MB
+                        if ($file_size > $max_file_size_bytes && $file_size <= $nine_mb_bytes) {
+                            $eligible_for_optimization++;
+                        }
+                        
+                        // Ready for migration: <= max_file_size_bytes
+                        if ($file_size > 0 && $file_size <= $max_file_size_bytes) {
+                            $ready_for_migration++;
+                        }
                     }
                 }
             }
@@ -119,6 +127,12 @@ class Bunny_Stats {
             'optimized_percent' => $optimized_percent,
             'migration_percent' => $migration_percent,
             'cloud_percent' => $cloud_percent
+        );
+        
+        // Cache the stats
+        $this->stats_cache['unified_image_stats'] = array(
+            'data' => $stats,
+            'expires' => time() + $this->cache_expiration
         );
         
         error_log('Final stats: ' . print_r($stats, true));
@@ -241,7 +255,7 @@ class Bunny_Stats {
                 'recent_uploads' => (int) $core_stats->recent_uploads
             );
             
-            wp_cache_set($cache_key, $stats, 'bunny_media_offload', $this->cache_duration);
+            wp_cache_set($cache_key, $stats, 'bunny_media_offload', $this->cache_expiration);
             
             return $stats;
             
@@ -274,7 +288,7 @@ class Bunny_Stats {
                 'bunny_files_count' => $stats['total_files']
             );
             
-            wp_cache_set($cache_key, $result, 'bunny_media_offload', $this->cache_duration);
+            wp_cache_set($cache_key, $result, 'bunny_media_offload', $this->cache_expiration);
             
             return $result;
         } catch (Exception $e) {
@@ -301,20 +315,9 @@ class Bunny_Stats {
     }
     
     /**
-     * Clear all statistics caches
+     * Clear all stats caches
      */
     public function clear_cache() {
-        $cache_keys = array(
-            'bunny_unified_image_stats',
-            'bunny_database_stats',
-            'bunny_storage_stats',
-            'bunny_cdn_images_count'
-        );
-        
-        foreach ($cache_keys as $key) {
-            wp_cache_delete($key, 'bunny_media_offload');
-        }
-        
-        return true;
+        $this->stats_cache = array();
     }
 } 

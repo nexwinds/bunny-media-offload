@@ -65,6 +65,14 @@ class Bunny_Settings {
             if (defined($constant_name)) {
                 return constant($constant_name);
             }
+            
+            // Special handling for BMO_ constants - check case sensitivity issues
+            if ($key === 'bmo_api_key' && defined('BMO_API_KEY')) {
+                return constant('BMO_API_KEY');
+            }
+            if ($key === 'bmo_api_region' && defined('BMO_API_REGION')) {
+                return constant('BMO_API_REGION');
+            }
         }
         return null;
     }

@@ -576,13 +576,6 @@ class Bunny_Admin {
             
             <?php $this->render_unified_stats_widget(__('Image Statistics – Ready for Migration', 'bunny-media-offload')); ?>
             
-            <div class="bunny-migration-info">
-                <div class="notice notice-info">
-                    <h3><?php esc_html_e('Migration Requirements', 'bunny-media-offload'); ?></h3>
-                    <p><?php esc_html_e('Only images in SVG, AVIF or WebP format will be migrated. Images in other formats will be skipped.', 'bunny-media-offload'); ?></p>
-                </div>
-            </div>
-            
             <div class="bunny-migration-form">
                 <h3><?php esc_html_e('Start New Migration', 'bunny-media-offload'); ?></h3>
                 
@@ -931,10 +924,19 @@ class Bunny_Admin {
      * Optimization page
      */
     public function optimization_page() {
-        // Verify API key is set
+        if (!$this->optimizer) {
+            return;
+        }
+        
         $settings = $this->settings->get_all();
-        $api_key = isset($settings['optimization_key']) ? $settings['optimization_key'] : '';
-        $threshold_kb = isset($settings['optimization_threshold']) ? (int) $settings['optimization_threshold'] : 100;
+        
+        // Get API key
+        $api_key = isset($settings['bmo_api_key']) ? $settings['bmo_api_key'] : '';
+        
+        // Direct check for BMO_API_KEY if not found through settings
+        if (empty($api_key) && defined('BMO_API_KEY')) {
+            $api_key = constant('BMO_API_KEY');
+        }
         
         ?>
         <div class="wrap">
@@ -1790,7 +1792,7 @@ class Bunny_Admin {
                                 <?php 
                                 printf(
                                     // translators: %d is the threshold in KB
-                                    esc_html__('AVIF/WebP/SVG: If less than %d KB.', 'bunny-media-offload'),
+                                    esc_html__('AVIF/WebP/SVG: If less than or equal to %d KB.', 'bunny-media-offload'),
                                     esc_html($max_file_size_kb)
                                 ); 
                                 ?>

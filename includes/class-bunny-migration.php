@@ -7,14 +7,16 @@ class Bunny_Migration {
     private $api;
     private $settings;
     private $logger;
+    private $criteria;
     
     /**
      * Constructor
      */
-    public function __construct($api, $settings, $logger) {
+    public function __construct($api, $settings, $logger, $criteria = null) {
         $this->api = $api;
         $this->settings = $settings;
         $this->logger = $logger;
+        $this->criteria = $criteria;
         
         $this->init_hooks();
     }
@@ -46,8 +48,14 @@ class Bunny_Migration {
     public function ajax_start_migration() {
         $this->validate_ajax_request();
         
-        // Include SVG, AVIF and WebP file types for migration
-        $file_types = array('svg', 'avif', 'webp');
+        // Use criteria class if available
+        if ($this->criteria) {
+            $file_types = $this->criteria->get_migration_file_types();
+        } else {
+            // Include SVG, AVIF and WebP file types for migration
+            $file_types = array('svg', 'avif', 'webp');
+        }
+        
         // phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verification is handled by validate_ajax_request() called above
         $language_scope = isset($_POST['language_scope']) ? sanitize_text_field(wp_unslash($_POST['language_scope'])) : 'current';
         $post_types = array();
@@ -933,6 +941,12 @@ class Bunny_Migration {
      * Get supported MIME types for migration
      */
     private function get_supported_mime_types($file_types) {
+        // Use criteria class if available
+        if ($this->criteria) {
+            return $this->criteria->get_migration_supported_mime_types();
+        }
+
+        // Fallback to original implementation
         $mime_types = array();
         foreach ($file_types as $file_type) {
             switch ($file_type) {
@@ -954,6 +968,14 @@ class Bunny_Migration {
      * Check if file should be migrated
      */
     private function should_migrate_file($local_path) {
+        // Use criteria class if available
+        if ($this->criteria) {
+            // Use mime_content_type to dynamically get the file's MIME type
+            $mime_type = mime_content_type($local_path);
+            return $this->criteria->is_ready_for_migration($local_path, null, $mime_type);
+        }
+
+        // Fallback to original implementation
         if (!file_exists($local_path)) {
             return false;
         }
